@@ -1,0 +1,1 @@
+FROM images.sbgenomics.com/aberno/rhapsody:1.8
