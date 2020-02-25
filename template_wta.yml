@@ -10,26 +10,21 @@ cwl:tool: rhapsody
 Reads:
 
  - class: File
-   location: "test/mySample_R1_.fastq.gz"
+   location: "data/reads/SRR6354915_R1_001.fastq.gz"
 
  - class: File
-   location: "test/mySample_R2_.fastq.gz"
+   location: "data/reads/SRR6354915_R2_001.fastq.gz"
 
 
 ## Reference_Genome (required) - Path to STAR index for tar.gz format. See Doc ID: 47383 for instructions to obtain pre-built STAR index file.
 Reference_Genome:
    class: File
-   location: "test/reference.tar.gz"
+   location: "data/reference_sequences/Homo_sapiens.GRCh38.tar.gz"
 
 ## Transcriptome_Annotation (required) - Path to GTF annotation file
 Transcriptome_Annotation:
    class: File
-   location: "test/annotation.gtf"
-
-## AbSeq_Reference (optional) - Path to the AbSeq reference file in FASTA format.  Only needed if BD AbSeq Ab-Oligos are used.
-#AbSeq_Reference:
-# - class: File
-#   location: "test/AbSeq_reference.fasta"
+   location: "data/annotations/Homo_sapiens.GRCh38.99.gtf"
 
 ####################################
 ## Putative Cell Calling Settings ##
@@ -47,21 +42,7 @@ Transcriptome_Annotation:
 ########################
 
 ## Subsample (optional) - A number >1 or fraction (0 < n < 1) to indicate the number or percentage of reads to subsample.
-#Subsample: 0.01
+Subsample: 0.01
 
 ## Subsample seed (optional) - A seed for replicating a previous subsampled run.
-#Subsample_seed: 3445
-
-#######################
-## Multiplex options ##
-#######################
-
-## Sample Tags Version (optional) - Specify if multiplexed run: human, hs, mouse or mm
-#Sample_Tags_Version: human
-
-## Subsample Sample Tags (optional) -  A number >1 or fraction (0 < n < 1) to indicate the number or percentage of reads to subsample.
-#Subsample_Tags: 0.05
-
-## Tag_Names (optional) - Specify the tag number followed by '-' and the desired sample name to appear in Sample_Tag_Metrics.csv
-# Do not use the special characters: &, (), [], {},  <>, ?, |
-#Tag_Names: [4-mySample, 9-myOtherSample, 6-alsoThisSample]
+Subsample_seed: 3445
