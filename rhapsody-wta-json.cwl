@@ -1790,7 +1790,7 @@
                 {
                     "requirements": [
                         {
-                            "ramMin": 32000, 
+                            "ramMin": 48000, 
                             "class": "ResourceRequirement"
                         }
                     ], 

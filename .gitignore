@@ -1,5 +1,9 @@
 data
 results
 docker_tmp
+tmp
+toil*
 
-nohup.out
+nohup.out*
+*.log
+screenlog*

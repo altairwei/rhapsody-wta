@@ -19,9 +19,7 @@ STAR \
 
 > For WTA assays, the reference genome is a compressed tarball that contains the **STAR index files** for the species of the cells used in the BD WTA experiment.
 
-直接打包：
-
-使用 `pigz` 多线程压缩文件。
+基因组索引文件需要放置到一个文件夹下，然后使用打包成 tarball。这个文件夹会被用来当做参考基因组的名称。
 
 ```shell
 # 首先创建压缩包

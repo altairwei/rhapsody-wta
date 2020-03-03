@@ -13,10 +13,20 @@ yaml 形式的 cwl 文件兼容性太差了，最好使用 json 格式。
 这个工作流程无法使用 singularity ，不过可以尝试下 udocker 或者 dx-docker
 
 ```shell
-mkdir -p docker_tmp
-export TMPDIR=`pwd`/docker_tmp
+mkdir -p tmp/docker_tmp
+export TMPDIR=$(pwd)/tmp/docker_tmp
 nohup \
-cwltool --parallel --outdir results rhapsody-wta-json.cwl template_wta.yml \
+toil-cwl-runner \
+  --jobStore file:results/rhapsody-wta-job-store \
+  --workDir tmp \
+  --outdir results \
+  --writeLogs results/logs \
+  --logFile cwltoil.log \
+  --logLevel INFO \
+  --retryCount 2 \
+  --maxLogFileSize 20000000000 \
+  --stats \
+  rhapsody-wta-json.cwl template_wta.yml \
 &
 ```
 
@@ -53,6 +63,18 @@ Example:
 // example: <SAMPLE>[<SAMPLE NUMBER>][<LANE>]_R<READ FLAG>_001.fastq.gz
 /^(.*?)(_S[0-9]*)?(_L[0-9]*)?(_R[1|2])_001(-[0-9]*)?\.(.*?)$/
 ```
+
+> ### Naming Convention
+> FASTQ files are named with the sample name and the sample number, which is a numeric assignment based on the order that the sample is listed in the sample sheet. For example: Data\Intensities\BaseCalls\SampleName_S1_L001_R1_001.fastq.gz
+>
+> - SampleName — The sample name provided in the sample sheet. If a sample name is not provided, the file name includes the sample ID, which is a required field in the sample sheet and must be unique.
+> - S1 — The sample number based on the order that samples are listed in the sample sheet starting with 1. In this example, S1 indicates that this sample is the first sample listed in the sample sheet. **NOTE** Reads that cannot be assigned to any sample are written to a FASTQ file for sample number 0, and excluded from downstream analysis.
+>
+> - L001 — The lane number.
+> - R1 — The read. In this example, R1 means Read 1. For a paired-end run, there is at least one file with R2 in the file name for Read 2. When generated, index reads are I1 or I2.
+> - 001 — The last segment is always 001.
+>
+> FASTQ files that do not follow this naming convention cannot be imported into BaseSpace.
 
 ### 参考基因组索引问题
 
@@ -159,3 +181,17 @@ ERROR [step Metrics] Cannot make job: Requested at least 96000 ram but only 6241
 ```
 
 在改变掉内存需求后，总算成功了！
+
+### 为什么CWL流程无法重入？
+
+中间结果没有被缓存下来，每次运行失败只能重新来过？
+
+CWL 的参考实现 cwltool 文档中根本没有提可重入性的问题，`--cachedir` 也存在 BUG。
+
+比如:
+
+```shell
+cwl-runner --tmpdir-prefix tmp/ --cachedir cache/ --outdir results/ workflow.cwl job.yml
+```
+
+而且 rhapsody-wta 流程又涉及到大量的 Docker ，要不要保留 docker 容器也是个未知的问题。

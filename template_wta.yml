@@ -8,23 +8,40 @@ cwl:tool: rhapsody
 
 ## Reads (required) - Path to your read files in the FASTQ.GZ format. You may specify as many R1/R2 read pairs as you want.
 Reads:
-
- - class: File
-   location: "data/reads/SRR6354915_R1_001.fastq.gz"
-
- - class: File
-   location: "data/reads/SRR6354915_R2_001.fastq.gz"
-
-
+  - class: File
+    location: "data/reads/SRR6354915_R1_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354915_R2_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354916_R1_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354916_R2_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354917_R1_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354917_R2_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354918_R1_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354918_R2_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354919_R1_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354919_R2_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354920_R1_001.fastq.gz"
+  - class: File
+    location: "data/reads/SRR6354920_R2_001.fastq.gz"
+    
 ## Reference_Genome (required) - Path to STAR index for tar.gz format. See Doc ID: 47383 for instructions to obtain pre-built STAR index file.
 Reference_Genome:
-   class: File
-   location: "data/reference_sequences/Homo_sapiens.GRCh38.tar.gz"
+  class: File
+  location: "data/reference_sequences/Homo_sapiens.GRCh38.tar.gz"
 
 ## Transcriptome_Annotation (required) - Path to GTF annotation file
 Transcriptome_Annotation:
-   class: File
-   location: "data/annotations/Homo_sapiens.GRCh38.99.gtf"
+  class: File
+  location: "data/annotations/Homo_sapiens.GRCh38.99.gtf"
 
 ####################################
 ## Putative Cell Calling Settings ##
@@ -42,7 +59,7 @@ Transcriptome_Annotation:
 ########################
 
 ## Subsample (optional) - A number >1 or fraction (0 < n < 1) to indicate the number or percentage of reads to subsample.
-Subsample: 0.01
+#Subsample: 0.01
 
 ## Subsample seed (optional) - A seed for replicating a previous subsampled run.
-Subsample_seed: 3445
+#Subsample_seed: 3445
