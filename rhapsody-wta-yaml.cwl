@@ -1,5 +1,5 @@
 class: Workflow
-cwlVersion: v1.0
+cwlVersion: v1.1
 id: altair_wei/altair-wei-s-demo-project/bd-rhapsody-wta-analysis-pipeline/2
 label: BD Rhapsody™ WTA Analysis Pipeline
 $namespaces:
@@ -8,7 +8,7 @@ inputs:
   - id: Exact_Cell_Count
     type: int?
     label: Exact Cell Count
-    description: >-
+    doc: >-
       Set a specific number (>=1) of cells as putative, based on those with the
       highest error-corrected read count
     'sbg:x': 0
@@ -16,7 +16,7 @@ inputs:
   - id: Basic_Algo_Only
     type: boolean?
     label: Disable Refined Putative Cell Calling
-    description: >-
+    doc: >-
       Determine putative cells using only the basic algorithm (minimum second
       derivative along the cumulative reads curve).  The refined algorithm
       attempts to remove false positives and recover false negatives, but may
@@ -50,7 +50,7 @@ inputs:
   - id: Subsample
     type: float?
     label: Subsample Reads
-    description: >
+    doc: >
       Any number of reads >1 or a fraction between 0 < n < 1 to indicate the
       percentage of reads to subsample.
     'sbg:x': 0
@@ -58,7 +58,7 @@ inputs:
   - id: Subsample_seed
     type: int?
     label: Subsample Seed
-    description: >
+    doc: >
       For use when replicating a previous subsampling run only. Obtain the seed
       generated from the log file for the SplitFastQ node.
     'sbg:x': 0
@@ -66,7 +66,7 @@ inputs:
   - id: Subsample_Tags
     type: float?
     label: Subsample Sample Tags
-    description: >
+    doc: >
       Any number of reads > 1 or a fraction between 0 < n < 1 to indicate the
       percentage of tag reads to subsample.
     'sbg:x': 0
@@ -74,7 +74,7 @@ inputs:
   - id: Tag_Names
     type: 'string[]?'
     label: Tag Names
-    description: >
+    doc: >
       Specify the Sample Tag number followed by - (hyphen) and a sample name to
       appear in the output files. For example: 4-Ramos. Do not use the special
       characters: &, (), [], {}, <>, ?, |
@@ -90,11 +90,17 @@ inputs:
           - Single-Cell Multiplex Kit - Mouse
         name: Sample_Tags_Version
     label: Sample Tags Version
-    description: >-
+    doc: >-
       The sample multiplexing kit version.  This option should only be set for a
       multiplexed experiment.
     'sbg:x': 0
     'sbg:y': 536.015625
+  - id: Label_Version
+    type: int?
+    label: Label Version
+    doc: >
+      Specify which version of the cell label you are using:
+      1 for 8mer, 2 for 9mer (default), 3 for Precise targeted, 4 for Precise WTA.
 outputs:
   - id: UMI_Adjusted_Stats
     outputSource:
@@ -217,7 +223,7 @@ steps:
           type: boolean?
       requirements:
         - class: InlineJavascriptRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 325.50885009765625
     'sbg:y': 477.8125
@@ -254,7 +260,7 @@ steps:
           type: int?
       requirements:
         - class: InlineJavascriptRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 325.50885009765625
     'sbg:y': 356.609375
@@ -322,12 +328,14 @@ steps:
           type: string?
       requirements:
         - class: InlineJavascriptRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 325.50885009765625
     'sbg:y': 606.015625
   - id: Internal_Settings
-    in: []
+    in:
+      - id: _Label_Version
+        source: Label_Version
     out:
       - id: Label_Version
       - id: Read_Filter_Off
@@ -369,7 +377,9 @@ steps:
           return internalOutputs;
         }
       hints: []
-      inputs: []
+      inputs:
+        - id: _Label_Version
+          type: int?
       outputs:
         - id: Label_Version
           type: int?
@@ -393,7 +403,7 @@ steps:
           type: long?
       requirements:
         - class: InlineJavascriptRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 0
     'sbg:y': 813.421875
@@ -533,7 +543,7 @@ steps:
             position: 0
             prefix: '--subsample-seed'
             shellQuote: false
-        - description: >
+        - doc: >
             The minimum size (megabytes) of a file that should get split into
             chunks of a size designated in NumRecordsPerSplit
           id: MinChunkSize
@@ -573,7 +583,7 @@ steps:
         - class: DockerRequirement
           dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
         - class: InlineJavascriptRequirement
-      description: >
+      doc: >
         CheckFastqs does several quality control routines including: (1)
         ensuring that read pair file names are formatted correctly and contain a
         read pair mate; (2) disambiguating the "Subsample Reads" input and; (3)
@@ -729,15 +739,15 @@ steps:
               - id: SplitFastqList
                 type: 'File[]'
             requirements: []
-            successCodes: []
+            
           requirements: []
       requirements:
         - class: InlineJavascriptRequirement
         - class: ScatterFeatureRequirement
-      description: >
+      doc: >
         SplitAndSubsample splits, subsamples and formats read files to be
         deposited in QualityFilter.
-      successCodes: []
+      
     requirements: []
     'sbg:x': 1097.5953369140625
     'sbg:y': 517.4140625
@@ -751,7 +761,7 @@ steps:
     run:
       class: ExpressionTool
       cwlVersion: v1.0
-      description: >
+      doc: >
         PairReadsFiles takes an array of split files and pairs them, such that
         an R1 file is transferred to a QualityFilter with its corresponding R2
         file.
@@ -839,7 +849,7 @@ steps:
             type: array
       requirements:
         - class: InlineJavascriptRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 1560.7291259765625
     'sbg:y': 545.4140625
@@ -1496,7 +1506,7 @@ steps:
           value: r5.2xlarge
     requirements:
       - class: ResourceRequirement
-        ramMin: 64000
+        ramMin: 48000
     'sbg:x': 3045.014404296875
     'sbg:y': 599.015625
   - id: Sparse_to_Dense_File
@@ -1946,7 +1956,7 @@ steps:
     requirements:
       - class: ResourceRequirement
         outdirMin: 65536
-        ramMin: 96000
+        ramMin: 48000
         tmpdirMin: 65536
     'sbg:x': 3653.201171875
     'sbg:y': 787.8203125
@@ -1989,7 +1999,7 @@ steps:
             type: array
       requirements:
         - class: InlineJavascriptRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 4052.060546875
     'sbg:y': 456.8125
@@ -2101,7 +2111,7 @@ steps:
           requirements: []
       requirements:
         - class: ScatterFeatureRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 4422.6875
     'sbg:y': 470.8125
@@ -2168,7 +2178,7 @@ steps:
       requirements:
         - class: InlineJavascriptRequirement
         - class: MultipleInputFeatureRequirement
-      successCodes: []
+      
     requirements: []
     'sbg:x': 2745.893310546875
     'sbg:y': 470.8125
@@ -2177,7 +2187,7 @@ requirements:
   - class: SubworkflowFeatureRequirement
   - class: ScatterFeatureRequirement
   - class: MultipleInputFeatureRequirement
-description: >-
+doc: >-
   The BD Rhapsody™ WTA Analysis Pipeline is used to create sequencing libraries
   from single cell transcriptomes without having to specify a targeted panel.
 
@@ -2186,7 +2196,7 @@ description: >-
   genome file and a transcriptome annotation file for gene alignment. The
   pipeline generates molecular counts per cell, read counts per cell, metrics,
   and an alignment file.
-successCodes: []
+
 'sbg:projectName': altair_wei's Demo Project
 'sbg:revisionsInfo':
   - 'sbg:revision': 0

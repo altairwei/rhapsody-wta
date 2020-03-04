@@ -95,6 +95,16 @@ def get_default_sections(label):
 
 **也就是说，使用数据集时要注意 Cell Barcode 版本！**
 
+那么什么是 `(3) for Precise targeted, (4) for Precise WTA.` 呢？
+
+按照函数的注释：
+
+> Looks for identical matches only to cellkeys.barcodes_96
+
+`barcodes_96` 应该指的是针对 96 孔板，都存在一个 barcode 。
+
+`seq[0:8]` 是 barcode，每一个 barcode 对应96孔板的一个孔，`seq[8:16]` 是 MI，`seq[16:31]` 是 polyT 。
+
 #### Read 2 Features
 
 R2 在 51 位也存在一个质量下滑。

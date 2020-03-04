@@ -63,3 +63,11 @@ Transcriptome_Annotation:
 
 ## Subsample seed (optional) - A seed for replicating a previous subsampled run.
 #Subsample_seed: 3445
+
+#######################
+## Internal Settings ##
+#######################
+
+# Specify which version of the cell label you are using:
+# 1 for 8mer, 2 for 9mer (default), 3 for Precise targeted, 4 for Precise WTA.
+Label_Version: 1

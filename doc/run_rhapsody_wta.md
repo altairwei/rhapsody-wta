@@ -26,7 +26,7 @@ toil-cwl-runner \
   --retryCount 2 \
   --maxLogFileSize 20000000000 \
   --stats \
-  rhapsody-wta-json.cwl template_wta.yml \
+  rhapsody-wta-yaml.cwl template_wta.yml \
 &
 ```
 
