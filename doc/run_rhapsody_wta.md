@@ -8,8 +8,6 @@ conda install singularity -n wta
 
 ## 试运行
 
-yaml 形式的 cwl 文件兼容性太差了，最好使用 json 格式。
-
 这个工作流程无法使用 singularity ，不过可以尝试下 udocker 或者 dx-docker
 
 ```shell
@@ -17,6 +15,7 @@ mkdir -p tmp/docker_tmp
 export TMPDIR=$(pwd)/tmp/docker_tmp
 nohup \
 toil-cwl-runner \
+  --user-space-docker-cmd=udocker \
   --jobStore file:results/rhapsody-wta-job-store \
   --workDir tmp \
   --outdir results \
@@ -28,6 +27,28 @@ toil-cwl-runner \
   --stats \
   rhapsody-wta-yaml.cwl template_wta.yml \
 &
+```
+
+如果使用 NFS 文件系统：
+
+> Using a shared filesystem: Toil currently only supports a tempdir set to a local, non-shared directory.
+
+也就是说，再 NFS 文件系统上不能设置 `--workDir` 。
+
+下面是再 sippe 服务器上执行的命令：
+
+```shell
+toil-cwl-runner \
+  --user-space-docker-cmd=udocker \
+  --jobStore file:results/rhapsody-wta-job-store \
+  --outdir results \
+  --writeLogs results/logs \
+  --logFile cwltoil.log \
+  --logLevel INFO \
+  --retryCount 2 \
+  --maxLogFileSize 20000000000 \
+  --stats \
+  rhapsody-wta-yaml.cwl template_wta.yml
 ```
 
 ### 文件名不符合规则

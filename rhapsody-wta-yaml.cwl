@@ -497,7 +497,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
     requirements: []
     'sbg:x': 675.3592529296875
@@ -581,7 +581,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       doc: >
         CheckFastqs does several quality control routines including: (1)
@@ -704,7 +704,7 @@ steps:
             requirements:
               - class: ShellCommandRequirement
               - class: DockerRequirement
-                dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+                dockerPull: 'bdgenomics/rhapsody:1.8'
               - class: InlineJavascriptRequirement
             hints:
               - class: 'arv:RuntimeConstraints'
@@ -936,7 +936,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
@@ -990,7 +990,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
@@ -1071,7 +1071,7 @@ steps:
           envDef:
             CORES_ALLOCATED_PER_CWL_PROCESS: $(String(runtime.cores))
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1252,7 +1252,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1324,7 +1324,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
@@ -1500,7 +1500,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'https://sevenbridges.comAWSInstanceType'
           value: r5.2xlarge
@@ -1534,7 +1534,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       stdout: cell_order.json
     requirements: []
     'sbg:x': 3653.201171875
@@ -1586,7 +1586,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Sparse_Data_Table
     requirements:
@@ -1641,7 +1641,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Sparse_Data_Table
     requirements:
@@ -1726,7 +1726,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'https://sevenbridges.comAWSInstanceType'
           value: r4.16xlarge
@@ -1796,7 +1796,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1848,7 +1848,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1946,7 +1946,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:APIRequirement'
         - class: 'arv:RuntimeConstraints'
@@ -2066,7 +2066,7 @@ steps:
               - class: 'arv:RuntimeConstraints'
                 outputDirType: keep_output_dir
               - class: DockerRequirement
-                dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+                dockerPull: 'bdgenomics/rhapsody:1.8'
             stdout: $(inputs.Compressed_File.nameroot)
           scatter:
             - Compressed_File
@@ -2106,7 +2106,7 @@ steps:
               - class: 'arv:RuntimeConstraints'
                 outputDirType: keep_output_dir
               - class: DockerRequirement
-                dockerPull: 'images.sbgenomics.com/aberno/rhapsody:1.8'
+                dockerPull: 'bdgenomics/rhapsody:1.8'
             stdout: $(inputs.Compressed_File.nameroot)
           requirements: []
       requirements:
