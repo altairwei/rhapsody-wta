@@ -1,7 +1,9 @@
 data
 results
+logs
 docker_tmp
 tmp
+.vscode
 toil*
 
 nohup.out*

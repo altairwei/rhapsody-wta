@@ -15,10 +15,11 @@ mkdir -p tmp/docker_tmp
 export TMPDIR=$(pwd)/tmp/docker_tmp
 nohup \
 toil-cwl-runner \
+  --restart --debugWorker \
   --jobStore file:results/rhapsody-wta-job-store \
   --workDir tmp \
   --outdir results \
-  --writeLogs results/logs \
+  --writeLogs logs \
   --logFile cwltoil.log \
   --logLevel INFO \
   --retryCount 2 \
@@ -26,6 +27,14 @@ toil-cwl-runner \
   --stats \
   rhapsody-wta-yaml.cwl template_wta.yml \
 &
+```
+
+使用 cwltool ：
+
+```shell
+mkdir -p tmp/docker_tmp
+export TMPDIR=$(pwd)/tmp/docker_tmp
+cwltool --parallel --outdir results rhapsody-wta-yaml.cwl template_wta.yml
 ```
 
 如果使用 NFS 文件系统：
@@ -41,7 +50,7 @@ toil-cwl-runner \
   --user-space-docker-cmd=udocker \
   --jobStore file:results/rhapsody-wta-job-store \
   --outdir results \
-  --writeLogs results/logs \
+  --writeLogs logs \
   --logFile cwltoil.log \
   --logLevel INFO \
   --retryCount 2 \
@@ -267,4 +276,152 @@ cwl-runner --tmpdir-prefix tmp/ --cachedir cache/ --outdir results/ workflow.cwl
 
 我要如何让 toil 依据新的 cwl 文件重启运行呢？
 
-我觉得应该是删除出错的 job ，然后再重启 jobstore
+~~我觉得应该是删除出错的 job ，然后再重启 jobstore~~
+
+### 文件名太长
+
+```
+OSError: [Errno 36] File name too long
+```
+
+将整个 Workflow 的 id 改得短一点。
+
+### BundleLogs 错误
+
+```log
+INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+INFO:toil:Running Toil version 3.24.0-de586251cb579bcb80eef435825cb3cedc202f52.
+Traceback (most recent call last):
+  File "/home/altairwei/usr/miniconda3/envs/wta/lib/python3.7/site-packages/toil/worker.py", line 366, in workerScript
+    job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
+  File "/home/altairwei/usr/miniconda3/envs/wta/lib/python3.7/site-packages/toil/job.py", line 1392, in _runner
+    returnValues = self._run(jobGraph, fileStore)
+  File "/home/altairwei/usr/miniconda3/envs/wta/lib/python3.7/site-packages/toil/job.py", line 1329, in _run
+    return self.run(fileStore)
+  File "/home/altairwei/usr/miniconda3/envs/wta/lib/python3.7/site-packages/toil/cwl/cwltoil.py", line 566, in run
+    resolved_cwljob = resolve_indirect(self.cwljob)
+  File "/home/altairwei/usr/miniconda3/envs/wta/lib/python3.7/site-packages/toil/cwl/cwltoil.py", line 210, in resolve_indirect
+    res = _resolve_indirect_inner(inner)
+  File "/home/altairwei/usr/miniconda3/envs/wta/lib/python3.7/site-packages/toil/cwl/cwltoil.py", line 179, in _resolve_indirect_inner
+    result[key] = value.resolve()
+  File "/home/altairwei/usr/miniconda3/envs/wta/lib/python3.7/site-packages/toil/cwl/cwltoil.py", line 126, in resolve
+    source = promise[1][promise[0]]
+TypeError: tuple indices must be integers or slices, not str
+ERROR:toil.worker:Exiting the worker because of a failed job on host tanglab
+WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'file:///home/altairwei/src/rhapsody-wta/rhapsody-wta-yaml.cwl#rhapsody-wta/BundleLogs/1b6dd7a2-def6-4c8c-a41c-80d8715e18a1' kind-file_home_altairwei_src_rhapsody-wta_rhapsody-wta-yaml.cwl_rhapsody-wta_BundleLogs_1b6dd7a2-def6-4c8c-a41c-80d8715e18a1/instancenjt87_px with ID kind-file_home_altairwei_src_rhapsody-wta_rhapsody-wta-yaml.cwl_rhapsody-wta_BundleLogs_1b6dd7a2-def6-4c8c-a41c-80d8715e18a1/instancenjt87_px to 0
+```
+
+`self.sources` 就等于 `to_merge` 对象。所以 `promise` 对象相当于下面这个列表中的单个元素：
+
+```python
+to_merge = [(shortname(s), promises[s].rv()) for s in aslist(source_obj)]
+```
+
+`shortname(s)` 是路径字符串的最后一个组分；而 `source_obj` 就是 CWL 中 `source` 下面的 `array<string>` 。
+
+那么 `source = promise[1][promise[0]]` 中 `promise[1]` 是获取 Workflow 中 step 的运行结果，`promise[0]` 是 output 的标识符那么整个语句的涵义就是获取运行结果中的某个输出。
+
+那么最有可能的原因是 `promise[1]` 不是 step 的输出，而是一个元组！也就是说，很可能是 toil 的 bug !
+
+问题出在这：
+
+```python
+    def run(self, file_store):
+        resolved_cwljob = resolve_indirect(self.cwljob)
+        metadata = {}
+        if isinstance(resolved_cwljob, tuple):
+            cwljob = resolved_cwljob[0]
+            metadata = resolved_cwljob[1]
+        else:
+            cwljob = resolved_cwljob
+        fill_in_defaults(
+            self.cwltool.tool['inputs'], cwljob,
+            self.runtime_context.make_fs_access(
+                self.runtime_context.basedir or ""))
+        realjob = CWLJob(self.cwltool, cwljob, self.runtime_context)
+        self.addChild(realjob)
+        return realjob.rv(), metadata
+```
+
+多返回了一个 `metadata`！
+
+见相关的问题：
+
+- https://github.com/DataBiosphere/toil/issues/2846
+- https://github.com/DataBiosphere/toil/pull/2845
+
+~~是不是 `Logs` 于之间建立的 `logs` 文件夹重名了？~~
+
+有可能时 BundleLogs 依赖的某个source没有了其实不存在，以至于报错？我怀疑不能直接引用 `XXX/output`
+
+出问题的步骤：
+
+```yaml
+  - id: BundleLogs
+    in:
+      - id: log_files
+        linkMerge: merge_flattened
+        source:
+          - AnnotateReads/output
+          - AnnotateR1/output
+          - AnnotateR2/output
+          - CheckReference/output
+          - GetDataTable/output
+          - Metrics/output
+          - AddtoBam/output
+          - AnnotateMolecules/output
+          - QualityFilter/output
+          - CheckFastqs/log
+          - SplitAndSubsample/log
+          - MergeBAM/log
+          - Sparse_to_Dense_Datatable/output
+          - Sparse_to_Dense_Datatable_Unfiltered/output
+          - IndexBAM/log
+    out:
+      - id: logs_dir
+    run:
+      class: ExpressionTool
+      cwlVersion: v1.0
+      expression: |-
+        ${
+          /* shamelly cribbed from https://gist.github.com/jcxplorer/823878 */
+          function uuid() {
+            var uuid = "", i, random;
+            for (i = 0; i < 32; i++) {
+              random = Math.random() * 16 | 0;
+              if (i == 8 || i == 12 || i == 16 || i == 20) {
+                uuid += "-";
+              }
+              uuid += (i == 12 ? 4 : (i == 16 ? (random & 3 | 8) : random)).toString(16);
+            }
+            return uuid;
+          }
+          var listing = [];
+          for (var i = 0; i < inputs.log_files.length; i++) {
+            var log_file = inputs.log_files[i];
+            log_file.basename = uuid() + "-" + log_file.basename;
+            listing.push(log_file);
+          }
+          return ({
+            logs_dir: {
+              class: "Directory",
+              basename: "Logs",
+              listing: listing
+            }
+          });
+        }
+      hints: []
+      inputs:
+        - id: log_files
+          type: 'File[]'
+      outputs:
+        - id: logs_dir
+          type: Directory
+      requirements:
+        - class: InlineJavascriptRequirement
+        - class: MultipleInputFeatureRequirement
+      
+    requirements: []
+```
+
+再 run.py 中运行 cwl ，然后使用 pdb 来 debug

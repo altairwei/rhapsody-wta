@@ -1,6 +1,6 @@
 class: Workflow
 cwlVersion: v1.0
-id: altair_wei/altair-wei-s-demo-project/bd-rhapsody-wta-analysis-pipeline/2
+id: rhapsody-wta
 label: BD Rhapsody™ WTA Analysis Pipeline
 $namespaces:
   sbg: 'https://sevenbridges.com'
@@ -940,8 +940,6 @@ steps:
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
-        - class: 'https://sevenbridges.comAWSInstanceType'
-          value: c5.18xlarge
     scatter:
       - Split_Read_Pairs
     scatterMethod: dotproduct
@@ -994,8 +992,6 @@ steps:
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
-        - class: 'https://sevenbridges.comAWSInstanceType'
-          value: c5.18xlarge
     scatter:
       - R1
     requirements: []
@@ -1076,8 +1072,6 @@ steps:
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
-        - class: 'https://sevenbridges.comAWSInstanceType'
-          value: r4.16xlarge
     scatter:
       - R2
     requirements:
@@ -1501,9 +1495,6 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerPull: 'bdgenomics/rhapsody:1.8'
-      hints:
-        - class: 'https://sevenbridges.comAWSInstanceType'
-          value: r5.2xlarge
     requirements:
       - class: ResourceRequirement
         ramMin: 48000
@@ -1725,9 +1716,6 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerPull: 'bdgenomics/rhapsody:1.8'
-      hints:
-        - class: 'https://sevenbridges.comAWSInstanceType'
-          value: r4.16xlarge
     scatter:
       - R2_Bam
     requirements:
@@ -1949,8 +1937,6 @@ steps:
         - class: 'arv:APIRequirement'
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
-        - class: 'https://sevenbridges.comAWSInstanceType'
-          value: r5.4xlarge
     requirements:
       - class: ResourceRequirement
         outdirMin: 65536
@@ -2195,37 +2181,3 @@ doc: >-
   pipeline generates molecular counts per cell, read counts per cell, metrics,
   and an alignment file.
 
-'sbg:projectName': altair_wei's Demo Project
-'sbg:revisionsInfo':
-  - 'sbg:revision': 0
-    'sbg:modifiedBy': sbg-camellia
-    'sbg:modifiedOn': 1578323403
-    'sbg:revisionNotes': Copy of jiewho/bd-public-project/bd-rhapsody-wta-analysis-pipeline/0
-  - 'sbg:revision': 1
-    'sbg:modifiedBy': sbg-camellia
-    'sbg:modifiedOn': 1578323403
-    'sbg:revisionNotes': Copy of jiewho/bd-public-project/bd-rhapsody-wta-analysis-pipeline/1
-  - 'sbg:revision': 2
-    'sbg:modifiedBy': sbg-camellia
-    'sbg:modifiedOn': 1578323403
-    'sbg:revisionNotes': Copy of jiewho/bd-public-project/bd-rhapsody-wta-analysis-pipeline/2
-'sbg:image_url': >-
-  https://igor.sbgenomics.com/ns/brood/images/altair_wei/altair-wei-s-demo-project/bd-rhapsody-wta-analysis-pipeline/2.png
-'sbg:appVersion':
-  - v1.0
-'sbg:id': altair_wei/altair-wei-s-demo-project/bd-rhapsody-wta-analysis-pipeline/2
-'sbg:revision': 2
-'sbg:revisionNotes': Copy of jiewho/bd-public-project/bd-rhapsody-wta-analysis-pipeline/2
-'sbg:modifiedOn': 1578323403
-'sbg:modifiedBy': sbg-camellia
-'sbg:createdOn': 1578323403
-'sbg:createdBy': sbg-camellia
-'sbg:project': altair_wei/altair-wei-s-demo-project
-'sbg:sbgMaintained': false
-'sbg:validationErrors': []
-'sbg:contributors':
-  - sbg-camellia
-'sbg:latestRevision': 2
-'sbg:publisher': BD
-'sbg:content_hash': ab401a8e403bb01c7f8da284d468773b6c145e43029b652bd2c1f6fb51318e738
-'sbg:copyOf': jiewho/bd-public-project/bd-rhapsody-wta-analysis-pipeline/2
