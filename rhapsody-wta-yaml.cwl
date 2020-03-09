@@ -1,5 +1,5 @@
 class: Workflow
-cwlVersion: v1.1
+cwlVersion: v1.0
 id: altair_wei/altair-wei-s-demo-project/bd-rhapsody-wta-analysis-pipeline/2
 label: BD Rhapsody™ WTA Analysis Pipeline
 $namespaces:
@@ -1528,9 +1528,7 @@ steps:
             shellQuote: false
       outputs:
         - id: Cell_Order
-          type: File
-          outputBinding:
-            glob: random_stdout_89ff98c4-e6a8-44f2-9619-4cb8e11955c6
+          type: stdout
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement

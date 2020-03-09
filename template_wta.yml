@@ -59,10 +59,10 @@ Transcriptome_Annotation:
 ########################
 
 ## Subsample (optional) - A number >1 or fraction (0 < n < 1) to indicate the number or percentage of reads to subsample.
-#Subsample: 0.01
+Subsample: 0.00001
 
 ## Subsample seed (optional) - A seed for replicating a previous subsampled run.
-#Subsample_seed: 3445
+Subsample_seed: 3445
 
 #######################
 ## Internal Settings ##

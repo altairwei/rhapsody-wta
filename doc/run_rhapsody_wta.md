@@ -15,7 +15,6 @@ mkdir -p tmp/docker_tmp
 export TMPDIR=$(pwd)/tmp/docker_tmp
 nohup \
 toil-cwl-runner \
-  --user-space-docker-cmd=udocker \
   --jobStore file:results/rhapsody-wta-job-store \
   --workDir tmp \
   --outdir results \
@@ -216,3 +215,56 @@ cwl-runner --tmpdir-prefix tmp/ --cachedir cache/ --outdir results/ workflow.cwl
 ```
 
 而且 rhapsody-wta 流程又涉及到大量的 Docker ，要不要保留 docker 容器也是个未知的问题。
+
+### 工作流程错误
+
+下面是错误输出：
+
+```shell
+("Error collecting output for parameter 'Cell_Order':\nrhapsody-wta-yaml.cwl:1533:13: Did not find output file with glob pattern: '['random_stdout_89ff98c4-e6a8-44f2-9619-4cb8e11955c6']'", {})
+```
+
+出错的流程：
+
+```yaml
+  - id: Sparse_to_Dense_File
+    in:
+      - id: GDT_cell_order
+        source: GetDataTable/Cell_Order
+    out:
+      - id: Cell_Order
+    run:
+      class: CommandLineTool
+      cwlVersion: v1.0
+      baseCommand:
+        - cat
+      inputs:
+        - id: GDT_cell_order
+          type: File?
+          inputBinding:
+            position: 1
+            shellQuote: false
+      outputs:
+        - id: Cell_Order
+          type: File
+          outputBinding:
+            glob: random_stdout_89ff98c4-e6a8-44f2-9619-4cb8e11955c6
+      requirements:
+        - class: ShellCommandRequirement
+        - class: DockerRequirement
+          dockerPull: 'bdgenomics/rhapsody:1.8'
+      stdout: cell_order.json
+    requirements: []
+```
+
+按照最新的 cwl 文档，应该改成：
+
+```yaml
+      outputs:
+        - id: Cell_Order
+          type: stdout
+```
+
+我要如何让 toil 依据新的 cwl 文件重启运行呢？
+
+我觉得应该是删除出错的 job ，然后再重启 jobstore
