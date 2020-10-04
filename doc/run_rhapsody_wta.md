@@ -1,6 +1,6 @@
 # Run BD Rhapsody WTA pipeline
 
-## 准备用户控件 Docker 运行时
+## 准备用户空间 Docker 运行时
 
 ```shell
 conda install singularity -n wta
@@ -15,7 +15,6 @@ mkdir -p tmp/docker_tmp
 export TMPDIR=$(pwd)/tmp/docker_tmp
 nohup \
 toil-cwl-runner \
-  --restart --debugWorker \
   --jobStore file:results/rhapsody-wta-job-store \
   --workDir tmp \
   --outdir results \
@@ -41,9 +40,9 @@ cwltool --parallel --outdir results rhapsody-wta-yaml.cwl template_wta.yml
 
 > Using a shared filesystem: Toil currently only supports a tempdir set to a local, non-shared directory.
 
-也就是说，再 NFS 文件系统上不能设置 `--workDir` 。
+也就是说，在 NFS 文件系统上不能设置 `--workDir` 。
 
-下面是再 sippe 服务器上执行的命令：
+下面是在 sippe 服务器上执行的命令：
 
 ```shell
 toil-cwl-runner \
@@ -59,7 +58,17 @@ toil-cwl-runner \
   rhapsody-wta-yaml.cwl template_wta.yml
 ```
 
-### 文件名不符合规则
+使用 cwltool :
+
+```shell
+mkdir -p tmp/docker_tmp
+export TMPDIR=$(pwd)/tmp/docker_tmp
+cwltool --user-space-docker-cmd=udocker --parallel --outdir results rhapsody-wta-yaml.cwl template_wta.yml
+```
+
+值得注意的是，udocker v1.1.4 只支持 python2 ，所以请安装开发版的 udocker 。但是开发版本的 udocker 有缺陷，cwltool 使用起来会报错。
+
+### 原始测序数据文件名约定
 
 文件名：
 
@@ -105,7 +114,18 @@ Example:
 >
 > FASTQ files that do not follow this naming convention cannot be imported into BaseSpace.
 
-### 参考基因组索引问题
+### 使用额外的临时文件夹确保储存空间足够
+
+docker 会产生很多临时文件，因此需要确保 /tmp 目录有足够空间。
+
+也可以改变临时文件位置。
+
+```shell
+mkdir docker_tmp
+export TMPDIR=`pwd`/docker_tmp
+```
+
+### 参考基因组索引使用的 STAR 版本要与 docker 镜像中的保持一致
 
 `AnnotateR2` 这一步发生问题：
 
@@ -120,18 +140,7 @@ SOLUTION: use correct parameter name (check the manual)
 
 Docker 镜像中使用的 STAR 版本为 2.5.2b ，可能是因为基因组索引版本不兼容。
 
-### 磁盘空间不够
-
-docker 会产生很多临时文件，因此需要确保 /tmp 目录有足够空间。
-
-也可以改变临时文件位置。
-
-```shell
-mkdir docker_tmp
-export TMPDIR=`pwd`/docker_tmp
-```
-
-### 基因组索引文件错误
+### 基因组索引文件压缩包的约定
 
 重点在于 `OSError: [Errno 22] Invalid argument: '.'` 这段，我怀疑是打包基因组索引时引入的路径前缀 `.`。
 
@@ -211,7 +220,7 @@ ERROR [step Metrics] Cannot make job: Requested at least 96000 ram but only 6241
 
 在改变掉内存需求后，总算成功了！
 
-### 为什么CWL流程无法重入？
+### 使用 toil 的 jobstore 来实现 CWL 流程的可重入
 
 中间结果没有被缓存下来，每次运行失败只能重新来过？
 
@@ -224,6 +233,8 @@ cwl-runner --tmpdir-prefix tmp/ --cachedir cache/ --outdir results/ workflow.cwl
 ```
 
 而且 rhapsody-wta 流程又涉及到大量的 Docker ，要不要保留 docker 容器也是个未知的问题。
+
+Toil 具有 jobstore 可以实现工作流程的重入。
 
 ### 工作流程错误
 
@@ -424,4 +435,4 @@ to_merge = [(shortname(s), promises[s].rv()) for s in aslist(source_obj)]
     requirements: []
 ```
 
-再 run.py 中运行 cwl ，然后使用 pdb 来 debug
+在 run.py 中运行 cwl ，然后使用 pdb 来 debug
