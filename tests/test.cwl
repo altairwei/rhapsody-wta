@@ -8,8 +8,7 @@ inputs:
     type: string
 outputs:
   - id: log
-    outputSource:
-      - BundleLogs/logs
+    outputSource: "BundleLogs/logs"
     type: File
 requirements:
   - class: MultipleInputFeatureRequirement

@@ -103,85 +103,73 @@ inputs:
       1 for 8mer, 2 for 9mer (default), 3 for Precise targeted, 4 for Precise WTA.
 outputs:
   - id: UMI_Adjusted_Stats
-    outputSource:
-      - GetDataTable/UMI_Adjusted_Stats
+    outputSource: GetDataTable/UMI_Adjusted_Stats
     type: File?
     label: UMI Adjusted Statistics
     'sbg:x': 3653.201171875
     'sbg:y': 46.6015625
   - id: Cell_Label_Filter
-    outputSource:
-      - GetDataTable/Cell_Label_Filter
+    outputSource: GetDataTable/Cell_Label_Filter
     type: 'File[]?'
     label: Cell Label Filter
     'sbg:x': 3653.201171875
     'sbg:y': 1044.2265625
   - id: Expression_Data
-    outputSource:
-      - Uncompress_Datatables/Uncompressed_Expression_Matrix
+    outputSource: Uncompress_Datatables/Uncompressed_Expression_Matrix
     type: File?
     label: Expression Matrix
     'sbg:x': 4888.94384765625
     'sbg:y': 599.015625
   - id: Final_Bam
-    outputSource:
-      - MergeBAM/Final_Bam
+    outputSource: MergeBAM/Final_Bam
     type: File
     label: Final BAM File
     'sbg:x': 4888.94384765625
     'sbg:y': 491.8125
   - id: Bam_Index
-    outputSource:
-      - IndexBAM/Index
+    outputSource: IndexBAM/Index
     type: File
     label: Bam Index
     'sbg:x': 5082.38134765625
     'sbg:y': 545.4140625
   - id: Metrics_Summary
-    outputSource:
-      - Metrics/Metrics_Summary
+    outputSource: Metrics/Metrics_Summary
     type: File
     label: Metrics Summary
     'sbg:x': 4052.060546875
     'sbg:y': 342.609375
   - id: Data_Tables
-    outputSource:
-      - Uncompress_Datatables/Uncompressed_Data_Tables
+    outputSource: Uncompress_Datatables/Uncompressed_Data_Tables
     type: 'File[]?'
     label: Data Tables
     'sbg:x': 4888.94384765625
     'sbg:y': 706.21875
   - id: Data_Tables_Unfiltered
-    outputSource:
-      - Sparse_to_Dense_Datatable_Unfiltered/Data_Tables
+    outputSource: Sparse_to_Dense_Datatable_Unfiltered/Data_Tables
     type: 'File[]?'
     label: Unfiltered Data Tables
     'sbg:x': 4052.060546875
     'sbg:y': 571.015625
   - id: Expression_Data_Unfiltered
-    outputSource:
-      - GetDataTable/Expression_Data_Unfiltered
+    outputSource: GetDataTable/Expression_Data_Unfiltered
     type: File?
     label: Unfiltered Expression Matrix
     'sbg:x': 3653.201171875
     'sbg:y': 937.0234375
   - id: Logs
-    outputSource:
-      - BundleLogs/logs_dir
+    outputSource: BundleLogs/logs_dir
     type: Directory
     label: Pipeline Logs
     'sbg:x': 3045.014404296875
     'sbg:y': 386.8125
   - id: Putative_Cells_Origin
-    outputSource:
-      - GetDataTable/Putative_Cells_Origin
+    outputSource: GetDataTable/Putative_Cells_Origin
     type: File?
     label: Putative Cells Origin
     'sbg:x': 3653.201171875
     'sbg:y': 531.4140625
   - id: Multiplex
-    outputSource:
-      - GetDataTable/Trueno_out
+    outputSource: GetDataTable/Trueno_out
     type: 'File[]?'
     'sbg:x': 3653.201171875
     'sbg:y': 638.6171875
@@ -497,7 +485,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
     requirements: []
     'sbg:x': 675.3592529296875
@@ -581,7 +569,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       doc: >
         CheckFastqs does several quality control routines including: (1)
@@ -627,12 +615,10 @@ steps:
           type: 'string[]'
       outputs:
         - id: SplitAndSubsampledFastqs
-          outputSource:
-            - FlattenOutput/SplitFastqList
+          outputSource: FlattenOutput/SplitFastqList
           type: 'File[]'
         - id: log
-          outputSource:
-            - SplitAndSubsample/log
+          outputSource: SplitAndSubsample/log
           type: 'File[]'
       steps:
         - id: SplitAndSubsample
@@ -704,7 +690,7 @@ steps:
             requirements:
               - class: ShellCommandRequirement
               - class: DockerRequirement
-                dockerPull: 'bdgenomics/rhapsody:1.8'
+                dockerImageId: 'bdgenomics/rhapsody:1.8'
               - class: InlineJavascriptRequirement
             hints:
               - class: 'arv:RuntimeConstraints'
@@ -936,7 +922,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
@@ -988,7 +974,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
@@ -1067,7 +1053,7 @@ steps:
           envDef:
             CORES_ALLOCATED_PER_CWL_PROCESS: $(String(runtime.cores))
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1246,7 +1232,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1318,7 +1304,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:RuntimeConstraints'
           keep_cache: 512
@@ -1494,7 +1480,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
     requirements:
       - class: ResourceRequirement
         ramMin: 48000
@@ -1523,7 +1509,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
       stdout: cell_order.json
     requirements: []
     'sbg:x': 3653.201171875
@@ -1575,7 +1561,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Sparse_Data_Table
     requirements:
@@ -1630,7 +1616,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Sparse_Data_Table
     requirements:
@@ -1715,7 +1701,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
     scatter:
       - R2_Bam
     requirements:
@@ -1782,7 +1768,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1834,7 +1820,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: 'arv:RuntimeConstraints'
@@ -1932,7 +1918,7 @@ steps:
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
-          dockerPull: 'bdgenomics/rhapsody:1.8'
+          dockerImageId: 'bdgenomics/rhapsody:1.8'
       hints:
         - class: 'arv:APIRequirement'
         - class: 'arv:RuntimeConstraints'
@@ -2007,12 +1993,10 @@ steps:
           type: File
       outputs:
         - id: Uncompressed_Data_Tables
-          outputSource:
-            - Uncompress_Datatable/Uncompressed_File
+          outputSource: Uncompress_Datatable/Uncompressed_File
           type: 'File[]'
         - id: Uncompressed_Expression_Matrix
-          outputSource:
-            - Uncompress_Expression_Matrix/Uncompressed_File
+          outputSource: Uncompress_Expression_Matrix/Uncompressed_File
           type: File
       steps:
         - id: Uncompress_Datatable
@@ -2050,7 +2034,7 @@ steps:
               - class: 'arv:RuntimeConstraints'
                 outputDirType: keep_output_dir
               - class: DockerRequirement
-                dockerPull: 'bdgenomics/rhapsody:1.8'
+                dockerImageId: 'bdgenomics/rhapsody:1.8'
             stdout: $(inputs.Compressed_File.nameroot)
           scatter:
             - Compressed_File
@@ -2090,7 +2074,7 @@ steps:
               - class: 'arv:RuntimeConstraints'
                 outputDirType: keep_output_dir
               - class: DockerRequirement
-                dockerPull: 'bdgenomics/rhapsody:1.8'
+                dockerImageId: 'bdgenomics/rhapsody:1.8'
             stdout: $(inputs.Compressed_File.nameroot)
           requirements: []
       requirements:

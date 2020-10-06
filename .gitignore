@@ -1,4 +1,5 @@
 data
+bin
 results
 logs
 docker_tmp
@@ -9,3 +10,4 @@ toil*
 nohup.out*
 *.log
 screenlog*
+cromwell-executions
