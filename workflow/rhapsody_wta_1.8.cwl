@@ -94,13 +94,7 @@
             "$namespaces": {
                 "sbg": "https://sevenbridges.com"
             }, 
-            "id": "#AddtoBam.cwl", 
-            "hints": [
-                {
-                    "class": "https://sevenbridges.comAWSInstanceType", 
-                    "value": "r4.16xlarge"
-                }
-            ]
+            "id": "#AddtoBam.cwl"
         }, 
         {
             "inputs": [
@@ -175,13 +169,7 @@
                 "mist_annotate_molecules.py"
             ], 
             "class": "CommandLineTool", 
-            "id": "#AnnotateMolecules.cwl", 
-            "hints": [
-                {
-                    "keep_cache": 512, 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
-                }
-            ]
+            "id": "#AnnotateMolecules.cwl"
         }, 
         {
             "inputs": [
@@ -229,17 +217,7 @@
                 "mist_annotate_R1.py"
             ], 
             "class": "CommandLineTool", 
-            "id": "#AnnotateR1.cwl", 
-            "hints": [
-                {
-                    "keep_cache": 512, 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
-                }, 
-                {
-                    "class": "https://sevenbridges.comAWSInstanceType", 
-                    "value": "c5.18xlarge"
-                }
-            ]
+            "id": "#AnnotateR1.cwl"
         }, 
         {
             "inputs": [
@@ -334,17 +312,7 @@
                 "mist_annotate_R2.py"
             ], 
             "class": "CommandLineTool", 
-            "id": "#AnnotateR2.cwl", 
-            "hints": [
-                {
-                    "keep_cache": 512, 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
-                }, 
-                {
-                    "class": "https://sevenbridges.comAWSInstanceType", 
-                    "value": "r4.16xlarge"
-                }
-            ]
+            "id": "#AnnotateR2.cwl"
         }, 
         {
             "inputs": [
@@ -552,13 +520,7 @@
                 "mist_annotate_reads.py"
             ], 
             "class": "CommandLineTool", 
-            "id": "#AnnotateReads.cwl", 
-            "hints": [
-                {
-                    "keep_cache": 512, 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
-                }
-            ]
+            "id": "#AnnotateReads.cwl"
         }, 
         {
             "inputs": [
@@ -1088,13 +1050,7 @@
                 "mist_get_datatables.py"
             ], 
             "class": "CommandLineTool", 
-            "id": "#GetDataTable.cwl", 
-            "hints": [
-                {
-                    "class": "https://sevenbridges.comAWSInstanceType", 
-                    "value": "r5.2xlarge"
-                }
-            ]
+            "id": "#GetDataTable.cwl"
         }, 
         {
             "inputs": [
@@ -1143,13 +1099,7 @@
                     "valueFrom": "${\n    return inputs.BamFile.basename + \".bai\"\n}"
                 }
             ], 
-            "id": "#IndexBAM.cwl", 
-            "hints": [
-                {
-                    "outputDirType": "keep_output_dir", 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
-                }
-            ]
+            "id": "#IndexBAM.cwl"
         }, 
         {
             "inputs": [], 
@@ -2247,11 +2197,6 @@
                 {
                     "coresMin": 4, 
                     "class": "ResourceRequirement"
-                }, 
-                {
-                    "outputDirType": "keep_output_dir", 
-                    "keep_cache": 8000, 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
                 }
             ]
         }, 
@@ -2356,20 +2301,7 @@
                 "mist_metrics.py"
             ], 
             "class": "CommandLineTool", 
-            "id": "#Metrics.cwl", 
-            "hints": [
-                {
-                    "class": "http://arvados.org/cwl#APIRequirement"
-                }, 
-                {
-                    "keep_cache": 512, 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
-                }, 
-                {
-                    "class": "https://sevenbridges.comAWSInstanceType", 
-                    "value": "r5.4xlarge"
-                }
-            ]
+            "id": "#Metrics.cwl"
         }, 
         {
             "inputs": [
@@ -2631,17 +2563,7 @@
                 "mist_quality_filter.py"
             ], 
             "class": "CommandLineTool", 
-            "id": "#QualityFilter.cwl", 
-            "hints": [
-                {
-                    "keep_cache": 512, 
-                    "class": "http://arvados.org/cwl#RuntimeConstraints"
-                }, 
-                {
-                    "class": "https://sevenbridges.comAWSInstanceType", 
-                    "value": "c5.18xlarge"
-                }
-            ]
+            "id": "#QualityFilter.cwl"
         }, 
         {
             "inputs": [
@@ -2905,13 +2827,7 @@
                             "mist_split_fastq.py"
                         ], 
                         "id": "#SplitAndSubsample.cwl/SplitAndSubsample/split_fastq", 
-                        "class": "CommandLineTool", 
-                        "hints": [
-                            {
-                                "outputDirType": "keep_output_dir", 
-                                "class": "http://arvados.org/cwl#RuntimeConstraints"
-                            }
-                        ]
+                        "class": "CommandLineTool"
                     }, 
                     "doc": "Allocate one docker/python process per file to do the actual file splitting.", 
                     "scatter": [
@@ -3081,10 +2997,6 @@
                             {
                                 "dockerPull": "bdgenomics/rhapsody:1.8", 
                                 "class": "DockerRequirement"
-                            }, 
-                            {
-                                "outputDirType": "keep_output_dir", 
-                                "class": "http://arvados.org/cwl#RuntimeConstraints"
                             }
                         ]
                     }, 
@@ -3144,10 +3056,6 @@
                             {
                                 "dockerPull": "bdgenomics/rhapsody:1.8", 
                                 "class": "DockerRequirement"
-                            }, 
-                            {
-                                "outputDirType": "keep_output_dir", 
-                                "class": "http://arvados.org/cwl#RuntimeConstraints"
                             }
                         ]
                     }, 

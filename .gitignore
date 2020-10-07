@@ -9,5 +9,6 @@ toil*
 
 nohup.out*
 *.log
+*.sif
 screenlog*
 cromwell-executions
