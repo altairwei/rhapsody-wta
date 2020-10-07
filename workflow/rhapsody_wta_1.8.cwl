@@ -1102,7 +1102,15 @@
             "id": "#IndexBAM.cwl"
         }, 
         {
-            "inputs": [], 
+            "inputs": [
+                {
+                    "id": "#InternalSettings.cwl/_Label_Version",
+                    "type": [
+                        "null",
+                        "int"
+                    ]
+                }
+            ], 
             "requirements": [
                 {
                     "class": "InlineJavascriptRequirement"
@@ -1249,6 +1257,15 @@
                     "id": "#main/Sample_Tags_Version", 
                     "label": "Sample Tags Version"
                 }, 
+                {
+                    "id": "#main/Label_Version",
+                    "type": [
+                        "null",
+                        "int"
+                    ],
+                    "label": "Label Version",
+                    "doc": "Specify which version of the cell label you are using: 1 for 8mer, 2 for 9mer (default), 3 for Precise targeted, 4 for Precise WTA.\n"
+                },
                 {
                     "doc": "Any number of reads >1 or a fraction between 0 < n < 1 to indicate the percentage of reads to subsample.\n", 
                     "type": [
@@ -1815,7 +1832,12 @@
                 }, 
                 {
                     "label": "Internal Settings", 
-                    "in": [], 
+                    "in": [
+                        {
+                            "id": "#main/Internal_Settings/_Label_Version",
+                            "source": "#main/Label_Version"
+                        }
+                    ], 
                     "run": "#InternalSettings.cwl", 
                     "id": "#main/Internal_Settings", 
                     "out": [
