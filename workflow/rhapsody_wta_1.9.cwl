@@ -70,7 +70,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -139,7 +139,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -228,7 +228,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -283,7 +283,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -351,7 +351,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -558,7 +558,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -725,7 +725,7 @@
             "id": "#BundleMetrics.cwl", 
             "hints": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ]
@@ -745,7 +745,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -821,7 +821,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -988,7 +988,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -1105,7 +1105,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -1146,7 +1146,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -1249,7 +1249,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -1428,7 +1428,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -2872,7 +2872,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -2968,7 +2968,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -3233,7 +3233,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }
             ], 
@@ -3425,7 +3425,7 @@
                         ], 
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }
                         ], 
@@ -3618,7 +3618,7 @@
                         "id": "#UncompressDatatables.cwl/Uncompress_Datatable/Uncompress_Datatable_Inner", 
                         "hints": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }
                         ]
@@ -3674,7 +3674,7 @@
                         "id": "#UncompressDatatables.cwl/Uncompress_Expression_Matrix/Uncompress_Expression_Matrix_Inner", 
                         "hints": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }
                         ]
@@ -3795,7 +3795,7 @@
             ], 
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9", 
+                    "dockerImageId": "bdgenomics/rhapsody:1.9", 
                     "class": "DockerRequirement"
                 }, 
                 {
@@ -4003,7 +4003,7 @@
                         ], 
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }, 
                             {
@@ -4106,7 +4106,7 @@
                         ], 
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }, 
                             {
@@ -4197,7 +4197,7 @@
                         ], 
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }
                         ], 
@@ -4291,7 +4291,7 @@
                         ], 
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }, 
                             {
@@ -4459,7 +4459,7 @@
                         ], 
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9", 
+                                "dockerImageId": "bdgenomics/rhapsody:1.9", 
                                 "class": "DockerRequirement"
                             }
                         ], 
