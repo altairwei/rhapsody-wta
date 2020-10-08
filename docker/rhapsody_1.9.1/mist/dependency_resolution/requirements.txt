@@ -1,0 +1,4 @@
+bcbio-gff>=0.6.2
+tsne>=0.1.5
+fpdf>=1.7.2
+tqdm>=2.2.3

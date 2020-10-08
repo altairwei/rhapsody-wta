@@ -1,0 +1,11 @@
+CellType,Category
+Monocyte_classical,10
+Dendritic,11
+T_CD4_naive,12
+T_CD8_naive,13
+T_CD4_memory,14
+Monocyte_nonclassical,15
+B,16
+T_CD8_memory,17
+Natural_killer,18
+T_gamma_delta,19
