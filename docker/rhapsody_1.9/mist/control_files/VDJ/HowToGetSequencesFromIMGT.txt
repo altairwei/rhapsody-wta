@@ -1,0 +1,34 @@
+Get sequences from IMGT:
+
+http://www.imgt.org/genedb/
+
+Select species, gene type, functionality='any', Molecular component
+Submit button
+
+At bottom, select all genes
+Check radio button for "Choose label(s) for extraction and/or artificially spliced exons"
+Select appropriate Region, i.e. "V-Region"
+
+Submit button
+
+Copy FASTA to new file.  
+
+Clean up headers with Sublime text - find an replace
+
+To remove initial identifier
+find:
+>.*?\|
+Replace
+>
+
+To remove the rest of the line:
+find:
+\|.*
+Replace
+[empty]
+
+Do we need to replace all parentheses with underscores?
+
+
+Split up by chain type into separate files
+
