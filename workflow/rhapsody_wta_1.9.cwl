@@ -1844,6 +1844,7 @@
                     "requirements": [
                         {
                             "ramMin": 16000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -1892,6 +1893,7 @@
                         {
                             "coresMin": 16, 
                             "ramMin": 48000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -1924,6 +1926,7 @@
                     "requirements": [
                         {
                             "ramMin": 32000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -1981,6 +1984,7 @@
                     "requirements": [
                         {
                             "ramMin": 10000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2019,6 +2023,7 @@
                     "requirements": [
                         {
                             "ramMin": 32000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2214,6 +2219,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2263,6 +2269,7 @@
                     "requirements": [
                         {
                             "ramMin": 10000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2316,6 +2323,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2347,6 +2355,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2429,6 +2438,7 @@
                     "requirements": [
                         {
                             "ramMin": 64000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2915,6 +2925,7 @@
             "hints": [
                 {
                     "coresMin": 4, 
+                    "outdirMin": 122880,
                     "class": "ResourceRequirement"
                 }
             ]
@@ -3926,6 +3937,7 @@
             "hints": [
                 {
                     "ramMin": 64000, 
+                    "outdirMin": 122880,
                     "class": "ResourceRequirement"
                 }
             ]
@@ -4229,6 +4241,7 @@
             "hints": [
                 {
                     "ramMax": 2000, 
+                    "outdirMin": 122880,
                     "class": "ResourceRequirement", 
                     "coresMax": 1
                 }
@@ -4568,6 +4581,7 @@
                     "hints": [
                         {
                             "coresMin": "$(inputs.numFiles)", 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -4646,6 +4660,7 @@
                     "hints": [
                         {
                             "coresMin": "$(inputs.numFiles)", 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 

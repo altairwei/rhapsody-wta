@@ -1487,6 +1487,7 @@
                     "requirements": [
                         {
                             "ramMin": 32000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -1545,6 +1546,7 @@
                         {
                             "coresMin": 6, 
                             "ramMin": 48000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -1579,6 +1581,7 @@
                     "requirements": [
                         {
                             "ramMin": 32000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -1758,6 +1761,7 @@
                     "requirements": [
                         {
                             "ramMin": 64000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2010,6 +2014,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2041,6 +2046,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000, 
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ], 
@@ -2218,6 +2224,7 @@
             "hints": [
                 {
                     "coresMin": 4, 
+                    "outdirMin": 122880,
                     "class": "ResourceRequirement"
                 }
             ]
