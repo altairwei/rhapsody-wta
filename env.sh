@@ -1,0 +1,1 @@
+export PATH="$PWD/bin:$PWD/scripts:$PATH"
