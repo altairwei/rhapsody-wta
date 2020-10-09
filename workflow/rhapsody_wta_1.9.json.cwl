@@ -707,7 +707,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -868,7 +868,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -1061,7 +1061,7 @@
               "requirements": [
                 {
                   "class": "DockerRequirement",
-                  "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                  "dockerImageId": "bdgenomics/rhapsody:1.9"
                 }
               ]
             },
@@ -1337,7 +1337,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       },
@@ -1374,7 +1374,7 @@
         "hints": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ],
         "inputs": [
@@ -1481,7 +1481,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       },
@@ -1589,7 +1589,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           },
           {
             "class": "EnvVarRequirement",
@@ -1735,7 +1735,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -1774,7 +1774,7 @@
         "hints": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ],
         "inputs": [
@@ -2091,7 +2091,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -2203,7 +2203,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       },
@@ -2502,7 +2502,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       }
@@ -2551,7 +2551,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ],
         "stdout": "cell_order.json"
@@ -2640,7 +2640,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       },
@@ -2731,7 +2731,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       },
@@ -2835,7 +2835,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       }
@@ -2983,7 +2983,7 @@
               "requirements": [
                 {
                   "class": "DockerRequirement",
-                  "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                  "dockerImageId": "bdgenomics/rhapsody:1.9"
                 }
               ]
             }
@@ -3201,7 +3201,7 @@
                     "requirements": [
                       {
                         "class": "DockerRequirement",
-                        "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                        "dockerImageId": "bdgenomics/rhapsody:1.9"
                       },
                       {
                         "class": "InlineJavascriptRequirement"
@@ -3308,7 +3308,7 @@
                     "requirements": [
                       {
                         "class": "DockerRequirement",
-                        "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                        "dockerImageId": "bdgenomics/rhapsody:1.9"
                       },
                       {
                         "class": "InlineJavascriptRequirement"
@@ -3364,7 +3364,7 @@
                     "requirements": [
                       {
                         "class": "DockerRequirement",
-                        "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                        "dockerImageId": "bdgenomics/rhapsody:1.9"
                       }
                     ]
                   }
@@ -3481,7 +3481,7 @@
               "requirements": [
                 {
                   "class": "DockerRequirement",
-                  "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                  "dockerImageId": "bdgenomics/rhapsody:1.9"
                 },
                 {
                   "class": "InlineJavascriptRequirement"
@@ -3638,7 +3638,7 @@
               "requirements": [
                 {
                   "class": "DockerRequirement",
-                  "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                  "dockerImageId": "bdgenomics/rhapsody:1.9"
                 }
               ]
             }
@@ -3856,7 +3856,7 @@
                     "requirements": [
                       {
                         "class": "DockerRequirement",
-                        "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                        "dockerImageId": "bdgenomics/rhapsody:1.9"
                       },
                       {
                         "class": "InlineJavascriptRequirement"
@@ -3963,7 +3963,7 @@
                     "requirements": [
                       {
                         "class": "DockerRequirement",
-                        "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                        "dockerImageId": "bdgenomics/rhapsody:1.9"
                       },
                       {
                         "class": "InlineJavascriptRequirement"
@@ -4019,7 +4019,7 @@
                     "requirements": [
                       {
                         "class": "DockerRequirement",
-                        "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                        "dockerImageId": "bdgenomics/rhapsody:1.9"
                       }
                     ]
                   }
@@ -4136,7 +4136,7 @@
               "requirements": [
                 {
                   "class": "DockerRequirement",
-                  "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                  "dockerImageId": "bdgenomics/rhapsody:1.9"
                 },
                 {
                   "class": "InlineJavascriptRequirement"
@@ -4420,7 +4420,7 @@
           },
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       }
@@ -4553,7 +4553,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       },
@@ -4649,7 +4649,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -4720,7 +4720,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -4837,7 +4837,7 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+            "dockerImageId": "bdgenomics/rhapsody:1.9"
           }
         ]
       }
@@ -4928,7 +4928,7 @@
               "hints": [
                 {
                   "class": "DockerRequirement",
-                  "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                  "dockerImageId": "bdgenomics/rhapsody:1.9"
                 }
               ],
               "inputs": [
@@ -4990,7 +4990,7 @@
               "hints": [
                 {
                   "class": "DockerRequirement",
-                  "dockerPull": "images.sbgenomics.com/aberno/rhapsody:1.9"
+                  "dockerImageId": "bdgenomics/rhapsody:1.9"
                 }
               ],
               "inputs": [
