@@ -66,7 +66,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -135,7 +135,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -224,7 +224,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -279,7 +279,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -347,7 +347,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -554,7 +554,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -721,7 +721,7 @@
             "id": "#BundleMetrics.cwl",
             "hints": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ]
@@ -741,7 +741,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -817,7 +817,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -984,7 +984,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -1101,7 +1101,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -1142,7 +1142,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -1245,7 +1245,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -1424,7 +1424,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -1462,7 +1462,15 @@
             "class": "CommandLineTool"
         },
         {
-            "inputs": [],
+            "inputs": [
+                {
+                    "id": "#InternalSettings.cwl/_Label_Version",
+                    "type": [
+                        "null",
+                        "int"
+                    ]
+                }
+            ],
             "requirements": [
                 {
                     "class": "InlineJavascriptRequirement"
@@ -1636,6 +1644,15 @@
                     "label": "Sample Tags Version"
                 },
                 {
+                    "id": "#main/Label_Version",
+                    "type": [
+                        "null",
+                        "int"
+                    ],
+                    "label": "Label Version",
+                    "doc": "Specify which version of the cell label you are using: 1 for 8mer, 2 for 9mer (default), 3 for Precise targeted, 4 for Precise WTA.\n"
+                },
+                {
                     "doc": "Any number of reads >1 or a fraction between 0 < n < 1 to indicate the percentage of reads to subsample.\n",
                     "type": [
                         "null",
@@ -1740,6 +1757,7 @@
                     "requirements": [
                         {
                             "ramMin": 16000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -1759,6 +1777,7 @@
                         {
                             "coresMin": 16,
                             "ramMin": 48000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -1808,6 +1827,7 @@
                     "requirements": [
                         {
                             "ramMin": 32000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -1865,6 +1885,7 @@
                     "requirements": [
                         {
                             "ramMin": 10000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -1893,6 +1914,7 @@
                     "requirements": [
                         {
                             "ramMin": 32000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -2081,6 +2103,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -2136,6 +2159,7 @@
                     "requirements": [
                         {
                             "ramMin": 10000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -2196,6 +2220,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -2227,6 +2252,7 @@
                     "requirements": [
                         {
                             "ramMin": 4000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -2311,6 +2337,7 @@
                     "requirements": [
                         {
                             "ramMin": 64000,
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ],
@@ -2381,7 +2408,12 @@
                         "#main/Internal_Settings/VDJ_VGene_Evalue",
                         "#main/Internal_Settings/VDJ_JGene_Evalue"
                     ],
-                    "in": [],
+                    "in": [
+                        {
+                            "id": "#main/Internal_Settings/_Label_Version",
+                            "source": "#main/Label_Version"
+                        }
+                    ],
                     "run": "#InternalSettings.cwl",
                     "id": "#main/Internal_Settings",
                     "label": "Internal Settings"
@@ -2846,7 +2878,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -2889,6 +2921,7 @@
             "hints": [
                 {
                     "coresMin": 4,
+                    "outdirMin": 122880,
                     "class": "ResourceRequirement"
                 }
             ]
@@ -2942,7 +2975,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -3207,7 +3240,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 }
             ],
@@ -3382,7 +3415,7 @@
                         ],
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             }
                         ],
@@ -3587,7 +3620,7 @@
                         "class": "CommandLineTool",
                         "hints": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             }
                         ]
@@ -3645,7 +3678,7 @@
                         "class": "CommandLineTool",
                         "hints": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             }
                         ]
@@ -3769,7 +3802,7 @@
             ],
             "requirements": [
                 {
-                    "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                    "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                     "class": "DockerRequirement"
                 },
                 {
@@ -3900,6 +3933,7 @@
             "hints": [
                 {
                     "ramMin": 64000,
+                    "outdirMin": 122880,
                     "class": "ResourceRequirement"
                 }
             ]
@@ -3966,7 +4000,7 @@
                         ],
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             },
                             {
@@ -4073,7 +4107,7 @@
                         ],
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             },
                             {
@@ -4168,7 +4202,7 @@
                         ],
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             }
                         ],
@@ -4203,6 +4237,7 @@
             "hints": [
                 {
                     "ramMax": 2000,
+                    "outdirMin": 122880,
                     "class": "ResourceRequirement",
                     "coresMax": 1
                 }
@@ -4253,7 +4288,7 @@
                         ],
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             },
                             {
@@ -4401,7 +4436,7 @@
                         ],
                         "requirements": [
                             {
-                                "dockerPull": "bdgenomics/rhapsody:1.9.1",
+                                "dockerImageId": "bdgenomics/rhapsody:1.9.1",
                                 "class": "DockerRequirement"
                             }
                         ],
@@ -4561,6 +4596,7 @@
                     "hints": [
                         {
                             "coresMin": "$(inputs.numFiles)",
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ]
@@ -4639,6 +4675,7 @@
                     "hints": [
                         {
                             "coresMin": "$(inputs.numFiles)",
+                            "outdirMin": 122880,
                             "class": "ResourceRequirement"
                         }
                     ]
