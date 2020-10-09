@@ -81,6 +81,12 @@
           "type": "enum"
         }
       ]
+    },
+    {
+      "id": "Label_Version",
+      "type": "int?",
+      "label": "Label Version",
+      "doc": "Specify which version of the cell label you are using: 1 for 8mer, 2 for 9mer (default), 3 for Precise targeted, 4 for Precise WTA.\n"
     }
   ],
   "label": "BD Rhapsody\u2122 WTA Analysis Pipeline",
@@ -395,7 +401,12 @@
     {
       "hints": [],
       "id": "Internal_Settings",
-      "in": [],
+      "in": [
+        {
+          "id": "_Label_Version",
+          "source": "Label_Version"
+        }
+      ],
       "out": [
         {
           "id": "Label_Version"
@@ -448,7 +459,12 @@
         "class": "ExpressionTool",
         "cwlVersion": "v1.0",
         "expression": "${\n  var internalInputs = [\n    '_Label_Version',\n    '_Read_Filter_Off',\n    '_Barcode_Num',\n    '_Seq_Run',\n    '_AbSeq_UMI',\n    '_Putative_Cell_Call',\n    '_Use_DBEC',\n    '_Extra_Seqs',\n    '_MinChunkSize',\n    '_NumRecordsPerSplit',\n    '_Target_analysis',\n    '_Subsample_Tags',\n    '_VDJ_VGene_Evalue',\n    '_VDJ_JGene_Evalue',\n  ];\n  var internalOutputs = {}\n  for (var i = 0; i < internalInputs.length; i++) {\n    var internalInput = internalInputs[i];\n    var internalOutput = internalInput.slice(1); // remove leading underscore\n    if (inputs.hasOwnProperty(internalInput)) {\n      internalOutputs[internalOutput] = inputs[internalInput]; // if input specified, redirect to output\n    } else {\n      internalOutputs[internalOutput] = null; // if input not specified, provide a null\n    }\n  }\n  return internalOutputs;\n}",
-        "inputs": [],
+        "inputs": [
+          {
+            "id": "_Label_Version",
+            "type": "int?"
+          }
+        ],
         "outputs": [
           {
             "id": "Label_Version",
