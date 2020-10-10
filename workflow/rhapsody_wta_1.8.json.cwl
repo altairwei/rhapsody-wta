@@ -2059,10 +2059,7 @@
         "outputs": [
           {
             "id": "Cell_Order",
-            "outputBinding": {
-              "glob": "random_stdout_89ff98c4-e6a8-44f2-9619-4cb8e11955c6"
-            },
-            "type": "File"
+            "type": "stdout"
           }
         ],
         "requirements": [
