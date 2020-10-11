@@ -498,6 +498,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
     requirements: []
     'sbg:x': 669.3526000976562
@@ -588,6 +589,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
     requirements: []
     'sbg:x': 669.3526000976562
@@ -708,6 +710,7 @@ steps:
               - class: ShellCommandRequirement
               - class: DockerRequirement
                 dockerImageId: 'bdgenomics/rhapsody:1.8'
+                dockerPull: 'bdgenomics/rhapsody:1.8'
               - class: InlineJavascriptRequirement
           scatter:
             - Fastq
@@ -931,6 +934,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Split_Read_Pairs
     scatterMethod: dotproduct
@@ -980,6 +984,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - R1
     requirements: []
@@ -1056,6 +1061,7 @@ steps:
             CORES_ALLOCATED_PER_CWL_PROCESS: $(String(runtime.cores))
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
     scatter:
       - R2
@@ -1232,6 +1238,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
     requirements:
       - class: ResourceRequirement
@@ -1301,6 +1308,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Valids
     requirements:
@@ -1474,6 +1482,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     requirements:
       - class: ResourceRequirement
         ramMin: 64000
@@ -1498,13 +1507,12 @@ steps:
             shellQuote: false
       outputs:
         - id: Cell_Order
-          type: File
-          outputBinding:
-            glob: random_stdout_89ff98c4-e6a8-44f2-9619-4cb8e11955c6
+          type: stdout
       requirements:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
       stdout: cell_order.json
     requirements: []
     'sbg:x': 3574.439697265625
@@ -1557,6 +1565,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Sparse_Data_Table
     requirements:
@@ -1612,6 +1621,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - Sparse_Data_Table
     requirements:
@@ -1697,6 +1707,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     scatter:
       - R2_Bam
     requirements:
@@ -1764,6 +1775,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
         - class: ResourceRequirement
@@ -1813,6 +1825,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       stdout: samtools_index.log
     requirements: []
@@ -1908,6 +1921,7 @@ steps:
         - class: ShellCommandRequirement
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
+          dockerPull: 'bdgenomics/rhapsody:1.8'
     requirements:
       - class: ResourceRequirement
         outdirMin: 65536
@@ -2019,6 +2033,7 @@ steps:
             hints:
               - class: DockerRequirement
                 dockerImageId: 'bdgenomics/rhapsody:1.8'
+                dockerPull: 'bdgenomics/rhapsody:1.8'
             stdout: $(inputs.Compressed_File.nameroot)
           scatter:
             - Compressed_File
