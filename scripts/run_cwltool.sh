@@ -15,5 +15,5 @@ WORKFLOW_INPUT=$2
 cd $PBS_O_WORKDIR
 source activate wta
 cwltool \
-  --udocker --parallel --debug --outdir results \
+  --singularity --parallel --debug --outdir results \
   $WORKFLOW $WORKFLOW_INPUT

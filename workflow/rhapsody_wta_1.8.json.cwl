@@ -596,7 +596,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -720,7 +721,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -913,7 +915,8 @@
               "requirements": [
                 {
                   "class": "DockerRequirement",
-                  "dockerImageId": "bdgenomics/rhapsody:1.8"
+                  "dockerImageId": "bdgenomics/rhapsody:1.8",
+                  "dockerPull": "bdgenomics/rhapsody:1.8"
                 }
               ]
             },
@@ -1157,7 +1160,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       },
@@ -1234,7 +1238,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       },
@@ -1358,7 +1363,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           },
           {
             "class": "EnvVarRequirement",
@@ -1620,7 +1626,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -1732,7 +1739,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       },
@@ -2021,7 +2029,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       }
@@ -2065,7 +2074,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ],
         "stdout": "cell_order.json"
@@ -2152,7 +2162,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       },
@@ -2241,7 +2252,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       },
@@ -2369,7 +2381,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       },
@@ -2465,7 +2478,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -2536,7 +2550,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           },
           {
             "class": "InlineJavascriptRequirement"
@@ -2686,7 +2701,8 @@
         "requirements": [
           {
             "class": "DockerRequirement",
-            "dockerImageId": "bdgenomics/rhapsody:1.8"
+            "dockerImageId": "bdgenomics/rhapsody:1.8",
+            "dockerPull": "bdgenomics/rhapsody:1.8"
           }
         ]
       }
@@ -2828,7 +2844,8 @@
               "hints": [
                 {
                   "class": "DockerRequirement",
-                  "dockerImageId": "bdgenomics/rhapsody:1.8"
+                  "dockerImageId": "bdgenomics/rhapsody:1.8",
+                  "dockerPull": "bdgenomics/rhapsody:1.8"
                 }
               ],
               "inputs": [
@@ -2893,7 +2910,8 @@
               "hints": [
                 {
                   "class": "DockerRequirement",
-                  "dockerImageId": "bdgenomics/rhapsody:1.8"
+                  "dockerImageId": "bdgenomics/rhapsody:1.8",
+                  "dockerPull": "bdgenomics/rhapsody:1.8"
                 }
               ],
               "inputs": [

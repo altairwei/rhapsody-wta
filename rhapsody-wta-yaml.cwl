@@ -695,9 +695,6 @@ steps:
                 dockerImageId: 'bdgenomics/rhapsody:1.8'
                 dockerPull: 'bdgenomics/rhapsody:1.8'
               - class: InlineJavascriptRequirement
-            hints:
-              - class: 'arv:RuntimeConstraints'
-                outputDirType: keep_output_dir
           scatter:
             - Fastq
           requirements: []
@@ -927,9 +924,6 @@ steps:
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
           dockerPull: 'bdgenomics/rhapsody:1.8'
-      hints:
-        - class: 'arv:RuntimeConstraints'
-          keep_cache: 512
     scatter:
       - Split_Read_Pairs
     scatterMethod: dotproduct
@@ -980,9 +974,6 @@ steps:
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
           dockerPull: 'bdgenomics/rhapsody:1.8'
-      hints:
-        - class: 'arv:RuntimeConstraints'
-          keep_cache: 512
     scatter:
       - R1
     requirements: []
@@ -1061,9 +1052,6 @@ steps:
           dockerImageId: 'bdgenomics/rhapsody:1.8'
           dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
-      hints:
-        - class: 'arv:RuntimeConstraints'
-          keep_cache: 512
     scatter:
       - R2
     requirements:
@@ -1241,9 +1229,6 @@ steps:
           dockerImageId: 'bdgenomics/rhapsody:1.8'
           dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
-      hints:
-        - class: 'arv:RuntimeConstraints'
-          keep_cache: 512
     requirements:
       - class: ResourceRequirement
         ramMin: 32000
@@ -1313,9 +1298,6 @@ steps:
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
           dockerPull: 'bdgenomics/rhapsody:1.8'
-      hints:
-        - class: 'arv:RuntimeConstraints'
-          keep_cache: 512
     scatter:
       - Valids
     requirements:
@@ -1785,9 +1767,6 @@ steps:
           dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
       hints:
-        - class: 'arv:RuntimeConstraints'
-          keep_cache: 8000
-          outputDirType: keep_output_dir
         - class: ResourceRequirement
           coresMin: 4
       stdout: samtools_merge.log
@@ -1837,9 +1816,6 @@ steps:
           dockerImageId: 'bdgenomics/rhapsody:1.8'
           dockerPull: 'bdgenomics/rhapsody:1.8'
         - class: InlineJavascriptRequirement
-      hints:
-        - class: 'arv:RuntimeConstraints'
-          outputDirType: keep_output_dir
       stdout: samtools_index.log
     requirements: []
     'sbg:x': 4888.94384765625
@@ -1935,10 +1911,6 @@ steps:
         - class: DockerRequirement
           dockerImageId: 'bdgenomics/rhapsody:1.8'
           dockerPull: 'bdgenomics/rhapsody:1.8'
-      hints:
-        - class: 'arv:APIRequirement'
-        - class: 'arv:RuntimeConstraints'
-          keep_cache: 512
     requirements:
       - class: ResourceRequirement
         outdirMin: 65536
@@ -2047,8 +2019,6 @@ steps:
               - class: ShellCommandRequirement
               - class: InlineJavascriptRequirement
             hints:
-              - class: 'arv:RuntimeConstraints'
-                outputDirType: keep_output_dir
               - class: DockerRequirement
                 dockerImageId: 'bdgenomics/rhapsody:1.8'
                 dockerPull: 'bdgenomics/rhapsody:1.8'
@@ -2088,8 +2058,6 @@ steps:
               - class: ShellCommandRequirement
               - class: InlineJavascriptRequirement
             hints:
-              - class: 'arv:RuntimeConstraints'
-                outputDirType: keep_output_dir
               - class: DockerRequirement
                 dockerImageId: 'bdgenomics/rhapsody:1.8'
                 dockerPull: 'bdgenomics/rhapsody:1.8'
