@@ -24,6 +24,7 @@ filename="${filename%.*}"
 mkdir -p data/reference_indexes
 STAR \
     --runThreadN 16 \
+    --limitGenomeGenerateRAM 103079215104 \
     --runMode genomeGenerate \
     --genomeDir data/reference_indexes \
     --genomeFastaFiles "$FASTA_FILES" \
