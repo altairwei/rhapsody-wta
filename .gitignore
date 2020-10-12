@@ -2,11 +2,12 @@ data
 bin
 results
 logs
+dockerImages
 docker_tmp
-tmp
+tmp*
 .vscode
 toil*
-
+node-*
 nohup.out*
 *.log
 *.sif
