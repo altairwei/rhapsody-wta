@@ -51,6 +51,13 @@ steps:
         - id: output
           type: stdout
       stdout: echo2.log
+  - id: run_tool
+    in:
+      - id: message
+        source: echo2_log
+    out:
+      - id: output
+    run: 1st-tool.cwl
   - id: BundleLogs
     in:
       - id: log_files
