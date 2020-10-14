@@ -46,7 +46,22 @@ def replace_ids(
             replace_ids(s2, id_map)
 
 
-def unpack_cwl(cwlfile, outname, loadingContext):
+def replace_runs(
+    d: Union[CWLObjectType, CWLOutputType, MutableSequence[CWLObjectType], None],
+    id_map: Dict[str, str],
+) -> None:
+    if isinstance(d, MutableSequence):
+        for s in d:
+            replace_runs(s, id_map)
+    elif isinstance(d, MutableMapping):
+        if "run" in d and isinstance(d["run"], str):
+            new_id = id_map[d["run"]]
+            d["run"] = new_id
+        for s2 in d.values():
+            replace_runs(s2, id_map)
+
+
+def unpack_cwl(cwlfile, loadingContext):
     uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
         cwlfile,
         resolver=loadingContext.resolver,
@@ -192,12 +207,16 @@ def unpack_cwl(cwlfile, outname, loadingContext):
 
     # Save each CWL object into separated file
     for obj in processobj:
-        new_id = rewrite_id_map[obj["id"]]
+        old_id = obj["id"]
+        new_id = rewrite_id_map[old_id]
         replace_ids(obj, rewrite_id_map)
+        replace_runs(obj, rewrite_run_map)
 
-        for r in list(rewrite_id_map.keys()):
-            v = rewrite_id_map[r]
-            cwlfile.pack.replace_refs(obj, rewrite_id_map, r + "/" if "#" in r else r + "#", v + "/")
+        for old_ref in list(rewrite_id_map.keys()):
+            new_ref = rewrite_id_map[old_ref]
+            # Skip CWL obj main id
+            if old_ref != old_id:
+                cwltool.pack.replace_refs(obj, rewrite_id_map, old_ref, new_ref)
 
         if new_id == "main":
             obj.update(metadata)
@@ -213,7 +232,6 @@ def unpack_cwl(cwlfile, outname, loadingContext):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Unpack cwl.")
     parser.add_argument("cwlfile")
-    parser.add_argument("outname") # make it optional
     parser.add_argument("-C", "--outdir", type=str, default=os.getcwd(),
         help="Output folder for the unpacked CWL files.")
     options = parser.parse_args()
@@ -221,5 +239,5 @@ if __name__ == "__main__":
     loading_context = cwltool.context.LoadingContext(vars(options))
     loading_context.construct_tool_object = cwltool.workflow.default_make_tool
     loading_context.resolver = cwltool.resolver.tool_resolver
-    unpack_cwl(options.cwlfile, options.outname, loading_context)
+    unpack_cwl(options.cwlfile, loading_context)
     
