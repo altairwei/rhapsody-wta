@@ -29,12 +29,14 @@
             "id": "R2"
         }
     ],
-    "requirements": [
+    "hints": [
         {
             "dockerImageId": "bdgenomics/rhapsody:1.8",
             "dockerPull": "bdgenomics/rhapsody:1.8",
             "class": "DockerRequirement"
         },
+    ],
+    "requirements": [
         {
             "envDef": [
                 {

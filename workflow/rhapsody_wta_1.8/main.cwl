@@ -35,13 +35,11 @@
                 "items": "File",
                 "type": "array"
             },
-            "https://sevenbridges.comfileTypes": "FASTQ.GZ, FQ.GZ",
             "id": "Reads"
         },
         {
             "label": "Reference Genome",
             "type": "File",
-            "https://sevenbridges.comfileTypes": "TAR.GZ",
             "id": "Reference_Genome"
         },
         {
@@ -114,7 +112,6 @@
         {
             "label": "Transcriptome Annotation",
             "type": "File",
-            "https://sevenbridges.comfileTypes": "GTF",
             "id": "Transcriptome_Annotation"
         }
     ],

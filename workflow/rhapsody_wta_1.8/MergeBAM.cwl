@@ -19,12 +19,19 @@
             "id": "Sample_Name"
         }
     ],
-    "requirements": [
+    "hints": [
+        {
+            "coresMin": 4,
+            "outdirMin": 122880,
+            "class": "ResourceRequirement"
+        },
         {
             "dockerImageId": "bdgenomics/rhapsody:1.8",
             "dockerPull": "bdgenomics/rhapsody:1.8",
             "class": "DockerRequirement"
-        },
+        }
+    ],
+    "requirements": [
         {
             "class": "InlineJavascriptRequirement"
         }
@@ -62,12 +69,5 @@
         }
     ],
     "id": "MergeBAM",
-    "hints": [
-        {
-            "coresMin": 4,
-            "outdirMin": 122880,
-            "class": "ResourceRequirement"
-        }
-    ],
     "cwlVersion": "v1.0"
 }
