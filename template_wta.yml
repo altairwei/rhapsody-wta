@@ -36,12 +36,12 @@ Reads:
 ## Reference_Genome (required) - Path to STAR index for tar.gz format. See Doc ID: 47383 for instructions to obtain pre-built STAR index file.
 Reference_Genome:
   class: File
-  location: "data/reference_sequences/Triticum_aestivum.IWGSC.43.tar.gz"
+  location: "data/reference_sequences/Homo_sapiens.GRCh38.tar.gz"
 
 ## Transcriptome_Annotation (required) - Path to GTF annotation file
 Transcriptome_Annotation:
   class: File
-  location: "data/annotations/Triticum_aestivum.IWGSC.43.gtf"
+  location: "data/annotations/Homo_sapiens.GRCh38.99.gtf"
 
 ####################################
 ## Putative Cell Calling Settings ##
