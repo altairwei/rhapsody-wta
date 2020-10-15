@@ -11,9 +11,11 @@ from typing import (
     Union,
     Dict,
     Any,
+    Set,
     Optional,
     MutableMapping,
-    MutableSequence
+    MutableSequence,
+    Callable
 )
 
 import cwltool
@@ -30,35 +32,131 @@ import ruamel.yaml
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 
+
+def traverse_cwl_objects(
+    d: Union[CWLObjectType, CWLOutputType, MutableSequence[CWLObjectType], None],
+    callback: Callable[[MutableMapping], None],
+) -> None:
+    if isinstance(d, MutableSequence):
+        for s in d:
+            traverse_cwl_objects(s, callback)
+    elif isinstance(d, MutableMapping):
+        callback(d)
+        for s2 in d.values():
+            traverse_cwl_objects(s2, callback)
+
+
+def convert_id(id_name: str, mainuri: str) -> str:
+    mainpath, _ = urllib.parse.urldefrag(mainuri)
+    if id_name == mainuri:
+        return "main"
+    elif id_name.startswith(mainuri) and id_name[len(mainuri)] in ("#", "/"):
+        # 处理 main 文档内部的关系
+        path, frag = urllib.parse.urldefrag(id_name)
+        parts = frag.split("/")
+        if parts[0] == "main":
+            if len(parts) > 2:
+                return "/".join(parts[2:])
+            else:
+                return "/".join(parts[1:])
+        else:
+            return frag
+    else:
+        path, frag = urllib.parse.urldefrag(id_name)
+        # 处理打包成的外部 cwl 文件
+        if path == mainpath:
+            if frag.endswith(".cwl"):
+                # 主文档 id
+                return frag[:-4]
+            else:
+                parts = frag.split("/")
+                if parts[0].endswith(".cwl"):
+                    if len(parts) > 2:
+                        return "/".join(parts[2:])
+                    else:
+                        return "/".join(parts[1:])
+                else:
+                    return frag
+
+
+def convert_run(run_name: str, mainuri: str):
+    _, frag = urllib.parse.urldefrag(run_name)
+    if frag == "main":
+        return "main.cwl"
+    else:
+        return frag
+
+
 def replace_ids(
     d: Union[CWLObjectType, CWLOutputType, MutableSequence[CWLObjectType], None],
     id_map: Dict[str, str],
 ) -> None:
-    if isinstance(d, MutableSequence):
-        for s in d:
-            replace_ids(s, id_map)
-    elif isinstance(d, MutableMapping):
+    def callback(doc: MutableMapping):
         for i in ("id", "name"):
-            if i in d and isinstance(d[i], str):
-                new_id = id_map[d[i]]
-                d[i] = new_id
-        for s2 in d.values():
-            replace_ids(s2, id_map)
+            if i in doc and isinstance(doc[i], str):
+                new_id = id_map[doc[i]]
+                doc[i] = new_id
+    traverse_cwl_objects(d, callback)
 
 
 def replace_runs(
     d: Union[CWLObjectType, CWLOutputType, MutableSequence[CWLObjectType], None],
     id_map: Dict[str, str],
 ) -> None:
+    def callback(doc: MutableMapping):
+        if "run" in doc and isinstance(doc["run"], str):
+            new_id = id_map[doc["run"]]
+            doc["run"] = new_id
+    traverse_cwl_objects(d, callback)
+
+
+def find_refs(
+    d: Union[CWLObjectType, CWLOutputType, MutableSequence[CWLObjectType], None],
+    refs: Set[str],
+    stem: str
+) -> None:
+    def callback(doc: MutableMapping):
+        for key, val in doc.items():
+            if key not in ("id", "name", "run") and \
+                isinstance(val, str) and val.startswith(stem):
+                refs.add(val)
+    traverse_cwl_objects(d, callback)
+
+
+def replace_refs(d: Any, rewrite: Dict[str, str], stem: str, newstem: str) -> None:
     if isinstance(d, MutableSequence):
-        for s in d:
-            replace_runs(s, id_map)
+        for s, v in enumerate(d):
+            if isinstance(v, str):
+                if v in rewrite:
+                    d[s] = rewrite[v]
+                elif v.startswith(stem):
+                    d[s] = newstem + v[len(stem) :]
+                    rewrite[v] = d[s]
+            else:
+                replace_refs(v, rewrite, stem, newstem)
     elif isinstance(d, MutableMapping):
-        if "run" in d and isinstance(d["run"], str):
-            new_id = id_map[d["run"]]
-            d["run"] = new_id
-        for s2 in d.values():
-            replace_runs(s2, id_map)
+        for key, val in d.items():
+            if isinstance(val, str):
+                if val in rewrite:
+                    d[key] = rewrite[val]
+                elif val.startswith(stem):
+                    id_ = val[len(stem) :]
+                    # prevent appending newstems if tool is already packed
+                    if id_.startswith(newstem.strip("#")):
+                        d[key] = "#" + id_
+                    else:
+                        d[key] = newstem + id_
+                    rewrite[val] = d[key]
+            elif key == "out" and isinstance(val, MutableSequence):
+                new_out = []
+                for out_ref in val:
+                    if out_ref.startswith(stem):
+                        _, frag = urllib.parse.urldefrag(out_ref)
+                        new_out.append(frag.split("/")[-1])
+                if new_out:
+                    d[key] = new_out
+            else:
+                replace_refs(val, rewrite, stem, newstem)
 
 
 def unpack_cwl(cwlfile, loadingContext):
@@ -80,7 +178,6 @@ def unpack_cwl(cwlfile, loadingContext):
     # Metadata is everything except for `$graph` for `packed` CWL 
     processobj, metadata = loadingContext.loader.resolve_ref(uri)
 
-    yaml = ruamel.yaml.YAML()
     idx = {} # This is used to store parsed documents.
     if isinstance(processobj, MutableMapping):
         # This is a normal handwritten CWL document.
@@ -110,6 +207,8 @@ def unpack_cwl(cwlfile, loadingContext):
             raise Exception("loader should not be None")
         return lr_loadingContext.loader.resolve_ref(lr_uri, base_url=base)[0]
 
+    mainpath, _ = urllib.parse.urldefrag(uri)
+
     ids = set()  # type: Set[str]
     cwltool.pack.find_ids(processobj, ids)
 
@@ -118,113 +217,45 @@ def unpack_cwl(cwlfile, loadingContext):
 
     for f in runs:
         cwltool.pack.find_ids(loadingContext.loader.resolve_ref(f)[0], ids)
-    
-    mainpath, _ = urllib.parse.urldefrag(uri)
 
-    #print("main uri:", uri)
-    #for i in ids:
-    #    print(i)
-    # Rewrite id back to their original names.
-    rewrite = {}
-    names = set()  # type: Set[str]
-    def rewrite_id(id_name: str, mainuri: str) -> None:
-        if id_name == mainuri:
-            print("Condition 1", id_name)
-            # 重命名主文档，最外层的那个文档
-            rewrite[id_name] = "#main"
-            print("==========>", rewrite[id_name])
-        elif id_name.startswith(mainuri) and id_name[len(mainuri)] in ("#", "/"):
-            # 在主 cwl 文档内部，处理内部关系
-            if id_name[len(mainuri) :].startswith("#main/"):
-                # 假设用户自定义了一个 “main” id，那么就要把它转换成一个名字
-                print("Condition 2-1", id_name)
-                rewrite[id_name] = "#" + cwltool.process.uniquename(id_name[len(mainuri) + 1 :], names)
-                print("============>", rewrite[id_name])
-            else:
-                # 没有 pack 的文档大部分都不会以 main 作为 id
-                print("Condition 2-2", id_name)
-                # 给原来的步骤冠上 #main 前缀。
-                rewrite[id_name] = "#" + cwltool.process.uniquename("main/" + id_name[len(mainuri) + 1 :], names)
-                print("============>", rewrite[id_name])
-        else:
-            # 外部的资源
-            path, frag = urllib.parse.urldefrag(id_name)
-            if path == mainpath:
-                # 同一个 cwl 文档内，不同的 cwl 对象，即 id 不同。可能用于 packed 文档，那些 $graph 中的对象。
-                # 他们处在同一个 cwl 文档内，但不属于同一个 cwl 对象。
-                print("Condition 3-1", id_name)
-                rewrite[id_name] = "#" + cwltool.process.uniquename(frag, names)
-                print("============>", rewrite[id_name])
-            else:
-                # 引用外部 cwl 文件
-                print("Condition 3-2", id_name)
-                if path not in rewrite:
-                    # 为什么这里不更改外部 cwl 的内部 id 呢？应该是通过 replace_refs 函数完成的。
-                    rewrite[path] = "#" + cwltool.process.uniquename(cwltool.process.shortname(path), names)
-                    print("============>", rewrite[path])
+    refs = set()
+    find_refs(processobj, refs, mainpath)
 
-    rewrite_id_map = {}
-    def split_id(id_name: str, mainuri: str, main_id: str = "main") -> None:
-        if id_name == mainuri:
-            # TODO: 改写成用户指定的 outname
-            rewrite_id_map[id_name] = main_id
-        elif id_name.startswith(mainuri) and id_name[len(mainuri)] in ("#", "/"):
-            # 处理 main 文档内部的关系
-            path, frag = urllib.parse.urldefrag(id_name)
-            parts = frag.split("/")
-            if parts[0] == "main":
-                rewrite_id_map[id_name] = "/".join(parts[1:])
-            else:
-                rewrite_id_map[id_name] = frag
-        else:
-            path, frag = urllib.parse.urldefrag(id_name)
-            # 处理打包成的外部 cwl 文件
-            if path == mainpath:
-                if frag.endswith(".cwl"):
-                    # 主文档 id
-                    rewrite_id_map[id_name] = frag[:-4]
-                else:
-                    parts = frag.split("/")
-                    if parts[0].endswith(".cwl"):
-                        rewrite_id_map[id_name] = "/".join(parts[1:])
-                    else:
-                        rewrite_id_map[id_name] = frag
-
-
+    id_map = {}
     for id_name in sorted(ids):
-        split_id(id_name, uri)
+        id_map[id_name] = convert_id(id_name, uri)
 
-    rewrite_run_map = {}
-    def rewrite_run(run_name: str, mainuri: str):
-        path, frag = urllib.parse.urldefrag(run_name)
-        if frag == "main":
-            pass
-        else:
-            rewrite_run_map[run_name] = frag
-    
+    run_map = {}  
     for run_name in sorted(runs):
-        rewrite_run(run_name, uri)
+        run_map[run_name] = convert_run(run_name, uri)
 
     # Save each CWL object into separated file
     for obj in processobj:
         old_id = obj["id"]
-        new_id = rewrite_id_map[old_id]
-        replace_ids(obj, rewrite_id_map)
-        replace_runs(obj, rewrite_run_map)
+        new_id = id_map[old_id]
+        replace_ids(obj, id_map)
+        replace_runs(obj, run_map)
 
-        for old_ref in list(rewrite_id_map.keys()):
-            new_ref = rewrite_id_map[old_ref]
+        for old_ref in list(id_map.keys()):
+            new_ref = id_map[old_ref]
             # Skip CWL obj main id
             if old_ref != old_id:
-                cwltool.pack.replace_refs(obj, rewrite_id_map, old_ref, new_ref)
+                replace_refs(obj, id_map, old_ref, new_ref)
+
+        if "http://commonwl.org/cwltool#original_cwlVersion" in obj:
+            del obj["http://commonwl.org/cwltool#original_cwlVersion"]
+
+        obj["cwlVersion"] = metadata["cwlVersion"]
 
         if new_id == "main":
             obj.update(metadata)
+            del obj["id"]
+
         with open(new_id + ".cwl", "w", encoding="UTF-8") as f:
             json.dump(obj, f, indent=4)
 
 
-    #json.dump(rewrite_id_map, sys.stdout, indent=2)
+    #json.dump(id_map, sys.stdout, indent=2)
 
     # Update workflow
 
