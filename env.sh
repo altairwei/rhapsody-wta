@@ -1,6 +1,7 @@
 export PATH="$PWD/bin:$PWD/scripts:$PATH"
 
 function proj_dir {
+	mkdir -p data/reads
     mkdir -p data/annotations
     mkdir -p data/reference_indexes
     mkdir -p data/reference_sequences
@@ -23,5 +24,14 @@ function bytes_readable() {
 		size=$(echo "${scale}; ${size}/1024" | bc)
 		factor=${factor:1}
 	done
-	echo "${size} ${factor:0:1}iB"
+	echo "${size} ${factor:0:1}B"
+}
+
+function clean_tmp() {
+	rm -r tmp*
+	rm -r node-*
+	rm -r *-cleanup-arena-members
+
+	mkdir -p tmp/cwltool
+	mkdir -p tmp/toil
 }

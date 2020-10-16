@@ -22,5 +22,5 @@ export CWL_SINGULARITY_CACHE="$HOME/src/rhapsody-wta/dockerImages"
 export TMPDIR=$(pwd)/tmp/docker_tmp
 
 cwltool \
-  --no-container --parallel --outdir $RESULTS_FOLDER \
+  --singularity --parallel --outdir $RESULTS_FOLDER \
   $WORKFLOW $WORKFLOW_INPUT

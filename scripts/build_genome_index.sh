@@ -31,4 +31,4 @@ STAR \
     --sjdbGTFfile "$GTF_FILES"
 
 tar --transform "s#^\.#${filename}#" \
-    -cvzf data/${filename}.tar.gz -C data/reference_indexes .
+    -cvzf data/reference_sequences/${filename}.tar.gz -C data/reference_indexes .
