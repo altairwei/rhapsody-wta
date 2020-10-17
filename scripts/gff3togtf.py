@@ -51,12 +51,8 @@ def get_gtf_line(feature: GenomicFeature, transcript_parent: Dict):
                 transcript_parent[attr_dict["transcript_id"]] = parent_id
 
     if "gene_id" not in attr_dict:
-        try:
-            if feature.type != "chromosome":
-                attr_dict["gene_id"] = transcript_parent[attr_dict["transcript_id"]]
-        except KeyError:
-            print(transcript_parent)
-            raise
+        if feature.type != "chromosome":
+            attr_dict["gene_id"] = transcript_parent[attr_dict["transcript_id"]]
 
     if feature.type == "exon":
         # Check for gene_id and transcript_id exists
@@ -82,11 +78,11 @@ if __name__ == "__main__":
     parser.add_argument("gtf_file")
     options = parser.parse_args()
 
-    transcript_parent = get_transcript_parent(options.gff3_file)
     with open(options.gtf_file, "w", encoding="UTF-8") as fh:
         print("Start to write GTF.", file=sys.stderr)
         gff3 = HTSeq.GFF_Reader(options.gff3_file)
         i = 0
+        transcript_parent = {}
         for feature in gff3:
             fh.write(get_gtf_line(feature, transcript_parent))
             i += 1
