@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import json
 from typing import Dict
 
 import HTSeq
@@ -58,6 +59,8 @@ def get_gtf_line(feature: GenomicFeature, transcript_parent: Dict):
         # Check for gene_id and transcript_id exists
         if "gene_id" not in attr_dict or "transcript_id" not in attr_dict:
             raise Exception("Exon must contain both 'gene_id' and 'transcript_id'")
+    elif feature.type == "ncRNA_gene":
+        feature.type = "gene"
 
     return "\t".join([
         feature.iv.chrom,
@@ -79,12 +82,15 @@ if __name__ == "__main__":
     options = parser.parse_args()
 
     with open(options.gtf_file, "w", encoding="UTF-8") as fh:
-        print("Start to write GTF.", file=sys.stderr)
         gff3 = HTSeq.GFF_Reader(options.gff3_file)
         i = 0
         transcript_parent = {}
+        feature_type = {}
         for feature in gff3:
+            feature_type[feature.type] = feature_type.get(feature.type, 0) + 1
             fh.write(get_gtf_line(feature, transcript_parent))
             i += 1
             if i % 100000 == 0:
                 print("%d GFF lines processed." % i, file=sys.stderr)
+        json.dump(feature_type, sys.stderr, indent=2)
+        print("", file=sys.stderr)

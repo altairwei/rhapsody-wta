@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import json
 
 import HTSeq
 
@@ -34,12 +35,12 @@ def processGFF(gff_filename, feature_type):
             if i % 100000 == 0:
                 print("%d GFF lines processed." % i, file=sys.stderr)
     except:
-        print("Error occured when processing GFF file (%s):\n" % gff.get_line_number_string() )
+        print("Error occured when processing GFF file (%s):\n" % gff.get_line_number_string(), file=sys.stderr)
         raise
-        print("%d GFF lines processed.\n" % i)
+        print("%d GFF lines processed.\n" % i, file=sys.stderr)
 
     if len( counts ) == 0:
-        print( "Warning: No features of type '%s' found.\n" % feature_type )
+        print( "Warning: No features of type '%s' found.\n" % feature_type, file=sys.stderr)
 
     return features, counts
 
@@ -52,4 +53,5 @@ if __name__ == "__main__":
     options = parser.parse_args()
 
     features, counts = processGFF(options.gff_filename, options.feature_type)
-    print("Total %s of feature type '%s'" % (len(counts), options.feature_type))
+    print("Total %s of feature type '%s'" % (len(counts), options.feature_type), file=sys.stderr)
+    json.dump(counts, sys.stdout, indent=2)
