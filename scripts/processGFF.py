@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+import sys
 
 import HTSeq
 
@@ -31,7 +32,7 @@ def processGFF(gff_filename, feature_type):
 
             i += 1
             if i % 100000 == 0:
-                print("%d GFF lines processed.\n" % i)
+                print("%d GFF lines processed." % i, file=sys.stderr)
     except:
         print("Error occured when processing GFF file (%s):\n" % gff.get_line_number_string() )
         raise
@@ -50,4 +51,5 @@ if __name__ == "__main__":
 
     options = parser.parse_args()
 
-    processGFF(options.gff_filename, options.feature_type)
+    features, counts = processGFF(options.gff_filename, options.feature_type)
+    print("Total %s of feature type '%s'" % (len(counts), options.feature_type))
