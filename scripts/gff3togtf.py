@@ -3,7 +3,7 @@
 import argparse
 import sys
 import json
-from typing import Dict
+from typing import Dict, List
 
 import HTSeq
 from HTSeq import GenomicFeature
@@ -37,19 +37,32 @@ def get_transcript_parent(gff3_file):
     return transcript_parent
 
 
-def get_gtf_line(feature: GenomicFeature, transcript_parent: Dict):
-    attr_dict = {}
+def get_gtf_line(
+    feature: GenomicFeature,
+    transcript_parent: Dict[str, str],
+    id_prefix: List[str]
+):
+    attr_dict: Dict[str, str] = {}
     attr_dict.update(feature.attr)
+
+    for prefix in id_prefix:
+        if prefix + "_id" in attr_dict:
+            if not attr_dict[prefix + "_id"].startswith(prefix):
+                attr_dict[prefix + "_id"] = prefix + ":" + attr_dict[prefix + "_id"]
 
     # Fill other necessary attributes
     if "Parent" in attr_dict:
         parent_type, parent_id = attr_dict["Parent"].split(":")
+        if parent_type in id_prefix:
+            full_id = attr_dict["Parent"]
+        else:
+            full_id = parent_id
         if parent_type == "transcript":
-            attr_dict["transcript_id"] = parent_id
+            attr_dict["transcript_id"] = full_id
         elif parent_type == "gene":
-            attr_dict["gene_id"] = parent_id
+            attr_dict["gene_id"] = full_id
             if "transcript_id" in attr_dict:
-                transcript_parent[attr_dict["transcript_id"]] = parent_id
+                transcript_parent[attr_dict["transcript_id"]] = full_id
 
     if "gene_id" not in attr_dict:
         if feature.type != "chromosome":
@@ -76,9 +89,13 @@ def get_gtf_line(feature: GenomicFeature, transcript_parent: Dict):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Convert GFF3 to GTF.")
+    parser = argparse.ArgumentParser(description="Convert GFF3 to GTF.")
     parser.add_argument("gff3_file")
     parser.add_argument("gtf_file")
+    parser.add_argument("-p", "--reserve-id-prefix",
+        dest="id_prefix", action="append",
+        help="The id prefix to be reserved. Example `-p transcript -p gene`"
+             " will produce 'transcript:G9200.1' and 'gene:G9200' as ids.")
     options = parser.parse_args()
 
     with open(options.gtf_file, "w", encoding="UTF-8") as fh:
@@ -88,7 +105,7 @@ if __name__ == "__main__":
         feature_type = {}
         for feature in gff3:
             feature_type[feature.type] = feature_type.get(feature.type, 0) + 1
-            fh.write(get_gtf_line(feature, transcript_parent))
+            fh.write(get_gtf_line(feature, transcript_parent, options.id_prefix))
             i += 1
             if i % 100000 == 0:
                 print("%d GFF lines processed." % i, file=sys.stderr)
