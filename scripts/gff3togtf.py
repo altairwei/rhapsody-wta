@@ -89,9 +89,9 @@ def get_gtf_line(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert GFF3 to GTF.")
-    parser.add_argument("gff3_file")
-    parser.add_argument("gtf_file")
+    parser = argparse.ArgumentParser(description="Converts Ensembl's favored GFF3 to GTF.")
+    parser.add_argument("gff3_file", help="GFF3 file obtained from Ensembl.")
+    parser.add_argument("gtf_file", help="Converted file in GTF format.")
     parser.add_argument("-p", "--reserve-id-prefix",
         dest="id_prefix", action="append",
         help="The id prefix to be reserved. Example `-p transcript -p gene`"
