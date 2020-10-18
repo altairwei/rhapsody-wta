@@ -93,7 +93,7 @@ if __name__ == "__main__":
     parser.add_argument("gff3_file", help="GFF3 file obtained from Ensembl.")
     parser.add_argument("gtf_file", help="Converted file in GTF format.")
     parser.add_argument("-p", "--reserve-id-prefix",
-        dest="id_prefix", action="append",
+        dest="id_prefix", action="append", default=[],
         help="The id prefix to be reserved. Example `-p transcript -p gene`"
              " will produce 'transcript:G9200.1' and 'gene:G9200' as ids.")
     options = parser.parse_args()
