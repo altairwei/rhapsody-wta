@@ -40,7 +40,8 @@ def get_transcript_parent(gff3_file):
 def get_gtf_line(
     feature: GenomicFeature,
     transcript_parent: Dict[str, str],
-    id_prefix: List[str]
+    id_prefix: List[str],
+    type_mapping: Dict[str, str]
 ):
     attr_dict: Dict[str, str] = {}
     attr_dict.update(feature.attr)
@@ -68,12 +69,13 @@ def get_gtf_line(
         if feature.type != "chromosome":
             attr_dict["gene_id"] = transcript_parent[attr_dict["transcript_id"]]
 
+    if feature.type in type_mapping:
+        feature.type = type_mapping[feature.type]
+
     if feature.type == "exon":
         # Check for gene_id and transcript_id exists
         if "gene_id" not in attr_dict or "transcript_id" not in attr_dict:
             raise Exception("Exon must contain both 'gene_id' and 'transcript_id'")
-    elif feature.type == "ncRNA_gene":
-        feature.type = "gene"
 
     return "\t".join([
         feature.iv.chrom,
@@ -96,7 +98,16 @@ if __name__ == "__main__":
         dest="id_prefix", action="append", default=[],
         help="The id prefix to be reserved. Example `-p transcript -p gene`"
              " will produce 'transcript:G9200.1' and 'gene:G9200' as ids.")
+    parser.add_argument("-t", "--transform-feature-type",
+        dest="type_mapping", action="append", default=[],
+        help="Rewrite the type of a feature to another one. Example `-t mRNA:transcript`"
+             " will change the type of mRNA feature to transcript type.")
     options = parser.parse_args()
+
+    type_mapping = {}
+    for type_aes in options.type_mapping:
+        old_type, new_type = type_aes.split(":")
+        type_mapping[old_type] = new_type
 
     with open(options.gtf_file, "w", encoding="UTF-8") as fh:
         gff3 = HTSeq.GFF_Reader(options.gff3_file)
@@ -105,7 +116,9 @@ if __name__ == "__main__":
         feature_type = {}
         for feature in gff3:
             feature_type[feature.type] = feature_type.get(feature.type, 0) + 1
-            fh.write(get_gtf_line(feature, transcript_parent, options.id_prefix))
+            line = get_gtf_line(
+                feature, transcript_parent, options.id_prefix, type_mapping)
+            fh.write(line)
             i += 1
             if i % 100000 == 0:
                 print("%d GFF lines processed." % i, file=sys.stderr)
