@@ -212,6 +212,6 @@
         }
     ],
     "doc": "SplitAndSubsample splits, subsamples and formats read files to be deposited in QualityFilter.\n",
-    "id": "SplitAndSubsample",
+    "id": "SplitAndSubsampleWorkflow",
     "cwlVersion": "v1.0"
 }
