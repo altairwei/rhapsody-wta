@@ -10,6 +10,7 @@ import urllib.parse
 from typing import (
     Union,
     Dict,
+    List,
     Any,
     Set,
     Optional,
@@ -29,6 +30,7 @@ import cwltool.workflow
 from cwltool.utils import CWLObjectType, CWLOutputType
 
 import ruamel.yaml
+from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 
@@ -159,7 +161,20 @@ def replace_refs(d: Any, rewrite: Dict[str, str], stem: str, newstem: str) -> No
                 replace_refs(val, rewrite, stem, newstem)
 
 
-def unpack_cwl(cwlfile, loadingContext):
+def yaml_dump(obj: CWLObjectType, filename: str):
+    yaml=YAML()
+    yaml.default_flow_style = False
+    with open(filename, "w", encoding="UTF-8") as f:
+        formated_obj = json.loads(json.dumps(obj, indent=4))
+        yaml.dump(formated_obj, f)
+
+
+def json_dump(obj: CWLObjectType, filename: str):
+        with open(filename, "w", encoding="UTF-8") as fh:
+            json.dump(obj, fh, indent=4)
+
+
+def unpack_cwl(cwlfile, loadingContext) -> Dict[str, CWLObjectType]:
     uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
         cwlfile,
         resolver=loadingContext.resolver,
@@ -230,6 +245,7 @@ def unpack_cwl(cwlfile, loadingContext):
         run_map[run_name] = convert_run(run_name, uri)
 
     # Save each CWL object into separated file
+    results = {}
     for obj in processobj:
         old_id = obj["id"]
         new_id = id_map[old_id]
@@ -251,18 +267,16 @@ def unpack_cwl(cwlfile, loadingContext):
             obj.update(metadata)
             del obj["id"]
 
-        with open(new_id + ".cwl", "w", encoding="UTF-8") as f:
-            json.dump(obj, f, indent=4)
-
-
-    #json.dump(id_map, sys.stdout, indent=2)
-
-    # Update workflow
+        results[new_id] = obj
+    
+    return results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Unpack cwl.")
     parser.add_argument("cwlfile")
+    parser.add_argument("-f", "--output-format", choices=["json", "yaml"],
+        type=str, default="json", help="Decide the output cwl file format.")
     parser.add_argument("-C", "--outdir", type=str, default=os.getcwd(),
         help="Output folder for the unpacked CWL files.")
     options = parser.parse_args()
@@ -270,5 +284,17 @@ if __name__ == "__main__":
     loading_context = cwltool.context.LoadingContext(vars(options))
     loading_context.construct_tool_object = cwltool.workflow.default_make_tool
     loading_context.resolver = cwltool.resolver.tool_resolver
-    unpack_cwl(options.cwlfile, loading_context)
+    cwl_obj_map = unpack_cwl(options.cwlfile, loading_context)
+
+    os.makedirs(options.outdir, exist_ok=True)
+    for obj_id in cwl_obj_map:
+        cwl_obj_filename = os.path.join(options.outdir, obj_id + ".cwl")
+        cwl_obj = cwl_obj_map[obj_id]
+        if options.output_format == "yaml":
+            yaml_dump(cwl_obj, cwl_obj_filename)
+        elif options.output_format == "json":
+            json_dump(cwl_obj, cwl_obj_filename)
+        else:
+            raise Exception("Unknown output format.")
+
     
