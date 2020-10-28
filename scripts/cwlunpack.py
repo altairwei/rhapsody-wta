@@ -273,7 +273,7 @@ def unpack_cwl(cwlfile, loadingContext) -> Dict[str, CWLObjectType]:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("Unpack cwl.")
+    parser = argparse.ArgumentParser(description="Unpack cwl.")
     parser.add_argument("cwlfile")
     parser.add_argument("-f", "--output-format", choices=["json", "yaml"],
         type=str, default="json", help="Decide the output cwl file format.")
