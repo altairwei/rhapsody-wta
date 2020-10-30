@@ -16,7 +16,7 @@ from typing import (
     Optional,
     MutableMapping,
     MutableSequence,
-    Callable
+    Callable,
 )
 
 import cwltool
@@ -32,7 +32,6 @@ from cwltool.utils import CWLObjectType, CWLOutputType
 import ruamel.yaml
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
-
 
 
 def traverse_cwl_objects(
@@ -98,6 +97,7 @@ def replace_ids(
             if i in doc and isinstance(doc[i], str):
                 new_id = id_map[doc[i]]
                 doc[i] = new_id
+
     traverse_cwl_objects(d, callback)
 
 
@@ -109,19 +109,24 @@ def replace_runs(
         if "run" in doc and isinstance(doc["run"], str):
             new_id = id_map[doc["run"]]
             doc["run"] = new_id
+
     traverse_cwl_objects(d, callback)
 
 
 def find_refs(
     d: Union[CWLObjectType, CWLOutputType, MutableSequence[CWLObjectType], None],
     refs: Set[str],
-    stem: str
+    stem: str,
 ) -> None:
     def callback(doc: MutableMapping):
         for key, val in doc.items():
-            if key not in ("id", "name", "run") and \
-                isinstance(val, str) and val.startswith(stem):
+            if (
+                key not in ("id", "name", "run")
+                and isinstance(val, str)
+                and val.startswith(stem)
+            ):
                 refs.add(val)
+
     traverse_cwl_objects(d, callback)
 
 
@@ -162,7 +167,7 @@ def replace_refs(d: Any, rewrite: Dict[str, str], stem: str, newstem: str) -> No
 
 
 def yaml_dump(obj: CWLObjectType, filename: str):
-    yaml=YAML()
+    yaml = YAML()
     yaml.default_flow_style = False
     with open(filename, "w", encoding="UTF-8") as f:
         formated_obj = json.loads(json.dumps(obj, indent=4))
@@ -170,8 +175,8 @@ def yaml_dump(obj: CWLObjectType, filename: str):
 
 
 def json_dump(obj: CWLObjectType, filename: str):
-        with open(filename, "w", encoding="UTF-8") as fh:
-            json.dump(obj, fh, indent=4)
+    with open(filename, "w", encoding="UTF-8") as fh:
+        json.dump(obj, fh, indent=4)
 
 
 def unpack_cwl(cwlfile, loadingContext) -> Dict[str, CWLObjectType]:
@@ -180,20 +185,19 @@ def unpack_cwl(cwlfile, loadingContext) -> Dict[str, CWLObjectType]:
         resolver=loadingContext.resolver,
         fetcher_constructor=loadingContext.fetcher_constructor,
     )
-    loadingContext, workflowobj, uri = cwltool.load_tool.fetch_document(uri, loadingContext)
+    loadingContext, workflowobj, uri = cwltool.load_tool.fetch_document(
+        uri, loadingContext
+    )
     loadingContext, uri = cwltool.load_tool.resolve_and_validate_document(
-        loadingContext,
-        workflowobj,
-        uri,
-        preprocess_only=True
+        loadingContext, workflowobj, uri, preprocess_only=True
     )
     # Responsible for parsing the entire document
     # For those `packed` CWL documents, we will get MutableSequence
     # In fact, the content of `$graph` is MutableSequence.
-    # Metadata is everything except for `$graph` for `packed` CWL 
+    # Metadata is everything except for `$graph` for `packed` CWL
     processobj, metadata = loadingContext.loader.resolve_ref(uri)
 
-    idx = {} # This is used to store parsed documents.
+    idx = {}  # This is used to store parsed documents.
     if isinstance(processobj, MutableMapping):
         # This is a normal handwritten CWL document.
         idx[processobj["id"]] = CommentedMap(processobj.items())
@@ -207,7 +211,7 @@ def unpack_cwl(cwlfile, loadingContext) -> Dict[str, CWLObjectType]:
                     uri = po["id"]
             idx[po["id"]] = CommentedMap(po.items())
         idx[metadata["id"]] = CommentedMap(metadata.items())
-    
+
     # Find all the ids
     def loadref(base: Optional[str], lr_uri: str):
         lr_loadingContext = loadingContext.copy()
@@ -240,7 +244,7 @@ def unpack_cwl(cwlfile, loadingContext) -> Dict[str, CWLObjectType]:
     for id_name in sorted(ids):
         id_map[id_name] = convert_id(id_name, uri)
 
-    run_map = {}  
+    run_map = {}
     for run_name in sorted(runs):
         run_map[run_name] = convert_run(run_name, uri)
 
@@ -268,17 +272,28 @@ def unpack_cwl(cwlfile, loadingContext) -> Dict[str, CWLObjectType]:
             del obj["id"]
 
         results[new_id] = obj
-    
+
     return results
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unpack cwl.")
     parser.add_argument("cwlfile")
-    parser.add_argument("-f", "--output-format", choices=["json", "yaml"],
-        type=str, default="json", help="Decide the output cwl file format.")
-    parser.add_argument("-C", "--outdir", type=str, default=os.getcwd(),
-        help="Output folder for the unpacked CWL files.")
+    parser.add_argument(
+        "-f",
+        "--output-format",
+        choices=["json", "yaml"],
+        type=str,
+        default="json",
+        help="Decide the output cwl file format.",
+    )
+    parser.add_argument(
+        "-C",
+        "--outdir",
+        type=str,
+        default=os.getcwd(),
+        help="Output folder for the unpacked CWL files.",
+    )
     options = parser.parse_args()
 
     loading_context = cwltool.context.LoadingContext(vars(options))
@@ -296,5 +311,3 @@ if __name__ == "__main__":
             json_dump(cwl_obj, cwl_obj_filename)
         else:
             raise Exception("Unknown output format.")
-
-    

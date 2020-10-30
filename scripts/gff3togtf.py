@@ -13,10 +13,10 @@ def attr_to_string(attrs: Dict):
     attr_list = []
     for id_attr in ("gene_id", "transcript_id"):
         if id_attr in attrs:
-            attr_list.append("{} \"{}\"".format(id_attr, attrs[id_attr]))
+            attr_list.append('{} "{}"'.format(id_attr, attrs[id_attr]))
             del attrs[id_attr]
     attr_list.extend(
-        "{} \"{}\"".format(str(key), str(val)) for (key, val) in attrs.items()
+        '{} "{}"'.format(str(key), str(val)) for (key, val) in attrs.items()
     )
     return "; ".join(attr_list)
 
@@ -41,7 +41,7 @@ def get_gtf_line(
     feature: GenomicFeature,
     transcript_parent: Dict[str, str],
     id_prefix: List[str],
-    type_mapping: Dict[str, str]
+    type_mapping: Dict[str, str],
 ):
     attr_dict: Dict[str, str] = {}
     attr_dict.update(feature.attr)
@@ -77,31 +77,52 @@ def get_gtf_line(
         if "gene_id" not in attr_dict or "transcript_id" not in attr_dict:
             raise Exception("Exon must contain both 'gene_id' and 'transcript_id'")
 
-    return "\t".join([
-        feature.iv.chrom,
-        feature.source,
-        feature.type,
-        str(feature.iv.start + 1), # See https://htseq.readthedocs.io/en/master/genomic.html#HTSeq.GenomicInterval
-        str(feature.iv.end), # See https://htseq.readthedocs.io/en/master/genomic.html#HTSeq.GenomicInterval
-        feature.score,
-        feature.iv.strand,
-        str(feature.frame),
-        attr_to_string(attr_dict)
-    ]) + "\n"
+    return (
+        "\t".join(
+            [
+                feature.iv.chrom,
+                feature.source,
+                feature.type,
+                str(
+                    feature.iv.start + 1
+                ),  # See https://htseq.readthedocs.io/en/master/genomic.html#HTSeq.GenomicInterval
+                str(
+                    feature.iv.end
+                ),  # See https://htseq.readthedocs.io/en/master/genomic.html#HTSeq.GenomicInterval
+                feature.score,
+                feature.iv.strand,
+                str(feature.frame),
+                attr_to_string(attr_dict),
+            ]
+        )
+        + "\n"
+    )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Converts Ensembl's favored GFF3 to GTF.")
+    parser = argparse.ArgumentParser(
+        description="Converts Ensembl's favored GFF3 to GTF."
+    )
     parser.add_argument("gff3_file", help="GFF3 file obtained from Ensembl.")
     parser.add_argument("gtf_file", help="Converted file in GTF format.")
-    parser.add_argument("-p", "--reserve-id-prefix",
-        dest="id_prefix", action="append", default=[],
+    parser.add_argument(
+        "-p",
+        "--reserve-id-prefix",
+        dest="id_prefix",
+        action="append",
+        default=[],
         help="The id prefix to be reserved. Example `-p transcript -p gene`"
-             " will produce 'transcript:G9200.1' and 'gene:G9200' as ids.")
-    parser.add_argument("-t", "--transform-feature-type",
-        dest="type_mapping", action="append", default=[],
+        " will produce 'transcript:G9200.1' and 'gene:G9200' as ids.",
+    )
+    parser.add_argument(
+        "-t",
+        "--transform-feature-type",
+        dest="type_mapping",
+        action="append",
+        default=[],
         help="Rewrite the type of a feature to another one. Example `-t mRNA:transcript`"
-             " will change the type of mRNA feature to transcript type.")
+        " will change the type of mRNA feature to transcript type.",
+    )
     options = parser.parse_args()
 
     type_mapping = {}
@@ -117,7 +138,8 @@ if __name__ == "__main__":
         for feature in gff3:
             feature_type[feature.type] = feature_type.get(feature.type, 0) + 1
             line = get_gtf_line(
-                feature, transcript_parent, options.id_prefix, type_mapping)
+                feature, transcript_parent, options.id_prefix, type_mapping
+            )
             fh.write(line)
             i += 1
             if i % 100000 == 0:
