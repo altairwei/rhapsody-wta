@@ -22,9 +22,12 @@ extension="${GTF_FILES##*.}"
 filename="${filename%.*}"
 
 mkdir -p data/reference_indexes
+
+# Set `--genomeSAsparseD 2` to reduce RAM requirement when mapping.
 STAR \
     --runThreadN 16 \
     --limitGenomeGenerateRAM 103079215104 \
+    --genomeSAsparseD 2 \
     --runMode genomeGenerate \
     --genomeDir data/reference_indexes \
     --genomeFastaFiles "$FASTA_FILES" \

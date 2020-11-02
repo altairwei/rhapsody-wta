@@ -438,7 +438,7 @@
                     "id": "Subsample_Tags"
                 }
             ],
-            "run": "AnnotateReads.cwl",
+            "run": "AnnotateReadsModified.cwl",
             "id": "AnnotateReads",
             "out": [
                 "Seq_Metrics",

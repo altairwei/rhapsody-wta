@@ -24,7 +24,7 @@
     "outputs": [
         {
             "outputBinding": {
-                "glob": "*.bai"
+                "glob": "*.csi"
             },
             "type": "File",
             "id": "Index"
@@ -39,13 +39,14 @@
     ],
     "baseCommand": [
         "samtools",
-        "index"
+        "index",
+        "-c"
     ],
     "class": "CommandLineTool",
     "arguments": [
         {
             "position": 2,
-            "valueFrom": "${\n    return inputs.BamFile.basename + \".bai\"\n}"
+            "valueFrom": "${\n    return inputs.BamFile.basename + \".csi\"\n}"
         }
     ],
     "id": "IndexBAM",
