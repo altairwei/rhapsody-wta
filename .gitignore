@@ -10,6 +10,7 @@ toil*
 node-*
 nohup.out*
 *.log
+*.out
 *.sif
 screenlog*
 cromwell-executions

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #PBS -l mem=6gb,nodes=1:ppn=6,walltime=48:00:00
 #PBS -q fat
-#PBS -N samtools-test
+#PBS -N samtools-index
 #PBS -o logs
 #PBS -e logs
 
@@ -17,6 +17,6 @@ BAM_FILE=$1
 
 samtools \
   index \
-  --threads 6 \
+  -@ 6 \
   -c \
-  "$BAM_FILE"
+  -- "$BAM_FILE"

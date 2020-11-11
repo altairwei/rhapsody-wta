@@ -3,7 +3,7 @@
 import argparse
 import sys
 import json
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import HTSeq
 from HTSeq import GenomicFeature
@@ -37,38 +37,61 @@ def get_transcript_parent(gff3_file):
     return transcript_parent
 
 
+def split_prefix(x: str, delimiter: str) -> Tuple[str, str]:
+    try:
+        i = x.index(delimiter)
+        return (x[0:i], x[i+1:])
+    except ValueError:
+        return ("", x)
+
+
 def get_gtf_line(
     feature: GenomicFeature,
     transcript_parent: Dict[str, str],
     id_prefix: List[str],
     type_mapping: Dict[str, str],
+    type_delimiter: str
 ):
     attr_dict: Dict[str, str] = {}
     attr_dict.update(feature.attr)
 
-    for prefix in id_prefix:
-        if prefix + "_id" in attr_dict:
-            if not attr_dict[prefix + "_id"].startswith(prefix):
-                attr_dict[prefix + "_id"] = prefix + ":" + attr_dict[prefix + "_id"]
+    if feature.type in ("mRNA", "tRNA", "rRNA"):
+        if "transcript_id" not in attr_dict:
+            attr_dict["transcript_id"] = split_prefix(attr_dict["ID"], type_delimiter)[1]
 
-    # Fill other necessary attributes
+    # Fill necessary attributes with information extracted from `Parent`
     if "Parent" in attr_dict:
-        parent_type, parent_id = attr_dict["Parent"].split(":")
+        parent_type, parent_id = split_prefix(attr_dict["Parent"], type_delimiter)
+        # Remove ID prefix if necessary
         if parent_type in id_prefix:
             full_id = attr_dict["Parent"]
         else:
             full_id = parent_id
-        if parent_type == "transcript":
+        # Fill in the required attributes for GTF format
+        if parent_type in ("transcript", "rna"):
             attr_dict["transcript_id"] = full_id
         elif parent_type == "gene":
             attr_dict["gene_id"] = full_id
+            # Record gene-transcript relation
             if "transcript_id" in attr_dict:
                 transcript_parent[attr_dict["transcript_id"]] = full_id
 
     if "gene_id" not in attr_dict:
-        if feature.type != "chromosome":
-            attr_dict["gene_id"] = transcript_parent[attr_dict["transcript_id"]]
+        if feature.type == "gene":
+            attr_dict["gene_id"] = split_prefix(attr_dict["ID"], type_delimiter)[1]
+        else:
+            if "transcript_id" in attr_dict:
+                attr_dict["gene_id"] = transcript_parent[attr_dict["transcript_id"]]
+   
 
+    # Reserve or replace ID prefix
+    for prefix in id_prefix:
+        attr_key = prefix + "_id"
+        if attr_key in attr_dict:
+            if not attr_dict[attr_key].startswith(prefix):
+                attr_dict[attr_key] = prefix + type_delimiter + attr_dict[attr_key]
+
+    # Change feature type
     if feature.type in type_mapping:
         feature.type = type_mapping[feature.type]
 
@@ -111,8 +134,8 @@ if __name__ == "__main__":
         dest="id_prefix",
         action="append",
         default=[],
-        help="The id prefix to be reserved. Example `-p transcript -p gene`"
-        " will produce 'transcript:G9200.1' and 'gene:G9200' as ids.",
+        help="The ID prefix to be reserved. Example `-p transcript -p gene`"
+        " will produce 'transcript:G9200.1' and 'gene:G9200' as IDs.",
     )
     parser.add_argument(
         "-t",
@@ -121,7 +144,16 @@ if __name__ == "__main__":
         action="append",
         default=[],
         help="Rewrite the type of a feature to another one. Example `-t mRNA:transcript`"
-        " will change the type of mRNA feature to transcript type.",
+        " will change the type of `mRNA` feature to `transcript` type.",
+    )
+    parser.add_argument(
+        "-d",
+        "--type-delimiter",
+        dest="type_delimiter",
+        default=":",
+        help="Value of `Parent` or `ID` attribute generally contains an ID prefixed with a type, "
+        "%(prog)s will use this prefix to determine the type of `Parent`. Therefore you "
+        "need to specify the delimiter used to separate the prefix from the real ID. (default: %(default)s)",
     )
     options = parser.parse_args()
 
@@ -138,7 +170,8 @@ if __name__ == "__main__":
         for feature in gff3:
             feature_type[feature.type] = feature_type.get(feature.type, 0) + 1
             line = get_gtf_line(
-                feature, transcript_parent, options.id_prefix, type_mapping
+                feature, transcript_parent, options.id_prefix,
+                type_mapping, options.type_delimiter
             )
             fh.write(line)
             i += 1
