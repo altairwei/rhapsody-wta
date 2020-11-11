@@ -8,7 +8,7 @@ print_help() {
   echo "Script usage: $(basename $0) [-r] [-s] [-h] workflow sample" >&2
 }
 
-while getopts 'rsh' OPTION; do
+while getopts 'rsch' OPTION; do
   case "$OPTION" in
     r)
       echo "Restarting the workflow..."
@@ -17,6 +17,10 @@ while getopts 'rsh' OPTION; do
     s)
       echo "Run toil leader within a named screen session..."
       USE_SCREEN=true
+      ;;
+    c)
+      echo "Clean job store before running workflow.."
+      CLEAN_JOBSTORE=true
       ;;
     h)
       print_help
@@ -85,10 +89,13 @@ echo "- CMD: ${TOIL_CMD}"
 
 source activate rhapsody
 
-if [ "$USE_SCREEN" = true ] ; then
+if [ "$CLEAN_JOBSTORE" = true ]; then
+  toil clean ${JOBSTORE}
+fi
+
+if [ "$USE_SCREEN" = true ]; then
   screen -S ${SAMPLE_NAME} -d -m ${TOIL_CMD}
   echo "You can enter the screen session by command: screen -r ${SAMPLE_NAME}"
-
 else
   ${TOIL_CMD}
 fi
