@@ -6,6 +6,7 @@ import json
 import re
 from argparse import ArgumentError, Namespace
 from typing import Dict, List, Tuple, Iterator
+from collections import defaultdict
 
 import HTSeq
 from HTSeq import (
@@ -66,7 +67,6 @@ class GFF_Reader(FileOrSequence):
             f.frame = frame
             f.attr = attr
             yield (f, line)
-
 
 
 def attr_to_string(attrs: Dict):
@@ -168,11 +168,25 @@ def get_gtf_line(
 
 def stats_action(options: Namespace) -> None:
     #TODO: Guess end included or not. See: https://htseq.readthedocs.io/en/master/features.html 
-    feature_type = {}
-    gff3 = GFF_Reader(options.gff_file)
-    for feature, _ in gff3:
-        feature_type[feature.type] = feature_type.get(feature.type, 0) + 1
-    json.dump(feature_type, sys.stdout, indent=2)
+    summary = {
+        "closed_intervals": defaultdict(int),
+        "half_open_intervals": defaultdict(int),
+        "types": defaultdict(int)
+    }
+    for _, line in GFF_Reader(options.gff_file):
+        (seqname, source, feature_type, start, end, score,
+            strand, frame, attributeStr) = line.split("\t", 8)
+        if feature_type in ("exon", "CDS", "start_codon", "stop_codon"):
+            # The GFF specification is unclear on whether the end coordinate marks
+            # the last base-pair of the feature (closed intervals, end_included=True)
+            # or the one after (half-open intervals, end_included=False).
+            is_end_included = ((int(end) - int(start) + 1) % 3) == 0
+            if is_end_included:
+                summary["closed_intervals"][feature_type] += 1
+            else:
+                summary["half_open_intervals"][feature_type] += 1
+        summary["types"][feature_type] += 1
+    json.dump(summary, sys.stdout, indent=2)
     print("", file=sys.stdout)
 
 
@@ -268,6 +282,15 @@ if __name__ == "__main__":
         help="Value of `Parent` or `ID` attribute generally contains an ID prefixed with a type, "
         "%(prog)s will use this prefix to determine the type of `Parent`. Therefore you "
         "need to specify the delimiter used to separate the prefix from the real ID. (default: %(default)s)",
+    )
+    convert_cmd.add_argument(
+        "-e",
+        "--end-included",
+        dest="end_included",
+        action="store_true",
+        default=True,
+        help="Specifies whether the end coordinate of marks the last base-pair"
+        " in output GFF file. (default: %(default)s)",
     )
 
     filter_cmd = subparsers.add_parser(
