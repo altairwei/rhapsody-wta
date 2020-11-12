@@ -5,7 +5,7 @@ import sys
 import json
 import re
 from argparse import ArgumentError, Namespace
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Iterator
 
 import HTSeq
 from HTSeq import (
@@ -17,7 +17,7 @@ from HTSeq import (
 
 
 class GFF_Reader(FileOrSequence):
-    """Parse a GFF file
+    """Parse a GFF file (Modified from HTSeq.GFF_Reader)
 
     Pass the constructor either a file name or an iterator of lines of a
     GFF files. If a file name is specified, it may refer to a gzip compressed
@@ -31,7 +31,7 @@ class GFF_Reader(FileOrSequence):
         self.end_included = end_included
         self.metadata = {}
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Tuple[GenomicFeature, str]]:
         for line in FileOrSequence.__iter__(self):
             if isinstance(line, bytes):
                 line = line.decode()
@@ -184,24 +184,36 @@ def convert_action(options: Namespace) -> None:
     gff3 = GFF_Reader(options.gff_file)
     i = 0
     transcript_parent = {}
-    try:
-        for feature, _ in gff3:
-            line = get_gtf_line(
-                feature, transcript_parent, options.id_prefix,
-                type_mapping, options.type_delimiter
-            )
-            sys.stdout.write(line)
-            i += 1
-            if i % 100000 == 0:
-                print("%d GFF lines processed." % i, file=sys.stderr)
-    except BrokenPipeError:
-        pass
+    for feature, _ in gff3:
+        line = get_gtf_line(
+            feature, transcript_parent, options.id_prefix,
+            type_mapping, options.type_delimiter
+        )
+        sys.stdout.write(line)
+        i += 1
+        if i % 100000 == 0:
+            print("%d GFF lines processed." % i, file=sys.stderr)
 
 
 def filter_action(options: Namespace) -> None:
     for feature, raw_line in GFF_Reader(options.gff_file):
+        if options.seqid and feature.iv.chrom not in options.seqid:
+            continue
         if options.type and feature.type not in options.type:
             continue
+        if options.source and feature.source not in options.source:
+            continue
+        if options.attributes:
+            matched = []
+            for attr_keyval in options.attributes:
+                key, val = attr_keyval.split("=")
+                if key in feature.attr and val == feature.attr[key]:
+                    matched.append(True)
+                else:
+                    matched.append(False)
+            if not all(matched):
+                continue
+
         # Print out selected fields
         if options.print_field == "all":
             sys.stdout.write(raw_line)
@@ -212,7 +224,6 @@ def filter_action(options: Namespace) -> None:
             if options.print_field in feature.attr:
                 sys.stdout.write(
                     feature.attr[options.print_field] + "\n")
-
 
 
 if __name__ == "__main__":
@@ -264,6 +275,22 @@ if __name__ == "__main__":
     )
     filter_cmd.set_defaults(func=filter_action)
     filter_cmd.add_argument(
+        "-i",
+        "--seqid",
+        dest="seqid",
+        action="append",
+        default=[],
+        help="Filter records with given seqid (aka. chromosome name), such as `-i chr1A -i chr3B`.",
+    )
+    filter_cmd.add_argument(
+        "-s",
+        "--source",
+        dest="source",
+        action="append",
+        default=[],
+        help="Filter records with given source, such as `-s IWGSC -s Genbank`.",
+    )
+    filter_cmd.add_argument(
         "-t",
         "--type",
         dest="type",
@@ -277,7 +304,9 @@ if __name__ == "__main__":
         dest="attributes",
         action="append",
         default=[],
-        help="Filter records with given key value pairs, such as `-a ID=GENE0545 -a Name=nad2`.",
+        help="Filter records with given key value pairs, such as `-a ID=GENE0545 -a Name=nad2`."
+        "Note that this option behaves differently from the other filtering options in that "
+        "a record will only pass the filter if all of the specified attributes match.",
     )
     filter_cmd.add_argument(
         "-p",
@@ -291,5 +320,8 @@ if __name__ == "__main__":
     )
 
     options = parser.parse_args()
-    options.func(options)
+    try:
+        options.func(options)
+    except BrokenPipeError:
+        pass
 
