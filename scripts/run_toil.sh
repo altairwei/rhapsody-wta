@@ -8,7 +8,7 @@ print_help() {
   echo "Script usage: $(basename $0) [-r] [-s] [-h] workflow sample" >&2
 }
 
-while getopts 'rsch' OPTION; do
+while getopts 'rscw:h' OPTION; do
   case "$OPTION" in
     r)
       echo "Restarting the workflow..."
@@ -21,6 +21,10 @@ while getopts 'rsch' OPTION; do
     c)
       echo "Clean job store before running workflow.."
       CLEAN_JOBSTORE=true
+      ;;
+    w)
+      echo "Override CWL workflow requirements.."
+      OVERRIDES_OPT="--overrides ${OPTARG}"
       ;;
     h)
       print_help
@@ -58,7 +62,7 @@ export TOIL_TORQUE_ARGS="-q batch"
 export TOIL_TORQUE_REQS="walltime=72:00:00"
 export CWL_SINGULARITY_CACHE="$PWD/dockerImages"
 
-TOIL_CMD="toil-cwl-runner ${RESTART_OPT} \
+TOIL_CMD="toil-cwl-runner ${RESTART_OPT} ${OVERRIDES_OPT} \
   --maxLocalJobs 100 \
   --batchSystem torque \
   --singularity \
@@ -76,12 +80,13 @@ TOIL_CMD="toil-cwl-runner ${RESTART_OPT} \
   $WORKFLOW $WORKFLOW_INPUT"
 
 echo "Options:"
+echo "- USE_SCREEN: ${USE_SCREEN-false}"
 echo "- WORKFLOW: ${WORKFLOW}"
 echo "- WORKFLOW_INPUT: ${WORKFLOW_INPUT}"
 echo "- SAMPLE_NAME: ${SAMPLE_NAME}"
 echo "- RUN_ID: ${RUN_ID}"
 echo "- RESTART_OPT: ${RESTART_OPT-None}"
-echo "- SCREEN_CMD: ${SCREEN_CMD-None}"
+echo "- OVERRIDES_OPT: ${OVERRIDES_OPT-None}"
 echo "- RESULTS_FOLDER: ${RESULTS_FOLDER}"
 echo "- JOBSTORE: ${JOBSTORE}"
 echo "- LOG_FILE: ${LOG_FILE}"
