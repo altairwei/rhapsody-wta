@@ -13,8 +13,7 @@ library(Matrix)
 library(readr)
 library(ggplot2)
 library(patchwork)
-
-# TODO: 将数据处理过程与画图分开，然后缓冲处理成功了数据对象。
+library(magrittr)
 
 save_plot <- function(filename, plot, width = 7, height = 7, ...) {
   message(sprintf("Saving %d x %d in image: %s", width, height, filename))
@@ -28,7 +27,7 @@ save_png <- function(filename, plot, width = 7, height = 7, dpi = 300) {
   dev.off()
 }
 
-read_rhapsody_wta <- function(base_dir = ".") {
+read_raw_csv <- function(base_dir = ".") {
   if (!dir.exists(base_dir)) {
     stop("Directory provided does not exist")
   }
@@ -82,7 +81,19 @@ read_mtx <- function(base_dir = ".") {
   m
 }
 
-generate_seurat_plots <- function(seurat_obj, output_dir) {
+read_rhapsody_wta <- function(base_dir, use_mtx = FALSE) {
+  expr_matrix <- NULL
+
+  if (isTRUE(use_mtx)) {
+    expr_matrix <- read_mtx(base_dir)
+  } else {
+    expr_matrix <- read_raw_csv(base_dir)
+  }
+
+  expr_matrix
+}
+
+generate_seurat_plots <- function(seurat_obj, output_folder) {
   # Quality Control
   p_qc_metrics <- Seurat::VlnPlot(
     seurat_obj,
@@ -91,13 +102,13 @@ generate_seurat_plots <- function(seurat_obj, output_dir) {
   )
   p_qc_metrics_image_width <- 6
 
-  if (!is.null(seurat_obj[["percent.mt"]])) {
+  if (!is.null(seurat_obj@meta.data[["percent.mt"]])) {
     p_qc_metrics <- p_qc_metrics + Seurat::VlnPlot(
       seurat_obj, features = "percent.mt")
     p_qc_metrics_image_width <- p_qc_metrics_image_width + 3
   }
 
-  if (!is.null(seurat_obj[["percent.cp"]])) {
+  if (!is.null(seurat_obj@meta.data[["percent.cp"]])) {
     p_qc_metrics <- p_qc_metrics + Seurat::VlnPlot(
       seurat_obj, features = "percent.cp")
     p_qc_metrics_image_width <- p_qc_metrics_image_width + 3
@@ -170,6 +181,108 @@ generate_seurat_plots <- function(seurat_obj, output_dir) {
   )
 }
 
+single_sample_analysis <- function(
+  seurat_obj,
+  mt_gene_file = NULL,
+  cp_gene_file = NULL,
+  dimensionality = 20
+) {
+  # Quality Control
+  if (!is.null(mt_gene_file)) {
+    mt_gene_list <- readr::read_lines(mt_gene_file)
+    mt_gene_list <- intersect(rownames(seurat_obj[["RNA"]]), mt_gene_list)
+    if (length(mt_gene_list) > 0) {
+      message(sprintf(
+        "Found %d mitochondrial genes in expression matrix.",
+        length(mt_gene_list)))
+      seurat_obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(
+        seurat_obj, features = mt_gene_list)
+    } else {
+      message("No mitochondrial genes were found.")
+    }
+  }
+
+  if (!is.null(cp_gene_file)) {
+    cp_gene_list <- readr::read_lines(cp_gene_file)
+    cp_gene_list <- intersect(rownames(seurat_obj[["RNA"]]), cp_gene_list)
+    if (length(cp_gene_list) > 0) {
+      message(sprintf(
+        "Found %d chloroplast genes in expression matrix.",
+        length(mt_gene_list)))
+      seurat_obj[["percent.cp"]] <- Seurat::PercentageFeatureSet(
+        seurat_obj, features = cp_gene_list)
+    } else {
+      message("No chloroplast genes were found.")
+    }
+  }
+
+  # Normalizing the data
+  seurat_obj <- Seurat::NormalizeData(
+    seurat_obj, normalization.method = "LogNormalize", scale.factor = 10000)
+
+  # Feature selection
+  seurat_obj <- Seurat::FindVariableFeatures(
+    seurat_obj, selection.method = "vst", nfeatures = 2000)
+
+  # Scaling the data
+  all_genes <- rownames(seurat_obj)
+  seurat_obj <- Seurat::ScaleData(seurat_obj, features = all_genes)
+
+  # PCA Plots
+
+  # Perform linear dimensional reduction
+  seurat_obj <- Seurat::RunPCA(
+    seurat_obj, features = Seurat::VariableFeatures(seurat_obj))
+  npc <- length(seurat_obj[["pca"]]@stdev)
+
+  # Determine the 'dimensionality' of the dataset
+  seurat_obj <- Seurat::JackStraw(seurat_obj, dims = npc, num.replicate = 100)
+  seurat_obj <- Seurat::ScoreJackStraw(seurat_obj, dims = 1:npc)
+
+  # Cluster the cells
+  seurat_obj <- Seurat::FindNeighbors(seurat_obj, dims = 1:dimensionality)
+  seurat_obj <- Seurat::FindClusters(seurat_obj, resolution = 0.5)
+
+  # UMAP/tSNE Plots
+  #TODO: Make sure umap-learn work properly
+  seurat_obj <- Seurat::RunUMAP(seurat_obj, dims = 1:dimensionality)
+  #TODO: Check duplicates manually
+  # Workaround: https://github.com/satijalab/seurat/issues/167
+  seurat_obj <- Seurat::RunTSNE(
+    seurat_obj, dims = 1:dimensionality, check_duplicates = FALSE)
+
+  seurat_obj
+}
+
+integrated_sample_analysis <- function(obj_list, dimensionality = 20) {
+  stopifnot(is.list(obj_list))
+
+  obj_anchors <- Seurat::FindIntegrationAnchors(
+    obj_list, dims = 1:dimensionality)
+  obj_combined <- Seurat::IntegrateData(
+    anchorset = obj_anchors, dims = 1:dimensionality)
+  Seurat::DefaultAssay(obj_combined) <- "integrated"
+
+  # Run the standard workflow for visualization and clustering
+  obj_combined <- Seurat::ScaleData(obj_combined)
+  obj_combined <- Seurat::RunPCA(obj_combined)
+  # t-SNE and Clustering
+  #TODO: Make sure umap-learn work properly
+  obj_combined <- Seurat::RunUMAP(
+    obj_combined, reduction = "pca", dims = 1:dimensionality)
+  #TODO: Check duplicates manually
+  # Workaround: https://github.com/satijalab/seurat/issues/167
+  obj_combined <- Seurat::RunTSNE(
+    obj_combined, reduction = "pca",
+    dims = 1:dimensionality, check_duplicates = FALSE)
+
+  obj_combined <- Seurat::FindNeighbors(
+    obj_combined, reduction = "pca", dims = 1:dimensionality)
+  obj_combined <- Seurat::FindClusters(obj_combined, resolution = 0.5)
+
+  obj_combined
+}
+
 if (!interactive()) {
   args <- commandArgs(trailingOnly = TRUE)
 
@@ -177,18 +290,19 @@ if (!interactive()) {
     positionals = character(0),
     draw_plot = FALSE,
     compress = FALSE,
-    use_mtx = FALSE,
-    use_cache_file = NULL,
-    cache = FALSE,
-    output_folder = NULL,
+    use_mtx = TRUE,
+    use_cache = NULL,
+    produce_cache = FALSE,
+    output_folder = getwd(),
     mt_gene_file = NULL,
-    cp_gene_file = NULL
+    cp_gene_file = NULL,
+    integrate = FALSE
   )
 
   optind <- 1
   while (optind <= length(args)) {
     switch(args[optind],
-      "-p" = {
+      "--plot" = {
         options$draw_plot <- TRUE
       },
       "-c" = {
@@ -214,12 +328,15 @@ if (!interactive()) {
         optind <- optind + 1
         options$cp_gene_file <- args[optind]
       },
-      "--use-cache-file" = {
+      "--use-cache" = {
         optind <- optind + 1
-        options$use_cache_file <- args[optind]
+        options$use_cache <- args[optind]
       },
-      "--cache" = {
-        options$cache <- TRUE
+      "--produce-cache" = {
+        options$produce_cache <- TRUE
+      },
+      "--integrate" = {
+        options$integrate <- TRUE
       },
       {
         if (startsWith(args[optind], "-")) {
@@ -236,124 +353,100 @@ if (!interactive()) {
     stop("At least one position argument is required.\n")
   }
 
-  options$base_dir <- options$positionals[1]
+  if (isTRUE(options$integrate)) {
+    obj_list <- lapply(options$positionals, function(base_dir) {
+      expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
+      seurat_obj <- Seurat::CreateSeuratObject(
+        counts = expr_matrix, project = basename(base_dir))
+      seurat_obj$stim <- basename(base_dir)
+      seurat_obj <- Seurat::NormalizeData(seurat_obj)
+      seurat_obj <- Seurat::FindVariableFeatures(
+        seurat_obj, selection.method = "vst", nfeatures = 2000)
+      seurat_obj
+    })
 
-  # Reading expression matrix
-  expr_matrix <- NULL
-  if (isTRUE(options$use_mtx)) {
-    expr_matrix <- read_mtx(options$base_dir)
+    obj_combined <- integrated_sample_analysis(obj_list)
+
+    output_folder <- options$output_folder
+    if (!dir.exists(output_folder)) {
+      dir.create(output_folder)
+    }
+
+    markers_df <- Seurat::FindAllMarkers(
+      obj_combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+    readr::write_csv(markers_df, file.path(output_folder, "Markers_All.csv"))
+
+    if (isTRUE(options$produce_cache)) {
+      saveRDS(obj_combined,
+        file = file.path(output_folder, "Seurat_Object_Combined.rds"))
+    }
+
+    if (options$draw_plot) {
+      p_umap_stim <- Seurat::DimPlot(
+        obj_combined, reduction = "umap", group.by = "stim")
+      p_umap_cluster <- Seurat::DimPlot(
+        obj_combined, reduction = "umap", label = TRUE)
+      save_plot(
+        file.path(output_folder, "UMAP_Scatter.png"),
+        p_umap_stim + p_umap_cluster,
+        width = 12
+      )
+
+      p_tsne_stim <- Seurat::DimPlot(
+        obj_combined, reduction = "tsne", group.by = "stim")
+      p_tsne_cluster <- Seurat::DimPlot(
+        obj_combined, reduction = "tsne", label = TRUE)
+      save_plot(
+        file.path(output_folder, "TSNE_Scatter.png"),
+        p_tsne_stim + p_tsne_cluster,
+        width = 12
+      )
+    }
   } else {
-    expr_matrix <- read_rhapsody_wta(options$base_dir)
+    lapply(options$positionals, function(base_dir) {
+      expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
+
+      if (isTRUE(options$compress) && !isTRUE(options$use_mtx)) {
+        input_file <- Sys.glob(
+          file.path(base_dir, "*_RSEC_MolsPerCell.csv"))
+        mtx_file <- sub(
+          "_RSEC_MolsPerCell.csv$",
+          "_Expression_Matrix.mtx", input_file)
+        colnames_file <- sprintf("%s.colnames", mtx_file)
+        rownames_file <- sprintf("%s.rownames", mtx_file)
+
+        message(sprintf("Writting %s", mtx_file))
+        Matrix::writeMM(expr_matrix, file = mtx_file)
+        write(colnames(expr_matrix), colnames_file)
+        write(rownames(expr_matrix), rownames_file)
+      }
+
+      output_folder <- file.path(base_dir, "SeuratAnalysis")
+
+      if (!dir.exists(output_folder)) {
+        dir.create(output_folder)
+      }
+
+      seurat_obj <- Seurat::CreateSeuratObject(
+        counts = expr_matrix, project = basename(base_dir))
+
+      seurat_obj <- single_sample_analysis(
+        seurat_obj, options$mt_gene_file, options$cp_gene_file)
+
+      markers_df <- Seurat::FindAllMarkers(
+        seurat_obj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+      readr::write_csv(markers_df, file.path(output_folder, "Markers_All.csv"))
+
+      if (isTRUE(options$produce_cache)) {
+        saveRDS(seurat_obj,
+          file = file.path(output_folder, "Seurat_Object.rds"))
+      }
+
+      if (isTRUE(options$draw_plot)) {
+        generate_seurat_plots(seurat_obj, output_folder)
+      }
+
+    })
   }
 
-  if (isTRUE(options$compress) && !isTRUE(options$use_mtx)) {
-    input_file <- Sys.glob(
-      file.path(options$base_dir, "*_RSEC_MolsPerCell.csv"))
-    mtx_file <- sub(
-      "_RSEC_MolsPerCell.csv$",
-      "_Expression_Matrix.mtx", input_file)
-    colnames_file <- sprintf("%s.colnames", mtx_file)
-    rownames_file <- sprintf("%s.rownames", mtx_file)
-
-    message(sprintf("Writting %s", mtx_file))
-    Matrix::writeMM(expr_matrix, file = mtx_file)
-    write(colnames(expr_matrix), colnames_file)
-    write(rownames(expr_matrix), rownames_file)
-  }
-
-  if (is.null(options$output_folder)) {
-    options$output_folder <- file.path(options$base_dir, "SeuratAnalysis")
-  }
-
-  if (!dir.exists(options$output_folder)) {
-    dir.create(options$output_folder)
-  }
-
-  seurat_obj <- Seurat::CreateSeuratObject(
-    counts = expr_matrix, project = basename(options$base_dir))
-
-  #########################
-  # Quality Control
-  #########################
-
-  if (!is.null(options$mt_gene_file)) {
-    mt_gene_list <- readr::read_lines(options$mt_gene_file)
-    mt_gene_list <- intersect(rownames(seurat_obj[["RNA"]]), mt_gene_list)
-    if (length(mt_gene_list) > 0) {
-      message(sprintf(
-        "Found %d mitochondrial genes in expression matrix.",
-        length(mt_gene_list)))
-      seurat_obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(
-        seurat_obj, features = mt_gene_list)
-    } else {
-      message("No mitochondrial genes were found.")
-    }
-  }
-
-  if (!is.null(options$cp_gene_file)) {
-    cp_gene_list <- readr::read_lines(options$cp_gene_file)
-    cp_gene_list <- intersect(rownames(seurat_obj[["RNA"]]), cp_gene_list)
-    if (length(cp_gene_list) > 0) {
-      message(sprintf(
-        "Found %d chloroplast genes in expression matrix.",
-        length(mt_gene_list)))
-      seurat_obj[["percent.cp"]] <- Seurat::PercentageFeatureSet(
-        seurat_obj, features = cp_gene_list)
-    } else {
-      message("No chloroplast genes were found.")
-    }
-  }
-
-  #########################
-  # Normalizing the data
-  #########################
-
-  seurat_obj <- Seurat::NormalizeData(
-    seurat_obj, normalization.method = "LogNormalize", scale.factor = 10000)
-
-  #########################
-  # Feature selection
-  #########################
-
-  seurat_obj <- Seurat::FindVariableFeatures(
-    seurat_obj, selection.method = "vst", nfeatures = 2000)
-
-  #########################
-  # Scaling the data
-  #########################
-
-  all_genes <- rownames(seurat_obj)
-  seurat_obj <- Seurat::ScaleData(seurat_obj, features = all_genes)
-
-  #########################
-  # PCA Plots
-  #########################
-
-  # Perform linear dimensional reduction
-  seurat_obj <- Seurat::RunPCA(
-    seurat_obj, features = Seurat::VariableFeatures(seurat_obj))
-  npc <- length(seurat_obj[["pca"]]@stdev)
-
-  # Determine the 'dimensionality' of the dataset
-  seurat_obj <- Seurat::JackStraw(seurat_obj, dims = npc, num.replicate = 100)
-  seurat_obj <- Seurat::ScoreJackStraw(seurat_obj, dims = 1:npc)
-
-  #########################
-  # Cluster the cells
-  #########################
-
-  seurat_obj <- Seurat::FindNeighbors(seurat_obj, dims = 1:10)
-  seurat_obj <- Seurat::FindClusters(seurat_obj, resolution = 0.5)
-
-  #########################
-  # UMAP/tSNE Plots
-  #########################
-
-  seurat_obj <- Seurat::RunUMAP(seurat_obj, dims = 1:10)
-  seurat_obj <- Seurat::RunTSNE(seurat_obj, dims = 1:10)
-
-  if (isTRUE(options$cache)) {
-    saveRDS(pbmc, file = file.path(
-      options$base_dir, "SeuratAnalysis", "Seurat_Object.rds"))
-  }
 }
