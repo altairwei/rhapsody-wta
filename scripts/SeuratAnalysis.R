@@ -95,90 +95,148 @@ read_rhapsody_wta <- function(base_dir, use_mtx = FALSE) {
 
 generate_seurat_plots <- function(seurat_obj, output_folder) {
   # Quality Control
-  p_qc_metrics <- Seurat::VlnPlot(
-    seurat_obj,
-    features = c("nFeature_RNA", "nCount_RNA"),
-    ncol = 2
-  )
-  p_qc_metrics_image_width <- 6
+  tryCatch({
+      p_qc_metrics <- Seurat::VlnPlot(
+        seurat_obj,
+        features = c("nFeature_RNA", "nCount_RNA"),
+        ncol = 2
+      )
+      p_qc_metrics_image_width <- 6
 
-  if (!is.null(seurat_obj@meta.data[["percent.mt"]])) {
-    p_qc_metrics <- p_qc_metrics + Seurat::VlnPlot(
-      seurat_obj, features = "percent.mt")
-    p_qc_metrics_image_width <- p_qc_metrics_image_width + 3
-  }
+      if (!is.null(seurat_obj@meta.data[["percent.mt"]])) {
+        p_qc_metrics <- p_qc_metrics + Seurat::VlnPlot(
+          seurat_obj, features = "percent.mt")
+        p_qc_metrics_image_width <- p_qc_metrics_image_width + 3
+      }
 
-  if (!is.null(seurat_obj@meta.data[["percent.cp"]])) {
-    p_qc_metrics <- p_qc_metrics + Seurat::VlnPlot(
-      seurat_obj, features = "percent.cp")
-    p_qc_metrics_image_width <- p_qc_metrics_image_width + 3
-  }
-  save_plot(
-    file.path(output_folder, "QC_Metrics.png"),
-    p_qc_metrics, width = p_qc_metrics_image_width
-  )
-  save_plot(
-    file.path(output_folder, "QC_Count_Feature_Scatter.png"),
-    Seurat::FeatureScatter(
-      seurat_obj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+      if (!is.null(seurat_obj@meta.data[["percent.cp"]])) {
+        p_qc_metrics <- p_qc_metrics + Seurat::VlnPlot(
+          seurat_obj, features = "percent.cp")
+        p_qc_metrics_image_width <- p_qc_metrics_image_width + 3
+      }
+      save_plot(
+        file.path(output_folder, "QC_Metrics.png"),
+        p_qc_metrics, width = p_qc_metrics_image_width
+      )
+      save_plot(
+        file.path(output_folder, "QC_Count_Feature_Scatter.png"),
+        Seurat::FeatureScatter(
+          seurat_obj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+      )
+    },
+    error = function(e) message(toString(e))
   )
 
   # Feature selection
-  # Identify the 10 most highly variable genes
-  feature_selection_top10 <- head(
-    Seurat::VariableFeatures(seurat_obj), 10)
-  # plot variable features with and without labels
-  p_feature_selection_1 <- Seurat::VariableFeaturePlot(seurat_obj)
-  p_feature_selection_2 <- Seurat::LabelPoints(
-    plot = p_feature_selection_1,
-    points = feature_selection_top10, repel = TRUE)
+  tryCatch({
+      # Identify the 10 most highly variable genes
+      feature_selection_top10 <- head(
+        Seurat::VariableFeatures(seurat_obj), 10)
+      # plot variable features with and without labels
+      p_feature_selection_1 <- Seurat::VariableFeaturePlot(seurat_obj)
+      p_feature_selection_2 <- Seurat::LabelPoints(
+        plot = p_feature_selection_1,
+        points = feature_selection_top10, repel = TRUE)
 
-  save_plot(
-    file.path(output_folder, "Feature_Selection.png"),
-    p_feature_selection_1 + p_feature_selection_2,
-    width = 12
+      save_plot(
+        file.path(output_folder, "Feature_Selection.png"),
+        p_feature_selection_1 + p_feature_selection_2,
+        width = 12
+      )
+    },
+    error = function(e) message(toString(e))
   )
 
   # PCA Plots
-  npc <- length(seurat_obj[["pca"]]@stdev)
-  p_pca_dim_load <- Seurat::VizDimLoadings(
-    seurat_obj, dims = 1:4, reduction = "pca")
-  save_plot(
-    file.path(output_folder, "PCA_Dim_Loadings.png"),
-    p_pca_dim_load
+  tryCatch({
+      npc <- length(seurat_obj[["pca"]]@stdev)
+      p_pca_dim_load <- Seurat::VizDimLoadings(
+        seurat_obj, dims = 1:4, reduction = "pca")
+      save_plot(
+        file.path(output_folder, "PCA_Dim_Loadings.png"),
+        p_pca_dim_load
+      )
+      p_pca_dim_scatter <- Seurat::DimPlot(seurat_obj, reduction = "pca")
+      save_plot(
+        file.path(output_folder, "PCA_Scatter.png"),
+        p_pca_dim_scatter
+      )
+    },
+    error = function(e) message(toString(e))
   )
-  p_pca_dim_scatter <- Seurat::DimPlot(seurat_obj, reduction = "pca")
-  save_plot(
-    file.path(output_folder, "PCA_Scatter.png"),
-    p_pca_dim_scatter
+
+  tryCatch({
+      npc <- length(seurat_obj[["pca"]]@stdev)
+      p_jackstraw <- Seurat::JackStrawPlot(seurat_obj, dims = 1:npc) +
+        ggplot2::theme(legend.position = "none")
+      p_elbow <- Seurat::ElbowPlot(seurat_obj, ndims = npc)
+      save_plot(
+        file.path(output_folder, "PCA_Dimensionality.png"),
+        p_jackstraw + p_elbow,
+        width = 12
+      )
+    },
+    error = function(e) message(toString(e))
   )
-  # p_pca_dim_heatmap <- Seurat::DimHeatmap(
-  #   seurat_obj, dims = 1, cells = 500, balanced = TRUE)
-  # save_plot(
-  #   file.path(options$output_folder, "PCA_Dim_Heatmap.png"),
-  #   p_pca_dim_heatmap,
-  #   width = 12
-  # )
-  p_jackstraw <- Seurat::JackStrawPlot(seurat_obj, dims = 1:npc) +
-    ggplot2::theme(legend.position = "none")
-  p_elbow <- Seurat::ElbowPlot(seurat_obj, ndims = npc)
-  save_plot(
-    file.path(output_folder, "PCA_Dimensionality.png"),
-    p_jackstraw + p_elbow,
-    width = 12
+
+  tryCatch({
+      p_pca_dim_heatmap <- Seurat::DimHeatmap(
+        seurat_obj, dims = 1:9, cells = 500, balanced = TRUE)
+      save_plot(
+        file.path(options$output_folder, "PCA_Dim_Heatmap.png"),
+        p_pca_dim_heatmap,
+        width = 12
+      )
+    },
+    error = function(e) message(toString(e))
   )
 
   # UMAP/tSNE Plots
-  p_umap_dim <- Seurat::DimPlot(seurat_obj, reduction = "umap")
-  save_plot(
-    file.path(output_folder, "UMAP_Scatter.png"),
-    p_umap_dim
-  )
-  p_tsne_dim <- Seurat::DimPlot(seurat_obj, reduction = "tsne")
-  save_plot(
-    file.path(output_folder, "TSNE_Scatter.png"),
-    p_tsne_dim
-  )
+  if (Seurat::DefaultAssay(seurat_obj) == "integrated") {
+    tryCatch(
+      {
+        p_umap_stim <- Seurat::DimPlot(
+          seurat_obj, reduction = "umap", group.by = "stim")
+        p_umap_cluster <- Seurat::DimPlot(
+          seurat_obj, reduction = "umap", label = TRUE)
+        save_plot(
+          file.path(output_folder, "UMAP_Scatter.png"),
+          p_umap_stim + p_umap_cluster,
+          width = 12
+        )
+
+        p_tsne_stim <- Seurat::DimPlot(
+          seurat_obj, reduction = "tsne", group.by = "stim")
+        p_tsne_cluster <- Seurat::DimPlot(
+          seurat_obj, reduction = "tsne", label = TRUE)
+        save_plot(
+          file.path(output_folder, "TSNE_Scatter.png"),
+          p_tsne_stim + p_tsne_cluster,
+          width = 12
+        )
+      },
+      error = function(e) message(toString(e))
+    )
+  } else {
+    tryCatch(
+      {
+        p_umap_dim <- Seurat::DimPlot(
+          seurat_obj, reduction = "umap", label = TRUE)
+        save_plot(
+          file.path(output_folder, "UMAP_Scatter.png"),
+          p_umap_dim
+        )
+        p_tsne_dim <- Seurat::DimPlot(
+          seurat_obj, reduction = "tsne", label = TRUE)
+        save_plot(
+          file.path(output_folder, "TSNE_Scatter.png"),
+          p_tsne_dim
+        )
+      },
+      error = function(e) message(toString(e))
+    )
+  }
+
 }
 
 single_sample_analysis <- function(
@@ -382,25 +440,7 @@ if (!interactive()) {
     }
 
     if (options$draw_plot) {
-      p_umap_stim <- Seurat::DimPlot(
-        obj_combined, reduction = "umap", group.by = "stim")
-      p_umap_cluster <- Seurat::DimPlot(
-        obj_combined, reduction = "umap", label = TRUE)
-      save_plot(
-        file.path(output_folder, "UMAP_Scatter.png"),
-        p_umap_stim + p_umap_cluster,
-        width = 12
-      )
-
-      p_tsne_stim <- Seurat::DimPlot(
-        obj_combined, reduction = "tsne", group.by = "stim")
-      p_tsne_cluster <- Seurat::DimPlot(
-        obj_combined, reduction = "tsne", label = TRUE)
-      save_plot(
-        file.path(output_folder, "TSNE_Scatter.png"),
-        p_tsne_stim + p_tsne_cluster,
-        width = 12
-      )
+      generate_seurat_plots(seurat_obj)
     }
   } else {
     lapply(options$positionals, function(base_dir) {
