@@ -8,12 +8,21 @@ dump_and_quit <- function() {
 
 #options(error = dump_and_quit)
 
-library(Seurat)
-library(Matrix)
-library(readr)
-library(ggplot2)
-library(patchwork)
-library(magrittr)
+if (!require("Seurat")) install.packages("Seurat")
+if (!require("Matrix")) install.packages("Matrix")
+if (!require("readr")) install.packages("readr")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("cowplot")) install.packages("cowplot")
+if (!require("patchwork")) install.packages("patchwork")
+if (!require("magrittr")) install.packages("magrittr")
+if (!require("BiocManager")) install.packages("BiocManager")
+if (!require("metap")) {
+  BiocManager::install("multtest")
+  BiocManager::install("limma")
+  install.packages("metap")
+}
+
+ggplot2::theme_set(cowplot::theme_cowplot())
 
 save_plot <- function(filename, plot, width = 7, height = 7, ...) {
   message(sprintf("Saving %d x %d in image: %s", width, height, filename))
@@ -95,7 +104,8 @@ read_rhapsody_wta <- function(base_dir, use_mtx = FALSE) {
 
 generate_seurat_plots <- function(seurat_obj, output_folder) {
   # Quality Control
-  tryCatch({
+  tryCatch(
+    {
       p_qc_metrics <- Seurat::VlnPlot(
         seurat_obj,
         features = c("nFeature_RNA", "nCount_RNA"),
@@ -128,7 +138,8 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
   )
 
   # Feature selection
-  tryCatch({
+  tryCatch(
+    {
       # Identify the 10 most highly variable genes
       feature_selection_top10 <- head(
         Seurat::VariableFeatures(seurat_obj), 10)
@@ -148,7 +159,8 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
   )
 
   # PCA Plots
-  tryCatch({
+  tryCatch(
+    {
       npc <- length(seurat_obj[["pca"]]@stdev)
       p_pca_dim_load <- Seurat::VizDimLoadings(
         seurat_obj, dims = 1:4, reduction = "pca")
@@ -165,7 +177,8 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
     error = function(e) message(toString(e))
   )
 
-  tryCatch({
+  tryCatch(
+    {
       npc <- length(seurat_obj[["pca"]]@stdev)
       p_jackstraw <- Seurat::JackStrawPlot(seurat_obj, dims = 1:npc) +
         ggplot2::theme(legend.position = "none")
@@ -179,7 +192,8 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
     error = function(e) message(toString(e))
   )
 
-  tryCatch({
+  tryCatch(
+    {
       p_pca_dim_heatmap <- Seurat::DimHeatmap(
         seurat_obj, dims = 1:9, cells = 500, balanced = TRUE)
       save_plot(
@@ -326,19 +340,30 @@ integrated_sample_analysis <- function(obj_list, dimensionality = 20) {
   obj_combined <- Seurat::RunPCA(obj_combined)
   # t-SNE and Clustering
   #TODO: Make sure umap-learn work properly
-  obj_combined <- Seurat::RunUMAP(
-    obj_combined, reduction = "pca", dims = 1:dimensionality)
+  obj_combined <- Seurat::RunUMAP(obj_combined, dims = 1:dimensionality)
   #TODO: Check duplicates manually
   # Workaround: https://github.com/satijalab/seurat/issues/167
   obj_combined <- Seurat::RunTSNE(
-    obj_combined, reduction = "pca",
-    dims = 1:dimensionality, check_duplicates = FALSE)
+    obj_combined, dims = 1:dimensionality, check_duplicates = FALSE)
 
-  obj_combined <- Seurat::FindNeighbors(
-    obj_combined, reduction = "pca", dims = 1:dimensionality)
+  obj_combined <- Seurat::FindNeighbors(obj_combined, dims = 1:dimensionality)
   obj_combined <- Seurat::FindClusters(obj_combined, resolution = 0.5)
 
   obj_combined
+}
+
+find_all_conserved_markers <- function(object) {
+  Seurat::DefaultAssay(object) <- "RNA"
+  idents_all <- sort(unique(Seurat::Idents(object)))
+  df_list <- lapply(idents_all, function(i) {
+    df <- Seurat::FindConservedMarkers(
+      object, ident.1 = i, grouping.var = "stim")
+    df[["cluster"]] <- i
+    df[["gene"]] <- rownames(df)
+    rownames(df) <- NULL
+    df
+  })
+  do.call(dplyr::bind_rows, df_list)
 }
 
 if (!interactive()) {
@@ -430,9 +455,15 @@ if (!interactive()) {
       dir.create(output_folder)
     }
 
+    #FIXME: Does this make sense?
     markers_df <- Seurat::FindAllMarkers(
       obj_combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
     readr::write_csv(markers_df, file.path(output_folder, "Markers_All.csv"))
+
+    # Conserved markers across conditions
+    markers_conserved_df <- find_all_conserved_markers(obj_combined)
+    readr::write_csv(
+      markers_conserved_df, file.path(output_folder, "Markers_Conserved.csv"))
 
     if (isTRUE(options$produce_cache)) {
       saveRDS(obj_combined,

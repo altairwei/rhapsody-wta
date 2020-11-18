@@ -16,4 +16,4 @@ source env.sh
 
 INPUT_DIR=$1
 
-SeuratAnalysis.R -m --plot --cache "${INPUT_DIR}"
+SeuratAnalysis.R -m --plot --produce-cache "${INPUT_DIR}"
