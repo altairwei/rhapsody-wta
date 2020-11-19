@@ -23,7 +23,8 @@ if (!interactive()) {
     host = "plants.ensembl.org",
     mart = "plants_mart",
     dataset = "taestivum_eg_gene",
-    primary_key = "gene"
+    primary_key = "gene",
+    inplace = FALSE
   )
 
   optind <- 1
@@ -44,6 +45,9 @@ if (!interactive()) {
       "--primary-key" = {
         optind <- optind + 1
         options$host <- args[optind]
+      },
+      "--inplace" = {
+        options$inplace <- TRUE
       },
       {
         if (startsWith(args[optind], "-")) {
@@ -88,7 +92,10 @@ if (!interactive()) {
       Reactome_Reaction = table_collapse(plant_reactome_reaction)
   )
 
-  dplyr::left_join(df, annot_df, by = c("gene" = "ensembl_gene_id")) %>%
-    readr::format_csv() %>%
-    writeLines(stdout())
+  output <- dplyr::left_join(
+    df, annot_df, by = c("gene" = "ensembl_gene_id")) %>%
+    readr::format_csv()
+
+  writeLines(output, ifelse(isTRUE(options$inplace),
+    options$positionals[1], stdout()))
 }
