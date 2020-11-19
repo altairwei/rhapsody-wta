@@ -14,3 +14,4 @@ nohup.out*
 *.sif
 screenlog*
 cromwell-executions
+Rplots.pdf

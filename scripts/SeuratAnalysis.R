@@ -8,15 +8,22 @@ dump_and_quit <- function() {
 
 #options(error = dump_and_quit)
 
-if (!require("Seurat")) install.packages("Seurat")
-if (!require("Matrix")) install.packages("Matrix")
-if (!require("readr")) install.packages("readr")
-if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("cowplot")) install.packages("cowplot")
-if (!require("patchwork")) install.packages("patchwork")
-if (!require("magrittr")) install.packages("magrittr")
-if (!require("BiocManager")) install.packages("BiocManager")
-if (!require("metap")) {
+if (suppressPackageStartupMessages(!require("Seurat")))
+  install.packages("Seurat")
+if (suppressPackageStartupMessages(!require("Matrix")))
+  install.packages("Matrix")
+if (suppressPackageStartupMessages(!require("readr")))
+  install.packages("readr")
+if (suppressPackageStartupMessages(!require("ggplot2")))
+  install.packages("ggplot2")
+if (suppressPackageStartupMessages(!require("cowplot")))
+  install.packages("cowplot")
+if (suppressPackageStartupMessages(!require("patchwork")))
+  install.packages("patchwork")
+if (suppressPackageStartupMessages(!require("magrittr")))
+  install.packages("magrittr")
+if (suppressPackageStartupMessages(!require("metap"))) {
+  if (!require("BiocManager")) install.packages("BiocManager")
   BiocManager::install("multtest")
   BiocManager::install("limma")
   install.packages("metap")
@@ -470,8 +477,8 @@ if (!interactive()) {
         file = file.path(output_folder, "Seurat_Object_Combined.rds"))
     }
 
-    if (options$draw_plot) {
-      generate_seurat_plots(seurat_obj)
+    if (isTRUE(options$draw_plot)) {
+      generate_seurat_plots(obj_combined, output_folder)
     }
   } else {
     lapply(options$positionals, function(base_dir) {
