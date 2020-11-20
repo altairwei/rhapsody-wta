@@ -112,7 +112,7 @@ read_rhapsody_wta <- function(base_dir, use_mtx = FALSE) {
 generate_seurat_plots <- function(seurat_obj, output_folder) {
   # Quality Control
   tryCatch(
-    {
+    expr = {
       p_qc_metrics <- Seurat::VlnPlot(
         seurat_obj,
         features = c("nFeature_RNA", "nCount_RNA"),
@@ -146,7 +146,7 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
 
   # Feature selection
   tryCatch(
-    {
+    expr = {
       # Identify the 10 most highly variable genes
       feature_selection_top10 <- head(
         Seurat::VariableFeatures(seurat_obj), 10)
@@ -167,7 +167,7 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
 
   # PCA Plots
   tryCatch(
-    {
+    expr = {
       npc <- length(seurat_obj[["pca"]]@stdev)
       p_pca_dim_load <- Seurat::VizDimLoadings(
         seurat_obj, dims = 1:4, reduction = "pca")
@@ -185,7 +185,7 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
   )
 
   tryCatch(
-    {
+    expr = {
       npc <- length(seurat_obj[["pca"]]@stdev)
       p_jackstraw <- Seurat::JackStrawPlot(seurat_obj, dims = 1:npc) +
         ggplot2::theme(legend.position = "none")
@@ -200,7 +200,7 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
   )
 
   tryCatch(
-    {
+    expr = {
       p_pca_dim_heatmap <- Seurat::DimHeatmap(
         seurat_obj, dims = 1:9, cells = 500, balanced = TRUE)
       save_plot(
@@ -215,7 +215,7 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
   # UMAP/tSNE Plots
   if (Seurat::DefaultAssay(seurat_obj) == "integrated") {
     tryCatch(
-      {
+      expr = {
         p_umap_stim <- Seurat::DimPlot(
           seurat_obj, reduction = "umap", group.by = "stim")
         p_umap_cluster <- Seurat::DimPlot(
@@ -240,7 +240,7 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
     )
   } else {
     tryCatch(
-      {
+      expr = {
         p_umap_dim <- Seurat::DimPlot(
           seurat_obj, reduction = "umap", label = TRUE)
         save_plot(
@@ -373,6 +373,65 @@ find_all_conserved_markers <- function(object) {
   do.call(dplyr::bind_rows, df_list)
 }
 
+find_all_avg_expr_genes <- function(object) {
+  idents_all <- sort(unique(Seurat::Idents(object)))
+  df_list <- lapply(idents_all, function(i) {
+    ident_cells <- subset(object, idents = i)
+    # Specify identity of cells based on value of meta.data[["stim"]]
+    Seurat::Idents(ident_cells) <- "stim"
+    # AverageExpression will be applied to every `Assay` object.
+    avg_ident_cells <- log1p(Seurat::AverageExpression(ident_cells)$RNA)
+    avg_ident_cells[["cluster"]] <- i
+    avg_ident_cells[["gene"]] <- rownames(avg_ident_cells)
+    avg_ident_cells
+  })
+  do.call(dplyr::bind_rows, df_list)
+}
+
+find_all_diff_expr_genes <- function(object) {
+  idents_all <- sort(unique(Seurat::Idents(object)))
+  stim <- unique(unlist(object[["stim"]]))
+  # TODO: Produce an permutation of all conditions
+  if (length(stim) != 2) {
+    stop(
+      sprintf(
+        "Only support two-group comparisons, but get %d group(s).",
+        length(stim)))
+  }
+  df_list <- lapply(idents_all, function(i) {
+    ident_cells <- subset(object, idents = i)
+    # Specify identity of cells based on value of meta.data[["stim"]]
+    Seurat::Idents(ident_cells) <- "stim"
+    message("Calculating cluster ", i)
+    # We assume that the control group is the first one
+    #   and the stimulated group is the second one.
+    diff_genes <- Seurat::FindMarkers(
+      ident_cells, ident.1 = stim[2], ident.2 = stim[1])
+    diff_genes[["comparison"]] <- sprintf("%s_vs_%s", stim[2], stim[1])
+    diff_genes[["cluster"]] <- i
+    diff_genes[["gene"]] <- rownames(diff_genes)
+    diff_genes
+  })
+  do.call(dplyr::bind_rows, df_list)
+}
+
+plot_avg_expr_genes <- function(df) {
+  stim <- names(df)[!names(df) %in% c("cluster", "gene")]
+  # TODO: Produce an permutation of all conditions
+  if (length(stim) != 2) {
+    stop(
+      sprintf(
+        "Only support two-group comparisons, but get %d group(s).",
+        length(stim)))
+  }
+
+  ggplot2::ggplot(df, ggplot2::aes(
+      !!ggplot2::sym(stim[1]), !!ggplot2::sym(stim[2]))) +
+    ggplot2::geom_point() +
+    ggplot2::facet_wrap(vars(cluster)) +
+    cowplot::panel_border()
+}
+
 if (!interactive()) {
   args <- commandArgs(trailingOnly = TRUE)
 
@@ -444,18 +503,23 @@ if (!interactive()) {
   }
 
   if (isTRUE(options$integrate)) {
-    obj_list <- lapply(options$positionals, function(base_dir) {
-      expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
-      seurat_obj <- Seurat::CreateSeuratObject(
-        counts = expr_matrix, project = basename(base_dir))
-      seurat_obj$stim <- basename(base_dir)
-      seurat_obj <- Seurat::NormalizeData(seurat_obj)
-      seurat_obj <- Seurat::FindVariableFeatures(
-        seurat_obj, selection.method = "vst", nfeatures = 2000)
-      seurat_obj
-    })
+    obj_combined <- NULL
+    if (!is.null(options$use_cache)) {
+      obj_combined <- readRDS(options$use_cache)
+    } else {
+      obj_list <- lapply(options$positionals, function(base_dir) {
+        expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
+        seurat_obj <- Seurat::CreateSeuratObject(
+          counts = expr_matrix, project = basename(base_dir))
+        seurat_obj$stim <- basename(base_dir)
+        seurat_obj <- Seurat::NormalizeData(seurat_obj)
+        seurat_obj <- Seurat::FindVariableFeatures(
+          seurat_obj, selection.method = "vst", nfeatures = 2000)
+        seurat_obj
+      })
 
-    obj_combined <- integrated_sample_analysis(obj_list)
+      obj_combined <- integrated_sample_analysis(obj_list)
+    }
 
     output_folder <- options$output_folder
     if (!dir.exists(output_folder)) {
@@ -471,6 +535,27 @@ if (!interactive()) {
     markers_conserved_df <- find_all_conserved_markers(obj_combined)
     readr::write_csv(
       markers_conserved_df, file.path(output_folder, "Markers_Conserved.csv"))
+
+    # Identify differential expressed genes across conditions
+    tryCatch(
+      expr = {
+        avg_genes_df <- find_all_avg_expr_genes(obj_combined)
+        readr::write_csv(
+          avg_genes_df,
+          file.path(output_folder, "DEG_Average_Expression.csv"))
+        diff_genes_df <- find_all_diff_expr_genes(obj_combined)
+        readr::write_csv(
+          diff_genes_df, file.path(output_folder, "DEG_All.csv"))
+        if (isTRUE(options$draw_plot)) {
+          save_plot(
+            file.path(output_folder, "DEG_Avg_Expr_Scatter.png"),
+            plot_avg_expr_genes(avg_genes_df),
+            width = 16, height = 16
+          )
+        }
+      },
+      error = function(e) message(toString(e))
+    )
 
     if (isTRUE(options$produce_cache)) {
       saveRDS(obj_combined,
