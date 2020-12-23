@@ -396,48 +396,59 @@ find_all_avg_expr_genes <- function(object) {
   do.call(dplyr::bind_rows, df_list)
 }
 
+#' Find differential expressed genes on variable conditions
+#'  for each cell cluster.
+#'
+#' @param object Seurat object.
+#'
+#' @return A data frame. 
 find_all_diff_expr_genes <- function(object) {
   idents_all <- sort(unique(Seurat::Idents(object)))
   stim <- unique(unlist(object[["stim"]]))
-  # TODO: Produce an permutation of all conditions
-  if (length(stim) != 2) {
-    stop(
-      sprintf(
-        "Only support two-group comparisons, but get %d group(s).",
-        length(stim)))
-  }
-  df_list <- lapply(idents_all, function(i) {
-    ident_cells <- subset(object, idents = i)
-    # Specify identity of cells based on value of meta.data[["stim"]]
-    Seurat::Idents(ident_cells) <- "stim"
-    message("Calculating cluster ", i)
-    # We assume that the control group is the first one
-    #   and the stimulated group is the second one.
-    diff_genes <- Seurat::FindMarkers(
-      ident_cells, ident.1 = stim[2], ident.2 = stim[1])
-    diff_genes[["comparison"]] <- sprintf("%s_vs_%s", stim[2], stim[1])
-    diff_genes[["cluster"]] <- i
-    diff_genes[["gene"]] <- rownames(diff_genes)
-    diff_genes
+  # Produce an permutation of all conditions
+  all_comb <- as.data.frame(combn(stim, 2), stringsAsFactors = FALSE)
+  names(all_comb) <- NULL
+  # Find diff genes on each comparision
+  comp_list <- lapply(all_comb, function(couple) {
+    message(sprintf("Calculating comparision %s vs %s", couple[2], couple[1]))
+    # Perform on each cell cluster
+    diff_list <- lapply(idents_all, function(id) {
+      ident_cells <- subset(object, idents = id)
+      # Specify identity of cells based on value of meta.data[["stim"]]
+      Seurat::Idents(ident_cells) <- "stim"
+      message("Calculating cluster ", id)
+      # We assume that the control group is the first one
+      #   and the stimulated group is the second one.
+      diff_genes <- Seurat::FindMarkers(
+        ident_cells, ident.1 = couple[2], ident.2 = couple[1])
+      diff_genes[["comparison"]] <- sprintf("%s_vs_%s", couple[2], couple[1])
+      diff_genes[["cluster"]] <- id
+      diff_genes[["gene"]] <- rownames(diff_genes)
+      diff_genes
+    })
+    do.call(dplyr::bind_rows, diff_list)
   })
-  do.call(dplyr::bind_rows, df_list)
+  do.call(dplyr::bind_rows, comp_list)
 }
 
+#' Plot scatter diagram to compare average expression value of genes on
+#'   variable conditions for each cell cluster.
+#'
+#' @param df A data frame produced by \code{find_all_avg_expr_genes}
+#'
+#' @return A list of ggplot2 object.
 plot_avg_expr_genes <- function(df) {
   stim <- names(df)[!names(df) %in% c("cluster", "gene")]
-  # TODO: Produce an permutation of all conditions
-  if (length(stim) != 2) {
-    stop(
-      sprintf(
-        "Only support two-group comparisons, but get %d group(s).",
-        length(stim)))
-  }
-
-  ggplot2::ggplot(df, ggplot2::aes(
-      !!ggplot2::sym(stim[1]), !!ggplot2::sym(stim[2]))) +
-    ggplot2::geom_point() +
-    ggplot2::facet_wrap(vars(cluster)) +
-    cowplot::panel_border()
+  # Produce an permutation of all conditions
+  all_comb <- as.data.frame(combn(stim, 2), stringsAsFactors = FALSE)
+  names(all_comb) <- NULL
+  lapply(all_comb, function(couple) {
+    ggplot2::ggplot(df, ggplot2::aes(
+        !!ggplot2::sym(couple[1]), !!ggplot2::sym(couple[2]))) +
+      ggplot2::geom_point() +
+      ggplot2::facet_wrap(vars(cluster)) +
+      cowplot::panel_border()
+  })
 }
 
 if (!interactive()) {
