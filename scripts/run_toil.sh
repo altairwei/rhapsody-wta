@@ -5,7 +5,7 @@ shopt -s failglob
 export LC_ALL=C
 
 print_help() {
-  echo "Script usage: $(basename $0) [-r] [-s] [-h] workflow sample" >&2
+  echo "Script usage: $(basename $0) [-r] [-s] [-c] [-w] [-h] workflow sample" >&2
 }
 
 while getopts 'rscw:h' OPTION; do

@@ -359,6 +359,14 @@ integrated_sample_analysis <- function(obj_list, dimensionality = 20) {
   obj_combined
 }
 
+plot_clustree <- function(object) {
+  if (suppressPackageStartupMessages(!require("clustree")))
+    install.packages("clustree")
+  obj <- Seurat::FindClusters(
+    object, resolution = seq(0.4, 1.6, 0.2))
+  clustree::clustree(obj@meta.data, prefix = "RNA_snn_res.")
+}
+
 find_all_conserved_markers <- function(object) {
   Seurat::DefaultAssay(object) <- "RNA"
   idents_all <- sort(unique(Seurat::Idents(object)))
@@ -439,7 +447,7 @@ if (!interactive()) {
     positionals = character(0),
     draw_plot = FALSE,
     compress = FALSE,
-    use_mtx = TRUE,
+    use_mtx = FALSE,
     use_cache = NULL,
     produce_cache = FALSE,
     output_folder = getwd(),
