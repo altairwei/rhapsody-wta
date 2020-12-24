@@ -36,15 +36,15 @@ if (!interactive()) {
       },
       "--mart" = {
         optind <- optind + 1
-        options$host <- args[optind]
+        options$mart <- args[optind]
       },
       "--dataset" = {
         optind <- optind + 1
-        options$host <- args[optind]
+        options$dataset <- args[optind]
       },
       "--primary-key" = {
         optind <- optind + 1
-        options$host <- args[optind]
+        options$primary_key <- args[optind]
       },
       "--inplace" = {
         options$inplace <- TRUE

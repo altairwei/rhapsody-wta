@@ -471,13 +471,14 @@ plot_avg_expr_genes <- function(df) {
   # Produce an permutation of all conditions
   all_comb <- as.data.frame(combn(stim, 2), stringsAsFactors = FALSE)
   names(all_comb) <- sapply(all_comb, function(x) paste(x, collapse = "_vs_"))
-  lapply(all_comb, function(couple) {
+  results <- lapply(all_comb, function(couple) {
     ggplot2::ggplot(df, ggplot2::aes(
         !!ggplot2::sym(couple[1]), !!ggplot2::sym(couple[2]))) +
       ggplot2::geom_point() +
       ggplot2::facet_wrap(ggplot2::vars(cluster)) +
       cowplot::panel_border()
   })
+  results
 }
 
 if (!interactive()) {
@@ -629,48 +630,50 @@ if (!interactive()) {
       generate_seurat_plots(obj_combined, output_folder)
     }
   } else {
-    lapply(options$positionals, function(base_dir) {
-      expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
+    invisible(
+      lapply(options$positionals, function(base_dir) {
+        expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
 
-      if (isTRUE(options$compress) && !isTRUE(options$use_mtx)) {
-        input_file <- Sys.glob(
-          file.path(base_dir, "*_RSEC_MolsPerCell.csv"))
-        mtx_file <- sub(
-          "_RSEC_MolsPerCell.csv$",
-          "_Expression_Matrix.mtx", input_file)
-        colnames_file <- sprintf("%s.colnames", mtx_file)
-        rownames_file <- sprintf("%s.rownames", mtx_file)
+        if (isTRUE(options$compress) && !isTRUE(options$use_mtx)) {
+          input_file <- Sys.glob(
+            file.path(base_dir, "*_RSEC_MolsPerCell.csv"))
+          mtx_file <- sub(
+            "_RSEC_MolsPerCell.csv$",
+            "_Expression_Matrix.mtx", input_file)
+          colnames_file <- sprintf("%s.colnames", mtx_file)
+          rownames_file <- sprintf("%s.rownames", mtx_file)
 
-        message(sprintf("Writting %s", mtx_file))
-        Matrix::writeMM(expr_matrix, file = mtx_file)
-        write(colnames(expr_matrix), colnames_file)
-        write(rownames(expr_matrix), rownames_file)
-      }
+          message(sprintf("Writting %s", mtx_file))
+          Matrix::writeMM(expr_matrix, file = mtx_file)
+          write(colnames(expr_matrix), colnames_file)
+          write(rownames(expr_matrix), rownames_file)
+        }
 
-      output_folder <- file.path(base_dir, "SeuratAnalysis")
+        output_folder <- file.path(base_dir, "SeuratAnalysis")
 
-      if (!dir.exists(output_folder)) {
-        dir.create(output_folder)
-      }
+        if (!dir.exists(output_folder)) {
+          dir.create(output_folder)
+        }
 
-      seurat_obj <- Seurat::CreateSeuratObject(
-        counts = expr_matrix, project = basename(base_dir))
+        seurat_obj <- Seurat::CreateSeuratObject(
+          counts = expr_matrix, project = basename(base_dir))
 
-      seurat_obj <- single_sample_analysis(
-        seurat_obj, options$mt_gene_file, options$cp_gene_file)
+        seurat_obj <- single_sample_analysis(
+          seurat_obj, options$mt_gene_file, options$cp_gene_file)
 
-      perform_find_all_markers(seurat_obj, output_folder)
+        perform_find_all_markers(seurat_obj, output_folder)
 
-      if (isTRUE(options$produce_cache)) {
-        saveRDS(seurat_obj,
-          file = file.path(output_folder, "Seurat_Object.rds"))
-      }
+        if (isTRUE(options$produce_cache)) {
+          saveRDS(seurat_obj,
+            file = file.path(output_folder, "Seurat_Object.rds"))
+        }
 
-      if (isTRUE(options$draw_plot)) {
-        generate_seurat_plots(seurat_obj, output_folder)
-      }
+        if (isTRUE(options$draw_plot)) {
+          generate_seurat_plots(seurat_obj, output_folder)
+        }
 
-    })
+      })
+    )
   }
 
 }
