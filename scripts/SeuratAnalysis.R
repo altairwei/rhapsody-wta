@@ -8,22 +8,22 @@ dump_and_quit <- function() {
 
 #options(error = dump_and_quit)
 
-if (suppressPackageStartupMessages(!require("Seurat")))
+if (suppressPackageStartupMessages(!requireNamespace("Seurat")))
   install.packages("Seurat")
-if (suppressPackageStartupMessages(!require("Matrix")))
+if (suppressPackageStartupMessages(!requireNamespace("Matrix")))
   install.packages("Matrix")
-if (suppressPackageStartupMessages(!require("readr")))
+if (suppressPackageStartupMessages(!requireNamespace("readr")))
   install.packages("readr")
-if (suppressPackageStartupMessages(!require("ggplot2")))
+if (suppressPackageStartupMessages(!requireNamespace("ggplot2")))
   install.packages("ggplot2")
-if (suppressPackageStartupMessages(!require("cowplot")))
+if (suppressPackageStartupMessages(!requireNamespace("cowplot")))
   install.packages("cowplot")
-if (suppressPackageStartupMessages(!require("patchwork")))
+if (suppressPackageStartupMessages(!requireNamespace("patchwork")))
   install.packages("patchwork")
-if (suppressPackageStartupMessages(!require("magrittr")))
+if (suppressPackageStartupMessages(!requireNamespace("magrittr")))
   install.packages("magrittr")
-if (suppressPackageStartupMessages(!require("metap"))) {
-  if (!require("BiocManager")) install.packages("BiocManager")
+if (suppressPackageStartupMessages(!requireNamespace("metap"))) {
+  if (!requireNamespace("BiocManager")) install.packages("BiocManager")
   BiocManager::install("multtest")
   BiocManager::install("limma")
   install.packages("metap")
@@ -235,6 +235,22 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
           p_tsne_stim + p_tsne_cluster,
           width = 12
         )
+
+
+        stim <- unique(unlist(seurat_obj[["stim"]]))
+        n_stim <-  length(stim)
+        p_umap_split_stim <- Seurat::DimPlot(
+          seurat_obj, reduction = "umap", split.by = "stim")
+        p_tsne_split_stim <- Seurat::DimPlot(
+          seurat_obj, reduction = "tsne", split.by = "stim")
+        save_plot(
+          file.path(output_folder, "UMAP_Scatter_By_Stim.png"),
+          p_umap_split_stim, width = 6 * n_stim
+        )
+        save_plot(
+          file.path(output_folder, "TSNE_Scatter_By_Stim.png"),
+          p_tsne_split_stim, width = 6 * n_stim
+        )
       },
       error = function(e) message(toString(e))
     )
@@ -258,6 +274,19 @@ generate_seurat_plots <- function(seurat_obj, output_folder) {
     )
   }
 
+}
+
+perform_find_all_markers <- function(object, output_folder) {
+  markers_df <- Seurat::FindAllMarkers(
+    object, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+  readr::write_csv(markers_df, file.path(output_folder, "Markers_All.csv"))
+  top10 <- dplyr::top_n(
+    dplyr::group_by(markers_df, cluster), n = 10, wt = avg_logFC)
+  marker_heatmap <- Seurat::DoHeatmap(
+    object, features = top10$gene) + Seurat::NoLegend()
+  save_plot(
+    file.path(output_folder, "Markers_Top10_Heatmap.png"),
+    marker_heatmap, width = 14, height = 14)
 }
 
 single_sample_analysis <- function(
@@ -401,7 +430,7 @@ find_all_avg_expr_genes <- function(object) {
 #'
 #' @param object Seurat object.
 #'
-#' @return A data frame. 
+#' @return A data frame.
 find_all_diff_expr_genes <- function(object) {
   idents_all <- sort(unique(Seurat::Idents(object)))
   stim <- unique(unlist(object[["stim"]]))
@@ -436,17 +465,17 @@ find_all_diff_expr_genes <- function(object) {
 #'
 #' @param df A data frame produced by \code{find_all_avg_expr_genes}
 #'
-#' @return A list of ggplot2 object.
+#' @return A named list of ggplot2 object.
 plot_avg_expr_genes <- function(df) {
   stim <- names(df)[!names(df) %in% c("cluster", "gene")]
   # Produce an permutation of all conditions
   all_comb <- as.data.frame(combn(stim, 2), stringsAsFactors = FALSE)
-  names(all_comb) <- NULL
+  names(all_comb) <- sapply(all_comb, function(x) paste(x, collapse = "_vs_"))
   lapply(all_comb, function(couple) {
     ggplot2::ggplot(df, ggplot2::aes(
         !!ggplot2::sym(couple[1]), !!ggplot2::sym(couple[2]))) +
       ggplot2::geom_point() +
-      ggplot2::facet_wrap(vars(cluster)) +
+      ggplot2::facet_wrap(ggplot2::vars(cluster)) +
       cowplot::panel_border()
   })
 }
@@ -464,7 +493,8 @@ if (!interactive()) {
     output_folder = getwd(),
     mt_gene_file = NULL,
     cp_gene_file = NULL,
-    integrate = FALSE
+    integrate = FALSE,
+    process = 1L
   )
 
   optind <- 1
@@ -506,6 +536,10 @@ if (!interactive()) {
       "--integrate" = {
         options$integrate <- TRUE
       },
+      "--process" = {
+        optind <- optind + 1
+        options$process <- as.integer(args[optind])
+      },
       {
         if (startsWith(args[optind], "-")) {
           stop(sprintf("Unknown option: %s", args[optind]))
@@ -519,6 +553,14 @@ if (!interactive()) {
 
   if (length(options$positionals) < 1) {
     stop("At least one position argument is required.\n")
+  }
+
+  if (options$process > 1) {
+    if (suppressPackageStartupMessages(!requireNamespace("future")))
+      install.packages("future")
+    future::plan("multiprocess", workers = options$process)
+    # Set global size to 2GB
+    options(future.globals.maxSize = 2 * 1024^3)
   }
 
   if (isTRUE(options$integrate)) {
@@ -546,9 +588,7 @@ if (!interactive()) {
     }
 
     #FIXME: Does this make sense?
-    markers_df <- Seurat::FindAllMarkers(
-      obj_combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-    readr::write_csv(markers_df, file.path(output_folder, "Markers_All.csv"))
+    perform_find_all_markers(obj_combined, output_folder)
 
     # Conserved markers across conditions
     markers_conserved_df <- find_all_conserved_markers(obj_combined)
@@ -566,11 +606,15 @@ if (!interactive()) {
         readr::write_csv(
           diff_genes_df, file.path(output_folder, "DEG_All.csv"))
         if (isTRUE(options$draw_plot)) {
-          save_plot(
-            file.path(output_folder, "DEG_Avg_Expr_Scatter.png"),
-            plot_avg_expr_genes(avg_genes_df),
-            width = 16, height = 16
-          )
+          all_p_list <- plot_avg_expr_genes(avg_genes_df)
+          for (p_name in names(all_p_list)) {
+            save_plot(
+              file.path(output_folder,
+                sprintf("DEG_Avg_Expr_Scatter_%s.png", p_name)),
+              all_p_list[[p_name]],
+              width = 16, height = 16
+            )
+          }
         }
       },
       error = function(e) message(toString(e))
@@ -615,9 +659,7 @@ if (!interactive()) {
       seurat_obj <- single_sample_analysis(
         seurat_obj, options$mt_gene_file, options$cp_gene_file)
 
-      markers_df <- Seurat::FindAllMarkers(
-        seurat_obj, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
-      readr::write_csv(markers_df, file.path(output_folder, "Markers_All.csv"))
+      perform_find_all_markers(seurat_obj, output_folder)
 
       if (isTRUE(options$produce_cache)) {
         saveRDS(seurat_obj,
