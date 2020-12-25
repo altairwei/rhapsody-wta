@@ -6,22 +6,26 @@ dump_and_quit <- function() {
   q(status = 1)
 }
 
-#options(error = dump_and_quit)
+require_dependencies <- function(x) {
+  stopifnot(is.character(x))
+  dep_status <- suppressPackageStartupMessages(
+    sapply(x, requireNamespace)
+  )
+  pkg_to_install <- names(dep_status[dep_status == FALSE])
+  install.packages(pkg_to_install)
+}
 
-if (suppressPackageStartupMessages(!requireNamespace("Seurat")))
-  install.packages("Seurat")
-if (suppressPackageStartupMessages(!requireNamespace("Matrix")))
-  install.packages("Matrix")
-if (suppressPackageStartupMessages(!requireNamespace("readr")))
-  install.packages("readr")
-if (suppressPackageStartupMessages(!requireNamespace("ggplot2")))
-  install.packages("ggplot2")
-if (suppressPackageStartupMessages(!requireNamespace("cowplot")))
-  install.packages("cowplot")
-if (suppressPackageStartupMessages(!requireNamespace("patchwork")))
-  install.packages("patchwork")
-if (suppressPackageStartupMessages(!requireNamespace("magrittr")))
-  install.packages("magrittr")
+require_dependencies(c(
+  "Seurat",
+  "Matrix",
+  "readr",
+  "ggplot2",
+  "cowplot",
+  "patchwork",
+  "magrittr",
+  "gghighlight"
+))
+
 if (suppressPackageStartupMessages(!requireNamespace("metap"))) {
   if (!requireNamespace("BiocManager")) install.packages("BiocManager")
   BiocManager::install("multtest")
@@ -29,6 +33,7 @@ if (suppressPackageStartupMessages(!requireNamespace("metap"))) {
   install.packages("metap")
 }
 
+#options(error = dump_and_quit)
 ggplot2::theme_set(cowplot::theme_cowplot())
 
 save_plot <- function(filename, plot, width = 7, height = 7, ...) {
@@ -450,6 +455,8 @@ find_all_diff_expr_genes <- function(object) {
       #   and the stimulated group is the second one.
       diff_genes <- Seurat::FindMarkers(
         ident_cells, ident.1 = couple[2], ident.2 = couple[1])
+      diff_genes[["test_group"]] <- couple[2]
+      diff_genes[["ctrl_group"]] <- couple[1]
       diff_genes[["comparison"]] <- sprintf("%s_vs_%s", couple[2], couple[1])
       diff_genes[["cluster"]] <- id
       diff_genes[["gene"]] <- rownames(diff_genes)
@@ -463,22 +470,83 @@ find_all_diff_expr_genes <- function(object) {
 #' Plot scatter diagram to compare average expression value of genes on
 #'   variable conditions for each cell cluster.
 #'
-#' @param df A data frame produced by \code{find_all_avg_expr_genes}
+#' @param avg_genes A data frame produced by \code{find_all_avg_expr_genes}
+#' @param diff_genes A data frame produced by \code{find_all_diff_expr_genes}
 #'
 #' @return A named list of ggplot2 object.
-plot_avg_expr_genes <- function(df) {
-  stim <- names(df)[!names(df) %in% c("cluster", "gene")]
-  # Produce an permutation of all conditions
-  all_comb <- as.data.frame(combn(stim, 2), stringsAsFactors = FALSE)
-  names(all_comb) <- sapply(all_comb, function(x) paste(x, collapse = "_vs_"))
-  results <- lapply(all_comb, function(couple) {
-    ggplot2::ggplot(df, ggplot2::aes(
-        !!ggplot2::sym(couple[1]), !!ggplot2::sym(couple[2]))) +
+plot_avg_expr_genes <- function(avg_genes, diff_genes) {
+  diff_genes_by_comp <- split(diff_genes, diff_genes[["comparison"]])
+  results <- lapply(diff_genes_by_comp, function(diff_genes_comp) {
+    # test condition should be placed on y-axis, ctrl condition on x-axis
+    condition_ctrl <- unique(diff_genes_comp[["ctrl_group"]])
+    condition_test <- unique(diff_genes_comp[["test_group"]])
+    # Calculate coefficient of correlation
+    df_by_cluster <- split(avg_genes, avg_genes[["cluster"]])
+    xmin <- min(avg_genes[[condition_ctrl]])
+    ymax <- max(avg_genes[[condition_test]])
+    df_by_cluster <- lapply(df_by_cluster, function(x) {
+      pearson_r <- cor(x[[condition_ctrl]], x[[condition_test]],
+        method = "pearson", use = "complete.obs")
+      data.frame(
+        coeff_label = paste("italic(R^2) == ", round(pearson_r^2, digits = 2)),
+        cluster = unique(x[["cluster"]]),
+        position_x = xmin,
+        position_y = ymax
+      )
+    })
+    df_coff_label <- do.call(dplyr::bind_rows, df_by_cluster)
+    # Highlight DEGs
+    diff_genes_to_highlight <- dplyr::filter(diff_genes_comp, p_val < 0.0001)
+    df_to_plot <- avg_genes
+    df_to_plot$highlight <- "no"
+    df_to_plot$highlight[
+      df_to_plot$gene %in% diff_genes_to_highlight$gene] <- "yes"
+    # Plot facets
+    ggplot2::ggplot(df_to_plot, ggplot2::aes(
+        x = !!ggplot2::sym(condition_ctrl), y = !!ggplot2::sym(condition_test),
+        color = highlight, alpha = highlight)) +
+      ggplot2::ggtitle(unique(diff_genes_comp[["comparison"]])) +
       ggplot2::geom_point() +
+      ggplot2::geom_text(
+        data = df_coff_label,
+        # Don't inherit color or alpha
+        inherit.aes = FALSE,
+        mapping = ggplot2::aes(
+          x = position_x, y = position_y, label = coeff_label),
+        hjust = 0, vjust = 1, size = 8, parse = TRUE) +
+      ggplot2::scale_color_manual(values = c("black", "red"), guide = FALSE) +
+      ggplot2::scale_alpha_manual(values = c(0.05, 1), guide = FALSE) +
       ggplot2::facet_wrap(ggplot2::vars(cluster)) +
       cowplot::panel_border()
   })
+
   results
+}
+
+perform_diff_gene <- function(object, output_folder, draw_plot = TRUE) {
+  tryCatch(
+    expr = {
+      avg_genes_df <- find_all_avg_expr_genes(object)
+      readr::write_csv(
+        avg_genes_df,
+        file.path(output_folder, "DEG_Average_Expression.csv"))
+      diff_genes_df <- find_all_diff_expr_genes(object)
+      readr::write_csv(
+        diff_genes_df, file.path(output_folder, "DEG_All.csv"))
+      if (isTRUE(draw_plot)) {
+        all_p_list <- plot_avg_expr_genes(avg_genes_df, diff_genes_df)
+        for (p_name in names(all_p_list)) {
+          save_plot(
+            file.path(output_folder,
+              sprintf("DEG_Avg_Expr_Scatter_%s.png", p_name)),
+            all_p_list[[p_name]],
+            width = 16, height = 16
+          )
+        }
+      }
+    },
+    error = function(e) message(toString(e))
+  )
 }
 
 if (!interactive()) {
@@ -597,29 +665,7 @@ if (!interactive()) {
       markers_conserved_df, file.path(output_folder, "Markers_Conserved.csv"))
 
     # Identify differential expressed genes across conditions
-    tryCatch(
-      expr = {
-        avg_genes_df <- find_all_avg_expr_genes(obj_combined)
-        readr::write_csv(
-          avg_genes_df,
-          file.path(output_folder, "DEG_Average_Expression.csv"))
-        diff_genes_df <- find_all_diff_expr_genes(obj_combined)
-        readr::write_csv(
-          diff_genes_df, file.path(output_folder, "DEG_All.csv"))
-        if (isTRUE(options$draw_plot)) {
-          all_p_list <- plot_avg_expr_genes(avg_genes_df)
-          for (p_name in names(all_p_list)) {
-            save_plot(
-              file.path(output_folder,
-                sprintf("DEG_Avg_Expr_Scatter_%s.png", p_name)),
-              all_p_list[[p_name]],
-              width = 16, height = 16
-            )
-          }
-        }
-      },
-      error = function(e) message(toString(e))
-    )
+    perform_diff_gene(obj_combined, output_folder, options$draw_plot)
 
     if (isTRUE(options$produce_cache)) {
       saveRDS(obj_combined,
