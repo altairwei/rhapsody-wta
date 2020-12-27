@@ -61,8 +61,8 @@ read_raw_csv <- function(base_dir = ".") {
 
   message(sprintf("Reading %s", matrix_loc))
   df <- readr::read_csv(matrix_loc, comment = "#", progress = TRUE,
-    col_types = cols(
-      Cell_Index = col_character()
+    col_types = readr::cols(
+      Cell_Index = readr::col_character()
     )
   )
 
@@ -405,12 +405,22 @@ find_all_conserved_markers <- function(object) {
   Seurat::DefaultAssay(object) <- "RNA"
   idents_all <- sort(unique(Seurat::Idents(object)))
   df_list <- lapply(idents_all, function(i) {
-    df <- Seurat::FindConservedMarkers(
-      object, ident.1 = i, grouping.var = "stim")
-    df[["cluster"]] <- i
-    df[["gene"]] <- rownames(df)
-    rownames(df) <- NULL
-    df
+    df <- tryCatch(
+      Seurat::FindConservedMarkers(
+        object, ident.1 = i, grouping.var = "stim"),
+      error = function(e) {
+        message(toString(e))
+        NULL
+      }
+    )
+    if (!is.null(df)) {
+      df[["cluster"]] <- i
+      df[["gene"]] <- rownames(df)
+      rownames(df) <- NULL
+      return(df)
+    } else {
+      return(NULL)
+    }
   })
   do.call(dplyr::bind_rows, df_list)
 }
@@ -453,14 +463,23 @@ find_all_diff_expr_genes <- function(object) {
       message("Calculating cluster ", id)
       # We assume that the control group is the first one
       #   and the stimulated group is the second one.
-      diff_genes <- Seurat::FindMarkers(
-        ident_cells, ident.1 = couple[2], ident.2 = couple[1])
-      diff_genes[["test_group"]] <- couple[2]
-      diff_genes[["ctrl_group"]] <- couple[1]
-      diff_genes[["comparison"]] <- sprintf("%s_vs_%s", couple[2], couple[1])
-      diff_genes[["cluster"]] <- id
-      diff_genes[["gene"]] <- rownames(diff_genes)
-      diff_genes
+      tryCatch(
+        {
+          diff_genes <- Seurat::FindMarkers(
+            ident_cells, ident.1 = couple[2], ident.2 = couple[1])
+          diff_genes[["test_group"]] <- couple[2]
+          diff_genes[["ctrl_group"]] <- couple[1]
+          diff_genes[["comparison"]] <- sprintf(
+            "%s_vs_%s", couple[2], couple[1])
+          diff_genes[["cluster"]] <- id
+          diff_genes[["gene"]] <- rownames(diff_genes)
+          diff_genes
+        },
+        error = function(e) {
+          message(toString(e))
+          NULL
+        }
+      )
     })
     do.call(dplyr::bind_rows, diff_list)
   })
@@ -482,17 +501,36 @@ plot_avg_expr_genes <- function(avg_genes, diff_genes) {
     condition_test <- unique(diff_genes_comp[["test_group"]])
     # Calculate coefficient of correlation
     df_by_cluster <- split(avg_genes, avg_genes[["cluster"]])
-    xmin <- min(avg_genes[[condition_ctrl]])
-    ymax <- max(avg_genes[[condition_test]])
+    xmin <- min(avg_genes[[condition_ctrl]], na.rm = TRUE)
+    ymax <- max(avg_genes[[condition_test]], na.rm = TRUE)
     df_by_cluster <- lapply(df_by_cluster, function(x) {
-      pearson_r <- cor(x[[condition_ctrl]], x[[condition_test]],
-        method = "pearson", use = "complete.obs")
-      data.frame(
-        coeff_label = paste("italic(R^2) == ", round(pearson_r^2, digits = 2)),
-        cluster = unique(x[["cluster"]]),
-        position_x = xmin,
-        position_y = ymax
+      label_df <- tryCatch(
+        {
+          pearson_r <- cor(x[[condition_ctrl]], x[[condition_test]],
+            method = "pearson", use = "complete.obs")
+          data.frame(
+            coeff_label = paste(
+              "'Pearson ' * italic(R^2) == ", round(pearson_r^2, digits = 2)),
+            cluster = unique(x[["cluster"]]),
+            position_x = xmin,
+            position_y = ymax
+          )
+        },
+        error = function(e) {
+          message(
+            "Error occurred when processing cluster ",
+            unique(x[["cluster"]]), " of ",
+            condition_test, "_vs_", condition_ctrl)
+          message(toString(e))
+          data.frame(
+            coeff_label = "",
+            cluster = unique(x[["cluster"]]),
+            position_x = xmin,
+            position_y = ymax
+          )
+        }
       )
+      label_df
     })
     df_coff_label <- do.call(dplyr::bind_rows, df_by_cluster)
     # Highlight DEGs
@@ -629,7 +667,7 @@ if (!interactive()) {
       install.packages("future")
     future::plan("multiprocess", workers = options$process)
     # Set global size to 2GB
-    options(future.globals.maxSize = 2 * 1024^3)
+    options(future.globals.maxSize = 4 * 1024^3)
   }
 
   if (isTRUE(options$integrate)) {
