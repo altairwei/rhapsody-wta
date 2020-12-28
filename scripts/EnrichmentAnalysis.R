@@ -145,6 +145,7 @@ if (!interactive()) {
     go_data_file = NULL,
     ensembldb = NULL,
     group_field = NULL,
+    split_by = NULL,
     primary_key = "gene",
     output_folder = getwd()
   )
@@ -170,6 +171,11 @@ if (!interactive()) {
         # Note: work with positional argument.
         optind <- optind + 1
         options$group_field <- args[optind]
+      },
+      "--split-by" = {
+        # Split one table into smaller tables
+        optind <- optind + 1
+        options$split_by <- args[optind]
       },
       "--primary-key" = {
         # Which field are gene list.
@@ -226,32 +232,44 @@ if (!interactive()) {
     df <- readr::read_csv(
       options$positionals[1], comment = "#")
     if (!is.null(options$group_field)) {
-      df %>%
-        base::split(df[[options$group_field]]) %>%
-        lapply(function(x) {
-          output_folder <- file.path(
-            options$output_folder,
-            paste(options$group_field,
-              unique(x[[options$group_field]]), sep = "_")
-          )
-          if (!dir.exists(output_folder))
-            dir.create(output_folder, recursive = TRUE)
-          tryCatch(
-            {
-              perform_enrichment_analysis(
-                x[[options$primary_key]],
-                go2gene, go2name, go_data,
-                output_folder
-              )
-            },
-            error = function(e) {
-              message(sprintf("Failed to perform enrichment analysis on %s_%s",
-                options$group_field, unique(x[[options$group_field]])
-              ))
-            }
-          )
+      if (!is.null(options$split_by)) {
+        tasks <- split(df, df[[options$split_by]])
+      } else  {
+        tasks <- list(df)
+      }
 
-        }) %>% invisible()
+      lapply(tasks, function(task_df) {
+        base::split(task_df, task_df[[options$group_field]]) %>%
+          lapply(function(x) {
+            output_folder <- file.path(
+              ifelse(is.null(options$split_by),
+                options$output_folder,
+                paste(options$output_folder,
+                  unique(x[[options$split_by]]), sep = "_")),
+              paste(options$group_field,
+                unique(x[[options$group_field]]), sep = "_")
+            )
+            if (!dir.exists(output_folder))
+              dir.create(output_folder, recursive = TRUE)
+            tryCatch(
+              {
+                perform_enrichment_analysis(
+                  x[[options$primary_key]],
+                  go2gene, go2name, go_data,
+                  output_folder
+                )
+              },
+              error = function(e) {
+                message(sprintf(
+                  "Failed to perform enrichment analysis on %s_%s",
+                  options$group_field, unique(x[[options$group_field]])
+                ))
+              }
+            )
+          })
+      }) %>% invisible()
+
+
     } else {
       perform_enrichment_analysis(
         df[[options$primary_key]],
