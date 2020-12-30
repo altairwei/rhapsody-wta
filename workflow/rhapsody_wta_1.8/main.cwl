@@ -236,6 +236,15 @@
             "outputSource": "GetDataTable/UMI_Adjusted_Stats",
             "id": "UMI_Adjusted_Stats",
             "label": "UMI Adjusted Statistics"
+        },
+        {
+            "type": [
+                "null",
+                "File"
+            ],
+            "outputSource": "GetDataTable/Molecular_Annotation",
+            "id": "Molecular_Annotation",
+            "label": "Molecular Annotation"
         }
     ],
     "class": "Workflow",
