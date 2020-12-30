@@ -161,7 +161,7 @@ cell_umi_saturation_histogram <- function(mol_df, cell_df) {
 gene_seq_depth_histogram <- function(umi_stats_df) {
   p_seq_depth <- ggplot2::ggplot(umi_stats_df,
     ggplot2::aes(RSEC_Adjusted_Seq_Depth, fill = Status)) +
-    ggplot2::geom_histogram(bins = 80) +
+    ggplot2::geom_histogram(position = "stack", bins = 80) +
     ggplot2::scale_x_continuous(limits = c(0, 30)) +
     ggplot2::ggtitle("Gene Sequence Depth Distribution") +
     ggplot2::xlab("RSEC Adjusted Seq Depth") +
@@ -169,7 +169,7 @@ gene_seq_depth_histogram <- function(umi_stats_df) {
     ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
   p_umi_count <- ggplot2::ggplot(umi_stats_df,
     ggplot2::aes(RSEC_Adjusted_Molecules, fill = Status)) +
-    ggplot2::geom_histogram(bins = 80) +
+    ggplot2::geom_histogram(position = "stack", bins = 80) +
     ggplot2::scale_x_continuous(limits = c(0, 2500)) +
     ggplot2::ggtitle("Gene UMIs Count Distribution") +
     ggplot2::xlab("Count of RSEC Adjusted Molecules") +
