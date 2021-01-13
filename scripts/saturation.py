@@ -9,36 +9,6 @@ import csv
 import pysam
 
 
-class ProgressBar(object):
-
-    def __init__(self, total, prefix="", suffix="", ncol=60, file=sys.stderr):
-        self.count = total
-        self.prefix = prefix
-        self.suffix = suffix
-        self.ncol = ncol
-        self.file = file
-        self.done = 0
-        self.last_time = time.time()
-
-    def update(self, amount):
-        self.done += amount
-        x = int(self.ncol*self.done/self.count)
-        self.file.write("%s[%s%s] %i/%i %s\r" % (
-            self.prefix, "#"*x, " "*(self.ncol-x), self.done, self.count,
-            self.suffix))
-        self.file.flush()
-
-    def __enter__(self):
-        self.update(0)
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.file.write("%s[%s%s] %i/%i %s\r\n" % (
-            self.prefix, "#"*self.ncol, " "*0, self.done, self.count,
-            self.suffix))
-        self.file.flush()
-
-
 def get_alignment_count(bamfile):
     stats_output = pysam.idxstats(bamfile).strip()
     total_align = 0
@@ -80,6 +50,7 @@ if __name__ == "__main__":
         else:
             buckets[bucket_idx]["genes"].add(gene)
         finally:
+
             if options.verbose:
                 i += 1
                 if i % 1000000 == 0:
@@ -93,4 +64,5 @@ if __name__ == "__main__":
     for buck in buckets:
         depth += buck["read_count"]
         detected_genes = detected_genes.union(buck["genes"])
+        #output_writer.writerow([buck["read_count"], len(buck["genes"])])
         output_writer.writerow([depth, len(detected_genes)])

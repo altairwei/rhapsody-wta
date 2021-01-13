@@ -55,8 +55,9 @@ int main(int argc, char *argv[]) {
 
         if (verbose) {
             if (++i % 1000000 == 0)
-                fprintf(stderr, "Processed %i alignments\r", i);
+                fprintf(stderr, "Processed %zu alignments\r", i);
         }
+
 
     }
 
@@ -70,6 +71,7 @@ int main(int argc, char *argv[]) {
     for (auto &bucket : buckets) {
         depth += bucket.read_count;
         detected_genes.insert(bucket.genes.begin(), bucket.genes.end());
+        //cout << bucket.read_count << "," << bucket.genes.size() << endl;
         cout << depth << "," << detected_genes.size() << endl;
     }
 }

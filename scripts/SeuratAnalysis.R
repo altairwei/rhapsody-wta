@@ -500,6 +500,7 @@ plot_avg_expr_genes <- function(avg_genes, diff_genes) {
     condition_ctrl <- unique(diff_genes_comp[["ctrl_group"]])
     condition_test <- unique(diff_genes_comp[["test_group"]])
     # Calculate coefficient of correlation
+    #TODO: fill NA with zero.
     df_by_cluster <- split(avg_genes, avg_genes[["cluster"]])
     xmin <- min(avg_genes[[condition_ctrl]], na.rm = TRUE)
     ymax <- max(avg_genes[[condition_test]], na.rm = TRUE)
