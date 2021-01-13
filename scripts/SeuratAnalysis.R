@@ -541,7 +541,7 @@ plot_avg_expr_genes <- function(avg_genes, diff_genes) {
     df_to_plot$highlight[
       df_to_plot$gene %in% diff_genes_to_highlight$gene] <- "yes"
     # Plot facets
-    ggplot2::ggplot(df_to_plot, ggplot2::aes(
+    p1 <- ggplot2::ggplot(df_to_plot, ggplot2::aes(
         x = !!ggplot2::sym(condition_ctrl), y = !!ggplot2::sym(condition_test),
         color = highlight, alpha = highlight)) +
       ggplot2::ggtitle(unique(diff_genes_comp[["comparison"]])) +
@@ -556,7 +556,34 @@ plot_avg_expr_genes <- function(avg_genes, diff_genes) {
       ggplot2::scale_color_manual(values = c("black", "red"), guide = FALSE) +
       ggplot2::scale_alpha_manual(values = c(0.05, 1), guide = FALSE) +
       ggplot2::facet_wrap(ggplot2::vars(cluster)) +
-      cowplot::panel_border()
+      cowplot::panel_border() +
+      ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
+
+    # Plot whole correlation diagram
+    pearson_r_whole <- cor(
+      avg_genes[[condition_ctrl]], avg_genes[[condition_test]],
+      method = "pearson", use = "complete.obs")
+    label_whole <- data.frame(
+      coeff_label = paste(
+        "'Pearson ' * italic(R^2) == ", round(pearson_r_whole^2, digits = 2)),
+      position_x = xmin,
+      position_y = ymax
+    )
+    p2 <- ggplot2::ggplot(avg_genes, ggplot2::aes(
+        x = !!ggplot2::sym(condition_ctrl),
+        y = !!ggplot2::sym(condition_test))) +
+      ggplot2::ggtitle(unique(diff_genes_comp[["comparison"]])) +
+      ggplot2::geom_point() +
+      ggplot2::geom_text(
+        data = label_whole,
+        # Don't inherit color or alpha
+        inherit.aes = FALSE,
+        mapping = ggplot2::aes(
+          x = position_x, y = position_y, label = coeff_label),
+        hjust = 0, vjust = 1, size = 8, parse = TRUE) +
+      ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
+
+    patchwork::wrap_plots(p1, p2)
   })
 
   results
@@ -579,7 +606,7 @@ perform_diff_gene <- function(object, output_folder, draw_plot = TRUE) {
             file.path(output_folder,
               sprintf("DEG_Avg_Expr_Scatter_%s.png", p_name)),
             all_p_list[[p_name]],
-            width = 16, height = 16
+            width = 32, height = 16
           )
         }
       }
