@@ -59,36 +59,38 @@ def get_raw_reads_count(bamfile):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("bamfile", type=str, metavar="BAM_FILE")
+    parser.add_argument("-v", "--verbose", action="store_true")
     options = parser.parse_args()
 
     samfile = pysam.AlignmentFile(options.bamfile, "rb")
-    if not samfile.check_index():
-        print("Error: can not find BAM index.")
-        sys.exit(1)
 
     random.seed(round(time.time()))
 
-    total = get_alignment_count(options.bamfile)
-    n_depth = round(total/10000000)
-    buckets = [{"num": 0, "genes": set()} for i in range(n_depth)]
-    with ProgressBar(total, "Processing: ") as bar:
-        for alignment in samfile.fetch(until_eof=True):
-            try:
-                gene = alignment.get_tag("XF")
-            except KeyError:
-                continue
-            if not gene.startswith("__"):
-                bucket_idx = random.randrange(n_depth)
-                buckets[bucket_idx]["num"] += 1
-                buckets[bucket_idx]["genes"].add(gene)
-            bar.update(1)
+    n_depth = 100
+    buckets = [{"read_count": 0, "genes": set()} for i in range(n_depth)]
+    i = 0
+    for alignment in samfile.fetch(until_eof=True):
+        # Select a bucket for each reads.
+        bucket_idx = random.randrange(n_depth)
+        buckets[bucket_idx]["read_count"] += 1
+        try:
+            gene = alignment.get_tag("XF")
+        except KeyError:
+            continue
+        else:
+            buckets[bucket_idx]["genes"].add(gene)
+        finally:
+            if options.verbose:
+                i += 1
+                if i % 1000000 == 0:
+                    sys.stderr.write("Processed %i alignments\r" % i)
 
     output_writer = csv.writer(sys.stdout)
-    output_writer.writerow(["Depths", "Detected_Genes"])
+    output_writer.writerow(["depths", "detected_genes"])
 
     depth = 0
     detected_genes = set()
     for buck in buckets:
-        depth += buck["num"]
+        depth += buck["read_count"]
         detected_genes = detected_genes.union(buck["genes"])
         output_writer.writerow([depth, len(detected_genes)])

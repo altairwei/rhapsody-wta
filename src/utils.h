@@ -4,7 +4,7 @@
 #include <string>
 #include <iostream>
 
-int getRandomInt(const int& lowerBound, const int& upperBound);
+int getRandomRange(const int& lowerBound, const int& upperBound);
 
 class ProgressBar
 {

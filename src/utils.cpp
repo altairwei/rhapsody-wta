@@ -4,11 +4,11 @@
 
 using namespace std;
 
-// utility methods for RandomTool
-int getRandomInt(const int& lowerBound, const int& upperBound)
+// Random select from a half open interval: [0, 10)
+int getRandomRange(const int& lowerBound, const int& upperBound)
 {
-    const int range = (upperBound - lowerBound) + 1;
-    return (lowerBound + (int)(range * (double)std::rand() / ((double)RAND_MAX + 1)));
+    const int range = upperBound - lowerBound;
+    return (lowerBound + int(range * double(std::rand()) / double(RAND_MAX)));
 }
 
 ProgressBar::ProgressBar(

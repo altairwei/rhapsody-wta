@@ -1,4 +1,5 @@
 find_package(bamtools REQUIRED)
+find_package(CLI11 REQUIRED)
 
 set(HEADERS
     utils.h
@@ -6,9 +7,9 @@ set(HEADERS
 
 set(SOURCES
     utils.cpp
-    seq_saturation.cpp
+    saturation.cpp
 )
 
-add_executable(seq-saturation ${HEADERS} ${SOURCES})
-target_include_directories(seq-saturation PRIVATE ${bamtools_INCLUDES})
-target_link_libraries(seq-saturation ${bamtools_LIBRARIES})
+add_executable(saturation ${HEADERS} ${SOURCES})
+target_include_directories(saturation PRIVATE ${bamtools_INCLUDES} ${CLI11_INCLUDES})
+target_link_libraries(saturation ${bamtools_LIBRARIES} ${CLI11_LIBRARIES})

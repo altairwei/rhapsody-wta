@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#PBS -l mem=20gb,nodes=1:ppn=1,walltime=24:00:00
+#PBS -l mem=20gb,nodes=1:ppn=6,walltime=24:00:00
 #PBS -q batch
 #PBS -N seurat_analysis
 #PBS -o logs
@@ -16,4 +16,4 @@ source env.sh
 
 INPUT_DIR=$1
 
-SeuratAnalysis.R -m --plot --produce-cache "${INPUT_DIR}"
+SeuratAnalysis.R -c --plot --process 6 --produce-cache "${INPUT_DIR}"

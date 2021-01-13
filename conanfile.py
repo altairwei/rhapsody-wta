@@ -10,7 +10,7 @@ class RhapsodyWtaConan(ConanFile):
     description = "Some tools for handling the output of Rhapsody WTA pipeline"
     settings = "os", "compiler", "build_type", "arch"
     generators = "cmake_find_package"
-    requires = "bamtools/2.5.1@altairwei/testing"
+    requires = "bamtools/2.5.1@altairwei/testing", "cli11/1.9.1"
 
     def imports(self):
         self.copy("*.dll", dst="bin", src="bin")
