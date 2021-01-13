@@ -43,18 +43,17 @@ if __name__ == "__main__":
         # Select a bucket for each reads.
         bucket_idx = random.randrange(n_depth)
         buckets[bucket_idx]["read_count"] += 1
-        try:
-            gene = alignment.get_tag("XF")
-        except KeyError:
-            continue
-        else:
-            buckets[bucket_idx]["genes"].add(gene)
-        finally:
 
-            if options.verbose:
-                i += 1
-                if i % 1000000 == 0:
-                    sys.stderr.write("Processed %i alignments\r" % i)
+        if alignment.has_tag("XF") and alignment.has_tag("CN"):
+            gene = alignment.get_tag("XF")
+            cell = alignment.get_tag("CN")
+            if cell == "T":
+                buckets[bucket_idx]["genes"].add(gene)
+
+        if options.verbose:
+            i += 1
+            if i % 1000000 == 0:
+                sys.stderr.write("Processed %i alignments\r" % i)
 
     output_writer = csv.writer(sys.stdout)
     output_writer.writerow(["depths", "detected_genes"])
