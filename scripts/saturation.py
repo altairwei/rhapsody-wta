@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 sys.stderr.write("Processed %i alignments\r" % i)
 
     output_writer = csv.writer(sys.stdout)
-    output_writer.writerow(["depths", "detected_genes_from_all", "detected_genes_from_cell"])
+    output_writer.writerow(["depths", "detected_genes", "origin"])
 
     depth = 0
     detected_genes_all = set()
@@ -70,4 +70,5 @@ if __name__ == "__main__":
         detected_genes_all = detected_genes_all.union(buck["all_genes"])
         detected_genes_cell = detected_genes_cell.union(buck["cell_genes"])
         #output_writer.writerow([buck["read_count"], len(buck["genes"])])
-        output_writer.writerow([depth, len(detected_genes_all), len(detected_genes_cell)])
+        output_writer.writerow([depth, len(detected_genes_all), "All"])
+        output_writer.writerow([depth, len(detected_genes_cell), "Cells"])
