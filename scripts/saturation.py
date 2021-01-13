@@ -37,18 +37,22 @@ if __name__ == "__main__":
     random.seed(round(time.time()))
 
     n_depth = 100
-    buckets = [{"read_count": 0, "genes": set()} for i in range(n_depth)]
+    buckets = [{
+        "read_count": 0, "all_genes": set(),
+        "cell_genes": set()} for i in range(n_depth)]
     i = 0
     for alignment in samfile.fetch(until_eof=True):
         # Select a bucket for each reads.
         bucket_idx = random.randrange(n_depth)
         buckets[bucket_idx]["read_count"] += 1
 
-        if alignment.has_tag("XF") and alignment.has_tag("CN"):
+        if alignment.has_tag("XF"):
             gene = alignment.get_tag("XF")
-            cell = alignment.get_tag("CN")
-            if cell == "T":
-                buckets[bucket_idx]["genes"].add(gene)
+            buckets[bucket_idx]["all_genes"].add(gene)
+            if alignment.has_tag("CN"):
+                cell = alignment.get_tag("CN")
+                if cell == "T":
+                    buckets[bucket_idx]["cell_genes"].add(gene)
 
         if options.verbose:
             i += 1
@@ -56,12 +60,14 @@ if __name__ == "__main__":
                 sys.stderr.write("Processed %i alignments\r" % i)
 
     output_writer = csv.writer(sys.stdout)
-    output_writer.writerow(["depths", "detected_genes"])
+    output_writer.writerow(["depths", "detected_genes_from_all", "detected_genes_from_cell"])
 
     depth = 0
-    detected_genes = set()
+    detected_genes_all = set()
+    detected_genes_cell = set()
     for buck in buckets:
         depth += buck["read_count"]
-        detected_genes = detected_genes.union(buck["genes"])
+        detected_genes_all = detected_genes_all.union(buck["all_genes"])
+        detected_genes_cell = detected_genes_cell.union(buck["cell_genes"])
         #output_writer.writerow([buck["read_count"], len(buck["genes"])])
-        output_writer.writerow([depth, len(detected_genes)])
+        output_writer.writerow([depth, len(detected_genes_all), len(detected_genes_cell)])
