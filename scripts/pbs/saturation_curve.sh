@@ -20,4 +20,4 @@ QC_DIR="${INPUT_DIR}/QualityControl"
 
 mkdir -p "${QC_DIR}"
 
-saturation.py ${BAM_FILE} | tee "${QC_DIR}/QC_Saturation_Curve.csv" | plot_saturation.R "${QC_DIR}/QC_Saturation_Curve.png"
+saturation.py ${BAM_FILE} | tee "${QC_DIR}/QC_Saturation_Curve.csv" | PlotSaturation.R "${QC_DIR}/QC_Saturation_Curve.png"
