@@ -510,8 +510,8 @@ plot_avg_expr_genes <- function(avg_genes, diff_genes) {
           pearson_r <- cor(x[[condition_ctrl]], x[[condition_test]],
             method = "pearson", use = "complete.obs")
           data.frame(
-            coeff_label = paste(
-              "'Pearson ' * italic(R^2) == ", round(pearson_r^2, digits = 2)),
+            coeff_label = sprintf(
+              "'Pearson ' * italic(R^2) == '%.2f'", pearson_r^2),
             cluster = unique(x[["cluster"]]),
             position_x = xmin,
             position_y = ymax
@@ -564,8 +564,8 @@ plot_avg_expr_genes <- function(avg_genes, diff_genes) {
       avg_genes[[condition_ctrl]], avg_genes[[condition_test]],
       method = "pearson", use = "complete.obs")
     label_whole <- data.frame(
-      coeff_label = paste(
-        "'Pearson ' * italic(R^2) == ", round(pearson_r_whole^2, digits = 2)),
+      coeff_label = sprintf(
+        "'Pearson ' * italic(R^2) == '%.2f'", pearson_r_whole^2),
       position_x = xmin,
       position_y = ymax
     )
