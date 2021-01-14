@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(NOT CONAN_INSTALL_MANUALLY)
-    include(${CMAKE_SOURCE_DIR}/scripts/conan.cmake)
+    include(${CMAKE_SOURCE_DIR}/scripts/misc/conan.cmake)
     conan_check(REQUIRED)
     conan_cmake_run(
         CONANFILE conanfile.py
