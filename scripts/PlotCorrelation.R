@@ -25,11 +25,8 @@ load_sources <- function() {
 
 require_dependencies(c(
   "optparse",
-  "magrittr",
-  "Matrix",
-  "Seurat",
-  "sctransform",
-  "devtools"
+  "devtools",
+  "magrittr"
 ))
 
 library(magrittr)

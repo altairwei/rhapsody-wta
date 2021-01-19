@@ -22,4 +22,5 @@ Imports:
     magrittr,
     metap,
     multtest,
-    limma
+    limma,
+    sctransform
