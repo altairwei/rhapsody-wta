@@ -22,8 +22,7 @@ require_dependencies(c(
   "ggplot2",
   "cowplot",
   "patchwork",
-  "magrittr",
-  "gghighlight"
+  "magrittr"
 ))
 
 if (suppressPackageStartupMessages(!requireNamespace("metap"))) {
@@ -329,6 +328,7 @@ single_sample_analysis <- function(
     }
   }
 
+  # TODO: 增加 SCTransform 的选项！
   # Normalizing the data
   seurat_obj <- Seurat::NormalizeData(
     seurat_obj, normalization.method = "LogNormalize", scale.factor = 10000)
@@ -708,6 +708,7 @@ if (!interactive()) {
         seurat_obj <- Seurat::CreateSeuratObject(
           counts = expr_matrix, project = basename(base_dir))
         seurat_obj$stim <- basename(base_dir)
+        # TODO: 增加 SCTransform 的选项！
         seurat_obj <- Seurat::NormalizeData(seurat_obj)
         seurat_obj <- Seurat::FindVariableFeatures(
           seurat_obj, selection.method = "vst", nfeatures = 2000)
