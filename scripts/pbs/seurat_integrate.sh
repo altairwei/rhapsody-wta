@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#PBS -l mem=20gb,nodes=1:ppn=1,walltime=24:00:00
+#PBS -l mem=20gb,nodes=1:ppn=6,walltime=24:00:00
 #PBS -q batch
 #PBS -N seurat_integrate
 #PBS -o logs
@@ -18,4 +18,4 @@ OUTPUT_DIR="$1"
 shift
 INPUT_DIRS="$@"
 
-SeuratAnalysis.R -m --plot -O "${OUTPUT_DIR}" --produce-cache --integrate ${INPUT_DIRS}
+SeuratAnalysis.R -m -d -c --process 6 --integrate -O "${OUTPUT_DIR}" ${INPUT_DIRS}
