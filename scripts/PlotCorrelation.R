@@ -26,37 +26,52 @@ load_sources <- function() {
 require_dependencies(c(
   "optparse",
   "devtools",
-  "magrittr"
+  "magrittr",
+  "Matrix"
 ))
 
 library(magrittr)
 library(optparse)
 
-load_sources()
-
 options(stringsAsFactors = FALSE)
 
 parser <- OptionParser()
 parser <- add_option(parser,
-  c("-m", "--method"),
-  dest = "method",
-  action = "store",
-  default = "avg",
-  type = "character",
-  help = paste0("Create pseudo-bulk data by summing/averaging",
-    " the counts from cells. Choices are `avg` and `sum`. [default: %default]"))
-parser <- add_option(parser,
   c("--sum"),
-  dest = "method",
-  action = "callback",
-  callback = function(...) "sum",
+  dest = "average",
+  action = "store_false",
   help = "Create pseudo-bulk data by summing the counts from cells.")
 parser <- add_option(parser,
   c("--avg"),
-  dest = "method",
-  action = "callback",
-  callback = function(...) "avg",
+  dest = "average",
+  action = "store_true",
+  default = TRUE,
   help = "Create pseudo-bulk data by averaging the counts from cells.")
+parser <- add_option(parser,
+  c("--cor-method"),
+  dest = "cor_method",
+  action = "store",
+  default = "pearson",
+  help = paste0("Which method should be used to compute ",
+    "correlation coefficient (or covariance). [default: %default]"))
+parser <- add_option(parser,
+  c("--pearson"),
+  dest = "cor_method",
+  action = "callback",
+  callback = function(...) "pearson",
+  help = "Compute Pearson's correlation coefficient (or covariance)")
+parser <- add_option(parser,
+  c("--kendall"),
+  dest = "cor_method",
+  action = "callback",
+  callback = function(...) "kendall",
+  help = "Compute Kendall's correlation coefficient (or covariance)")
+parser <- add_option(parser,
+  c("--spearman"),
+  dest = "cor_method",
+  action = "callback",
+  callback = function(...) "spearman",
+  help = "Compute Spearman's correlation coefficient (or covariance)")
 parser <- add_option(parser,
   c("--sctransform"),
   action = "store_true",
@@ -69,17 +84,22 @@ parser <- add_option(parser,
   default = getwd(),
   type = "character",
   help = paste0("Folder to save outputs. [default: current working dir]"))
+parser <- add_option(parser,
+  c("-o", "--name-prefix"),
+  dest = "name_prefix",
+  action = "store",
+  default = "Sample_Correlation",
+  type = "character",
+  help = "The name prefix of output file. [default: %default]")
 arguments <- parse_args2(parser)
 options <- arguments$options
 options$positionals <- arguments$args
 
-fun <- switch(options$method,
-  avg = Matrix::rowMeans,
-  sum = Matrix::rowSums,
-  Matrix::rowMeans
-)
+fun_to_apply <- if (options$average) Matrix::rowMeans else Matrix::rowSums
 
-#TODO: 在 Seurat 应用 MNN 整合数据之间，就查看下两个样本的相关系数。
+load_sources()
+
+#TODO: 对相关性热图进行聚类分析。
 
 ## Normalization and Variance Stabilization
 obj_list <- options$positionals
@@ -89,17 +109,17 @@ obj_list <- lapply(obj_list, function(base_dir) {
   seurat_obj <- Seurat::CreateSeuratObject(
     counts = expr_matrix, project = basename(base_dir))
   seurat_obj$stim <- basename(base_dir)
-  # TODO: 增加 SCTransform 的选项！
   if (isTRUE(options$sctransform)) {
     seurat_obj <- Seurat::SCTransform(
-      seurat_obj, vars.to.regress = "percent.mt", verbose = FALSE)
+      seurat_obj, do.scale = FALSE)
     return(seurat_obj)
   } else {
     # Perform LogNormalize
     seurat_obj <- Seurat::NormalizeData(seurat_obj)
-    seurat_obj <- Seurat::FindVariableFeatures(
-      seurat_obj, selection.method = "vst", nfeatures = 2000)
-    seurat_obj <- Seurat::ScaleData(seurat_obj, features = rownames(seurat_obj))
+    #seurat_obj <- Seurat::FindVariableFeatures(
+    #  seurat_obj, selection.method = "vst", nfeatures = 2000)
+    #seurat_obj <- Seurat::ScaleData(
+    #   seurat_obj, features = rownames(seurat_obj))
     return(seurat_obj)
   }
 })
@@ -120,8 +140,8 @@ corr_list <- lapply(comb_list, function(x) {
 
   # Gene average expression. (row = genes, col = cells)
   # `expm1` is used in Seurat::AverageExpression
-  ctrl_data <- log1p(Matrix::rowMeans(expm1(ctrl_data)))
-  test_data <- log1p(Matrix::rowMeans(expm1(test_data)))
+  ctrl_data <- log1p(fun_to_apply(expm1(ctrl_data)))
+  test_data <- log1p(fun_to_apply(expm1(test_data)))
   stopifnot(ctrl_data >= 0L)
   stopifnot(test_data >= 0L)
 
@@ -140,10 +160,10 @@ corr_list <- lapply(comb_list, function(x) {
   test_data <- test_data[all_genes]
   stopifnot(names(ctrl_data) == names(test_data))
 
-  pearson_r <- cor(ctrl_data, test_data,
-    method = "pearson", use = "complete.obs")
+  r <- cor(ctrl_data, test_data,
+    method = options$cor_method, use = "complete.obs")
 
-  pearson_r^2
+  r
 })
 
 # Prepare data frame for ggplot2
@@ -161,13 +181,23 @@ coef <- apply(data_to_plot, 1, function(x) {
 data_to_plot$coef <- coef
 
 print(data_to_plot)
+write.table(
+  data_to_plot, file = file.path(
+    options$output_folder,
+    sprintf("%s.tsv", options$name_prefix)),
+  sep = "\t", row.name = FALSE, col.names = TRUE, quote = FALSE)
 
+scale_fill_name <- switch(options$cor_method,
+  pearson = "Pearson's r",
+  kendall = "Kendall's tau",
+  spearman = "Spearman's rho"
+)
 p <- ggplot2::ggplot(data_to_plot, ggplot2::aes(
       V1, V2, fill = coef)) +
   ggplot2::geom_tile() +
   ggplot2::scale_fill_gradient(
     low = "white", high = "red",
-    name = "Pearson R^2") +
+    name = scale_fill_name) +
   ggplot2::theme_minimal() +
   ggplot2::theme(
     axis.text.x = ggplot2::element_text(
@@ -185,6 +215,9 @@ p <- ggplot2::ggplot(data_to_plot, ggplot2::aes(
     axis.ticks = ggplot2::element_blank())
 
 ggplot2::ggsave(
-  file.path(options$output_folder, "corrplot.png"), p,
+  file.path(
+    options$output_folder,
+    sprintf("%s.png", options$name_prefix)),
+  p,
   width = length(options$positionals),
   height = length(options$positionals))
