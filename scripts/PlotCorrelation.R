@@ -27,7 +27,9 @@ require_dependencies(c(
   "optparse",
   "devtools",
   "magrittr",
-  "Matrix"
+  "Matrix",
+  "pheatmap",
+  "reshape2"
 ))
 
 library(magrittr)
@@ -47,6 +49,7 @@ parser <- add_option(parser,
   action = "store_true",
   default = TRUE,
   help = "Create pseudo-bulk data by averaging the counts from cells.")
+
 parser <- add_option(parser,
   c("--cor-method"),
   dest = "cor_method",
@@ -72,11 +75,42 @@ parser <- add_option(parser,
   action = "callback",
   callback = function(...) "spearman",
   help = "Compute Spearman's correlation coefficient (or covariance)")
+
 parser <- add_option(parser,
-  c("--sctransform"),
-  action = "store_true",
-  default = FALSE,
+  c("--normalization-method"),
+  dest = "norm_method",
+  action = "store",
+  default = "LogNormalize",
+  help = paste0("Specify the method used to normalize expression ",
+    "data. [default: %default]"))
+parser <- add_option(parser,
+  c("--log"),
+  dest = "norm_method",
+  action = "callback",
+  callback = function(...) "LogNormalize",
+  help = paste0("Use LogNormalize of Seurat::NormalizeData ",
+    "to perform normalization."))
+parser <- add_option(parser,
+  c("--clr"),
+  dest = "norm_method",
+  action = "callback",
+  callback = function(...) "CLR",
+  help = paste0("Use CLR of Seurat::NormalizeData ",
+    "to perform normalization."))
+parser <- add_option(parser,
+  c("--rc"),
+  dest = "norm_method",
+  action = "callback",
+  callback = function(...) "RC",
+  help = paste0("Use RC of Seurat::NormalizeData ",
+    "to perform normalization."))
+parser <- add_option(parser,
+  c("--sct"),
+  dest = "norm_method",
+  action = "callback",
+  callback = function(...) "SCTransform",
   help = "Use Seurat::SCTransform to perform normalization.")
+
 parser <- add_option(parser,
   c("-O", "--output-folder"),
   dest = "output_folder",
@@ -101,86 +135,14 @@ load_sources()
 
 #TODO: 对相关性热图进行聚类分析。
 
-## Normalization and Variance Stabilization
-obj_list <- options$positionals
-names(obj_list) <- basename(options$positionals)
-obj_list <- lapply(obj_list, function(base_dir) {
-  expr_matrix <- read_rhapsody_wta(base_dir, TRUE)
-  seurat_obj <- Seurat::CreateSeuratObject(
-    counts = expr_matrix, project = basename(base_dir))
-  seurat_obj$stim <- basename(base_dir)
-  if (isTRUE(options$sctransform)) {
-    seurat_obj <- Seurat::SCTransform(
-      seurat_obj, do.scale = FALSE)
-    return(seurat_obj)
-  } else {
-    # Perform LogNormalize
-    seurat_obj <- Seurat::NormalizeData(seurat_obj)
-    #seurat_obj <- Seurat::FindVariableFeatures(
-    #  seurat_obj, selection.method = "vst", nfeatures = 2000)
-    #seurat_obj <- Seurat::ScaleData(
-    #   seurat_obj, features = rownames(seurat_obj))
-    return(seurat_obj)
-  }
-})
+expr_df <- make_psuedo_bulk(options$positionals,
+  normalization = options$norm_method,
+  method = ifelse(options$average, "avg", "sum"))
 
-all_stim <- names(obj_list)
-comb_list <- as.data.frame(combn(all_stim, 2), stringsAsFactors = FALSE)
-names(comb_list) <- NULL
-comb_list <- as.list(comb_list)
+cormat <- cor(expr_df, method = options$cor_method, use = "complete.obs")
 
-corr_list <- lapply(comb_list, function(x) {
-  stopifnot(length(x) == 2)
+data_to_plot <- reshape2::melt(cormat, value.name = "coef")
 
-  ctrl <- x[[1]]
-  test <- x[[2]]
-
-  ctrl_data <- Seurat::GetAssayData(obj_list[[ctrl]])
-  test_data <- Seurat::GetAssayData(obj_list[[test]])
-
-  # Gene average expression. (row = genes, col = cells)
-  # `expm1` is used in Seurat::AverageExpression
-  ctrl_data <- log1p(fun_to_apply(expm1(ctrl_data)))
-  test_data <- log1p(fun_to_apply(expm1(test_data)))
-  stopifnot(ctrl_data >= 0L)
-  stopifnot(test_data >= 0L)
-
-  ctrl_genes <- names(ctrl_data)
-  test_genes <- names(test_data)
-  all_genes <- union(ctrl_genes, test_genes)
-
-  # Fill NA with zero.
-  ctrl_data[setdiff(all_genes, ctrl_genes)] <- 0
-  test_data[setdiff(all_genes, test_genes)] <- 0
-  stopifnot(length(all_genes) == length(ctrl_data))
-  stopifnot(length(all_genes) == length(test_data))
-
-  # Re-order named vector
-  ctrl_data <- ctrl_data[all_genes]
-  test_data <- test_data[all_genes]
-  stopifnot(names(ctrl_data) == names(test_data))
-
-  r <- cor(ctrl_data, test_data,
-    method = options$cor_method, use = "complete.obs")
-
-  r
-})
-
-# Prepare data frame for ggplot2
-data_to_plot <- expand.grid(V1 = names(obj_list), V2 = names(obj_list))
-coef <- apply(data_to_plot, 1, function(x) {
-  names(x) <- NULL
-  if (x[[1]] == x[[2]])
-    return(1)
-  check_result <- lapply(comb_list, function(comb) {
-    c(identical(x, comb), identical(rev(x), comb))
-  })
-  pos <- which(sapply(check_result, any))
-  corr_list[[pos]]
-})
-data_to_plot$coef <- coef
-
-print(data_to_plot)
 write.table(
   data_to_plot, file = file.path(
     options$output_folder,
@@ -193,7 +155,7 @@ scale_fill_name <- switch(options$cor_method,
   spearman = "Spearman's rho"
 )
 p <- ggplot2::ggplot(data_to_plot, ggplot2::aes(
-      V1, V2, fill = coef)) +
+      Var1, Var2, fill = coef)) +
   ggplot2::geom_tile() +
   ggplot2::scale_fill_gradient(
     low = "white", high = "red",
@@ -205,7 +167,7 @@ p <- ggplot2::ggplot(data_to_plot, ggplot2::aes(
     axis.text.y = ggplot2::element_text(size = 12)) +
   ggplot2::coord_fixed() +
   ggplot2::geom_text(ggplot2::aes(
-      V1, V2, label = sprintf("%.2f", coef)), color = "black", size = 4) +
+      Var1, Var2, label = sprintf("%.2f", coef)), color = "black", size = 4) +
   ggplot2::theme(
     axis.title.x = ggplot2::element_blank(),
     axis.title.y = ggplot2::element_blank(),
