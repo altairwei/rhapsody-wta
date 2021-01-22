@@ -1,16 +1,16 @@
 #' Make psuedo-bulk RNA-Seq from scRNA-Seq.
 #'
-#' @param ... A list of Rhapsody WTA results folder.
+#' @param data_folders A vector of Rhapsody WTA results folder path.
 #' @param normalization Normalization methods to apply. Available values
 #'    are same as \code{Seurat::NormalizeData} plus "SCTransform".
 #' @param method Psuedo-bulk method to apply. Available values
 #'    are \code{avg} and \code{sum} .
 make_psuedo_bulk <- function(
-  ...,
+  data_folders,
   normalization = "LogNormalize",
   method = "avg") {
-  data_folders <- list(...)
-  names(data_folders) <- basename(as.character(data_folders))
+  stopifnot(is.character(data_folders))
+  names(data_folders) <- basename(data_folders)
   obj_list <- lapply(data_folders, function(base_dir) {
     expr_matrix <- read_rhapsody_wta(base_dir, TRUE)
     seurat_obj <- Seurat::CreateSeuratObject(
