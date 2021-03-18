@@ -30,6 +30,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("bamfile", type=str, metavar="BAM_FILE")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-g", "--detected-genes", default=None)
     options = parser.parse_args()
 
     samfile = pysam.AlignmentFile(options.bamfile, "rb")
@@ -46,13 +47,21 @@ if __name__ == "__main__":
         bucket_idx = random.randrange(n_depth)
         buckets[bucket_idx]["read_count"] += 1
 
-        if alignment.has_tag("XF"):
+        if alignment.has_tag("NH") and alignment.has_tag("XF"):
             gene = alignment.get_tag("XF")
-            buckets[bucket_idx]["all_genes"].add(gene)
-            if alignment.has_tag("CN"):
-                cell = alignment.get_tag("CN")
-                if cell == "T":
-                    buckets[bucket_idx]["cell_genes"].add(gene)
+            num_maps = alignment.get_tag("NH")
+            # Check alignment was valid
+            if (num_maps == 1 and
+                    not gene.startswith('__alignment') and
+                    not gene.startswith('__ambiguous[') and
+                    not gene.startswith('__not_align') and
+                    not gene.startswith('__')):
+                buckets[bucket_idx]["all_genes"].add(gene)
+                # Check reads were from putative cells
+                if alignment.has_tag("CB"):
+                    cell_label = alignment.get_tag("CB")
+                    if cell_label != "0":
+                        buckets[bucket_idx]["cell_genes"].add(gene)
 
         if options.verbose:
             i += 1
@@ -72,3 +81,7 @@ if __name__ == "__main__":
         #output_writer.writerow([buck["read_count"], len(buck["genes"])])
         output_writer.writerow([depth, len(detected_genes_all), "All"])
         output_writer.writerow([depth, len(detected_genes_cell), "Cells"])
+
+    if options.detected_genes:
+        with open(options.detected_genes, "w", encoding="UTF-8") as fh:
+            fh.writelines(line + "\n" for line in detected_genes_all)
