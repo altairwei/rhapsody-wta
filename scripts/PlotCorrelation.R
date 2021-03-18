@@ -29,7 +29,8 @@ require_dependencies(c(
   "magrittr",
   "Matrix",
   "pheatmap",
-  "reshape2"
+  "reshape2",
+  "rhapsodykit"
 ))
 
 library(magrittr)
@@ -131,11 +132,11 @@ options$positionals <- arguments$args
 
 fun_to_apply <- if (options$average) Matrix::rowMeans else Matrix::rowSums
 
-load_sources()
-
 #TODO: 对相关性热图进行聚类分析。
+#TODO: 增加选项输出 psuedo-bulk RNA-Seq 数据
 
-expr_df <- make_psuedo_bulk(options$positionals,
+expr_df <- rhapsodykit::make_psuedo_bulk(
+  options$positionals,
   normalization = options$norm_method,
   method = ifelse(options$average, "avg", "sum"))
 
