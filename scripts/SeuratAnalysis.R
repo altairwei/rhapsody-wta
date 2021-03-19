@@ -1,34 +1,20 @@
 #!/usr/bin/env Rscript
 
-load_sources <- function() {
-  full_args <- commandArgs(trailingOnly = FALSE)
-  script_arg_prefix <- "--file="
-  script_name <- sub(
-    script_arg_prefix, "", full_args[grep(script_arg_prefix, full_args)])
-  real_name <- Sys.readlink(script_name)
-  if (isTRUE(nzchar(real_name, keepNA = TRUE))) {
-    script_name <- real_name
-  }
-  script_dir <- dirname(script_name)
-  deps_dir <- file.path(script_dir, "RAnalysis")
-  devtools::load_all(deps_dir)
-}
-
 require_dependencies <- function(x) {
   stopifnot(is.character(x))
   dep_status <- suppressPackageStartupMessages(
     sapply(x, requireNamespace)
   )
   pkg_to_install <- names(dep_status[dep_status == FALSE])
-  install.packages(pkg_to_install)
+  if (length(pkg_to_install) > 0)
+    install.packages(pkg_to_install)
 }
 
 require_dependencies(c(
   "optparse",
-  "devtools"
+  "rhapsodykit"
 ))
 
-load_sources()
 library(optparse)
 
 ggplot2::theme_set(cowplot::theme_cowplot())
@@ -128,7 +114,7 @@ if (isTRUE(options$integrate)) {
     obj_combined <- readRDS(options$use_cache)
   } else {
     obj_list <- lapply(options$positionals, function(base_dir) {
-      expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
+      expr_matrix <- rhapsodykit::read_rhapsody_wta(base_dir, options$use_mtx)
       seurat_obj <- Seurat::CreateSeuratObject(
         counts = expr_matrix, project = basename(base_dir))
       seurat_obj$stim <- basename(base_dir)
@@ -139,7 +125,7 @@ if (isTRUE(options$integrate)) {
       seurat_obj
     })
 
-    obj_combined <- integrated_sample_analysis(obj_list)
+    obj_combined <- rhapsodykit::integrated_sample_analysis(obj_list)
   }
 
   output_folder <- options$output_folder
@@ -148,15 +134,15 @@ if (isTRUE(options$integrate)) {
   }
 
   #FIXME: Does this make sense?
-  perform_find_all_markers(obj_combined, output_folder)
+  rhapsodykit::perform_find_all_markers(obj_combined, output_folder)
 
   # Conserved markers across conditions
-  markers_conserved_df <- find_all_conserved_markers(obj_combined)
+  markers_conserved_df <- rhapsodykit::find_all_conserved_markers(obj_combined)
   readr::write_csv(
     markers_conserved_df, file.path(output_folder, "Markers_Conserved.csv"))
 
   # Identify differential expressed genes across conditions
-  perform_diff_gene(obj_combined, output_folder, options$draw_plot)
+  rhapsodykit::perform_diff_gene(obj_combined, output_folder, options$draw_plot)
 
   if (isTRUE(options$produce_cache)) {
     saveRDS(obj_combined,
@@ -164,12 +150,12 @@ if (isTRUE(options$integrate)) {
   }
 
   if (isTRUE(options$draw_plot)) {
-    generate_seurat_plots(obj_combined, output_folder)
+    rhapsodykit::generate_seurat_plots(obj_combined, output_folder)
   }
 } else {
   invisible(
     lapply(options$positionals, function(base_dir) {
-      expr_matrix <- read_rhapsody_wta(base_dir, options$use_mtx)
+      expr_matrix <- rhapsodykit::read_rhapsody_wta(base_dir, options$use_mtx)
 
       if (isTRUE(options$compress) && !isTRUE(options$use_mtx)) {
         input_file <- Sys.glob(
@@ -195,10 +181,10 @@ if (isTRUE(options$integrate)) {
       seurat_obj <- Seurat::CreateSeuratObject(
         counts = expr_matrix, project = basename(base_dir))
 
-      seurat_obj <- single_sample_analysis(
+      seurat_obj <- rhapsodykit::single_sample_analysis(
         seurat_obj, options$mt_gene_file, options$cp_gene_file)
 
-      perform_find_all_markers(seurat_obj, output_folder)
+      rhapsodykit::perform_find_all_markers(seurat_obj, output_folder)
 
       if (isTRUE(options$produce_cache)) {
         saveRDS(seurat_obj,
@@ -206,7 +192,7 @@ if (isTRUE(options$integrate)) {
       }
 
       if (isTRUE(options$draw_plot)) {
-        generate_seurat_plots(seurat_obj, output_folder)
+        rhapsodykit::generate_seurat_plots(seurat_obj, output_folder)
       }
 
     })
