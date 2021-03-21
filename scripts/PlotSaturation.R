@@ -6,7 +6,8 @@ require_dependencies <- function(x) {
     sapply(x, requireNamespace)
   )
   pkg_to_install <- names(dep_status[dep_status == FALSE])
-  install.packages(pkg_to_install)
+  if (length(pkg_to_install) > 0)
+    install.packages(pkg_to_install)
 }
 
 require_dependencies(c(
