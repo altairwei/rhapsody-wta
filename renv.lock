@@ -50,6 +50,12 @@
       "Repository": "CRAN",
       "Hash": "db75371846625725e221470b310da1d5"
     },
+    "BiocParallel": {
+      "Package": "BiocParallel",
+      "Version": "1.24.1",
+      "Source": "Bioconductor",
+      "Hash": "338a72852f019b3b51ae87dc82391eb3"
+    },
     "BiocVersion": {
       "Package": "BiocVersion",
       "Version": "3.12.0",
@@ -62,6 +68,18 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "030aaec5bc6553f35347cbb1e70b1a17"
+    },
+    "DO.db": {
+      "Package": "DO.db",
+      "Version": "2.9",
+      "Source": "Bioconductor",
+      "Hash": "7d05e00472158bda5f124df351af0a49"
+    },
+    "DOSE": {
+      "Package": "DOSE",
+      "Version": "3.16.0",
+      "Source": "Bioconductor",
+      "Hash": "1a16437853dbade9c1096e3248be9380"
     },
     "DT": {
       "Package": "DT",
@@ -76,6 +94,18 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "b56998fff55e4a4b4860ad6e8c67e0f9"
+    },
+    "GO.db": {
+      "Package": "GO.db",
+      "Version": "3.12.1",
+      "Source": "Bioconductor",
+      "Hash": "1ed8d8ec3449f0c6fba5f1932ac333ae"
+    },
+    "GOSemSim": {
+      "Package": "GOSemSim",
+      "Version": "2.16.1",
+      "Source": "Bioconductor",
+      "Hash": "f73eccd90a8131c9798bd6675e442c5a"
     },
     "IRanges": {
       "Package": "IRanges",
@@ -368,6 +398,12 @@
       "Repository": "CRAN",
       "Hash": "5ea8f54741ff907e2c0b5efabc9de729"
     },
+    "clusterProfiler": {
+      "Package": "clusterProfiler",
+      "Version": "3.18.1",
+      "Source": "Bioconductor",
+      "Hash": "5f344773b73f177d66183d4c807c2670"
+    },
     "codetools": {
       "Package": "codetools",
       "Version": "0.2-18",
@@ -494,6 +530,13 @@
       "Repository": "CRAN",
       "Hash": "a0cbe758a531d054b537d16dff4d58a1"
     },
+    "downloader": {
+      "Package": "downloader",
+      "Version": "0.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f4f2a915e0dedbdf016a83b63477349f"
+    },
     "dplyr": {
       "Package": "dplyr",
       "Version": "1.0.5",
@@ -514,6 +557,12 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "fd2844b3a43ae2d27e70ece2df1b4e2a"
+    },
+    "enrichplot": {
+      "Package": "enrichplot",
+      "Version": "1.10.2",
+      "Source": "Bioconductor",
+      "Hash": "bfe9798d5d9be7c8bfb269c5f19dd957"
     },
     "evaluate": {
       "Package": "evaluate",
@@ -543,6 +592,19 @@
       "Repository": "CRAN",
       "Hash": "77bd60a6157420d4ffa93b27cf6a58b8"
     },
+    "fastmatch": {
+      "Package": "fastmatch",
+      "Version": "1.1-0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "2cfe25650d69960c54e06840e4b5d8e4"
+    },
+    "fgsea": {
+      "Package": "fgsea",
+      "Version": "1.16.0",
+      "Source": "Bioconductor",
+      "Hash": "0ed01e7c1d5fef94d795abb1597aab86"
+    },
     "fitdistrplus": {
       "Package": "fitdistrplus",
       "Version": "1.1-3",
@@ -550,12 +612,33 @@
       "Repository": "CRAN",
       "Hash": "8e9ca89621f9304a553e0ff119328053"
     },
+    "formatR": {
+      "Package": "formatR",
+      "Version": "1.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "3a5d6129643015003ab29e9aef8d6367"
+    },
     "fs": {
       "Package": "fs",
       "Version": "1.5.0",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "44594a07a42e5f91fac9f93fda6d0109"
+    },
+    "futile.logger": {
+      "Package": "futile.logger",
+      "Version": "1.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "99f0ace8c05ec7d3683d27083c4f1e7e"
+    },
+    "futile.options": {
+      "Package": "futile.options",
+      "Version": "1.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "0d9bf02413ddc2bbe8da9ce369dcdd2b"
     },
     "future": {
       "Package": "future",
@@ -592,12 +675,26 @@
       "Repository": "CRAN",
       "Hash": "ad68e3263f0bc9269aab8c2039440117"
     },
+    "ggforce": {
+      "Package": "ggforce",
+      "Version": "0.3.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "4c64a588b497f8c088e1d308ddd40bc6"
+    },
     "ggplot2": {
       "Package": "ggplot2",
       "Version": "3.3.3",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "3eb6477d01eb5bbdc03f7d5f70f2733e"
+    },
+    "ggraph": {
+      "Package": "ggraph",
+      "Version": "2.0.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "bb52a023e912142b8970ba883dd3b706"
     },
     "ggrepel": {
       "Package": "ggrepel",
@@ -654,6 +751,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "e65e5d5dea4cbb9ba822dcd782b2ee1f"
+    },
+    "graphlayouts": {
+      "Package": "graphlayouts",
+      "Version": "0.7.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "2a0d18b9395cd27066d209b83bb29ea6"
     },
     "gridExtra": {
       "Package": "gridExtra",
@@ -780,6 +884,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "3d5108641f47470611a32d0bdf357a72"
+    },
+    "lambda.r": {
+      "Package": "lambda.r",
+      "Version": "1.2.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "b1e925c4b9ffeb901bacf812cbe9a6ad"
     },
     "later": {
       "Package": "later",
@@ -1115,6 +1226,12 @@
       "Repository": "CRAN",
       "Hash": "d41a5849071941c6c269b57324515398"
     },
+    "qvalue": {
+      "Package": "qvalue",
+      "Version": "2.22.0",
+      "Source": "Bioconductor",
+      "Hash": "7ad7e5648b5f859c3d7b348003f092d1"
+    },
     "rappdirs": {
       "Package": "rappdirs",
       "Version": "0.3.3",
@@ -1194,8 +1311,8 @@
       "RemoteRepo": "rhapsodykit",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "481aed18b8578f99d95ede48e4415d360b07c505",
-      "Hash": "3f1ce431cb7549931d13ef3523904409"
+      "RemoteSha": "39cb8345666db939434ef8b059245f1c6a784324",
+      "Hash": "7ed611e4762842382ff3cb51b551d74e"
     },
     "rjson": {
       "Package": "rjson",
@@ -1246,6 +1363,13 @@
       "Repository": "CRAN",
       "Hash": "3a6b30449282b6a4b19ce267142c3299"
     },
+    "rvcheck": {
+      "Package": "rvcheck",
+      "Version": "0.1.8",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "11ebf2d3d4990e8bb9f28d5ab0c204fc"
+    },
     "rversions": {
       "Package": "rversions",
       "Version": "2.0.2",
@@ -1281,6 +1405,13 @@
       "Repository": "CRAN",
       "Hash": "373eb417aadd7c7f35861953f3fe3deb"
     },
+    "scatterpie": {
+      "Package": "scatterpie",
+      "Version": "0.1.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "d96eeb2f420d63edf1a6bfee068543e9"
+    },
     "sctransform": {
       "Package": "sctransform",
       "Version": "0.3.2",
@@ -1294,6 +1425,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "308013098befe37484df72c39cf90d6e"
+    },
+    "shadowtext": {
+      "Package": "shadowtext",
+      "Version": "0.0.7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "59c332a398fa940a85094cf3bbcb4443"
     },
     "shiny": {
       "Package": "shiny",
@@ -1329,6 +1467,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "b4683ffd6b32860bb08d452cdb3345bc"
+    },
+    "snow": {
+      "Package": "snow",
+      "Version": "0.4-3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "11b822ad6214111a4188d5e5fd1b144c"
     },
     "sourcetools": {
       "Package": "sourcetools",
@@ -1407,6 +1552,13 @@
       "Repository": "CRAN",
       "Hash": "4d894a114dbd4ecafeda5074e7c538e6"
     },
+    "tidygraph": {
+      "Package": "tidygraph",
+      "Version": "1.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "5375980d0787633ca62c265b28bedb41"
+    },
     "tidyr": {
       "Package": "tidyr",
       "Version": "1.1.3",
@@ -1427,6 +1579,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "50470c7ed0cc8099cbc17b38f0ef621f"
+    },
+    "tweenr": {
+      "Package": "tweenr",
+      "Version": "1.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "fc77eb5297507cccfa3349a606061030"
     },
     "usethis": {
       "Package": "usethis",
@@ -1455,6 +1614,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "5cf1957f93076c19fdc81d01409d240b"
+    },
+    "viridis": {
+      "Package": "viridis",
+      "Version": "0.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "6f6b49e5b3b5ee5a6d0c28bf1b4b9eb3"
     },
     "viridisLite": {
       "Package": "viridisLite",

@@ -6,7 +6,8 @@ require_dependencies <- function(x) {
     sapply(x, requireNamespace)
   )
   pkg_to_install <- names(dep_status[dep_status == FALSE])
-  install.packages(pkg_to_install)
+  if (length(pkg_to_install) > 0)
+    install.packages(pkg_to_install)
 }
 
 require_dependencies(c(
@@ -169,11 +170,13 @@ if (!interactive()) {
       "--group-field" = {
         # Which field used to split gene list.
         # Note: work with positional argument.
+        # such as "cluster"
         optind <- optind + 1
         options$group_field <- args[optind]
       },
       "--split-by" = {
         # Split one table into smaller tables
+        # such as "comparison"
         optind <- optind + 1
         options$split_by <- args[optind]
       },

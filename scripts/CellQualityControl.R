@@ -6,7 +6,8 @@ require_dependencies <- function(x) {
     sapply(x, requireNamespace)
   )
   pkg_to_install <- names(dep_status[dep_status == FALSE])
-  install.packages(pkg_to_install)
+  if (length(pkg_to_install) > 0)
+    install.packages(pkg_to_install)
 }
 
 require_dependencies(c(
@@ -230,8 +231,6 @@ if (!interactive()) {
         if (startsWith(args[optind], "-")) {
           stop(sprintf("Unknown option: %s", args[optind]))
         } else {
-          # CSV table contain gene list and group info
-          # Note: you should filter out un-annotated genes by yourself.
           options$positionals <- append(options$positionals, args[optind])
         }
       }
