@@ -86,6 +86,14 @@ parser <- add_option(parser,
   type = "logical",
   help = paste0("Integrate data by useing Seurat. [default: %default]"))
 parser <- add_option(parser,
+  c("--group-rule"),
+  dest = "group_rule",
+  action = "store",
+  default = NULL,
+  type = "character",
+  help = paste0("The pattern to extract group information from sample name.")
+)
+parser <- add_option(parser,
   c("--process"),
   dest = "process",
   action = "store",
@@ -105,7 +113,7 @@ if (options$process > 1) {
     install.packages("future")
   future::plan("multiprocess", workers = options$process)
   # Set global size to 2GB
-  options(future.globals.maxSize = 4 * 1024^3)
+  options(future.globals.maxSize = 6 * 1024^3)
 }
 
 if (isTRUE(options$integrate)) {
@@ -117,7 +125,15 @@ if (isTRUE(options$integrate)) {
       expr_matrix <- rhapsodykit::read_rhapsody_wta(base_dir, options$use_mtx)
       seurat_obj <- Seurat::CreateSeuratObject(
         counts = expr_matrix, project = basename(base_dir))
-      seurat_obj$stim <- basename(base_dir)
+      seurat_obj$sample <- basename(base_dir)
+
+      if (!is.null(options$group_rule)) {
+        seurat_obj$group <- stringr::str_extract(
+          basename(base_dir), options$group_rule)
+      } else {
+        seurat_obj$group <- seurat_obj$sample
+      }
+
       # TODO: 增加 SCTransform 的选项！
       seurat_obj <- Seurat::NormalizeData(seurat_obj)
       seurat_obj <- Seurat::FindVariableFeatures(

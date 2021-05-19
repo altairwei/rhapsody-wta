@@ -18,4 +18,4 @@ OUTPUT_DIR="$1"
 shift
 INPUT_DIRS="$@"
 
-SeuratAnalysis.R -m -d -c --process 6 --integrate -O "${OUTPUT_DIR}" ${INPUT_DIRS}
+SeuratAnalysis.R -m -d -c --process 6 --integrate --group-rule "\\dDPI-(MOCK|PNR2|TR4)" -O "${OUTPUT_DIR}" ${INPUT_DIRS}
