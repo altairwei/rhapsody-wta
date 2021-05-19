@@ -31,7 +31,8 @@ require_dependencies(c(
   "Matrix",
   "pheatmap",
   "reshape2",
-  "rhapsodykit"
+  "rhapsodykit",
+  "ComplexHeatmap"
 ))
 
 library(magrittr)
@@ -156,32 +157,62 @@ scale_fill_name <- switch(options$cor_method,
   kendall = "Kendall's tau",
   spearman = "Spearman's rho"
 )
-p <- ggplot2::ggplot(data_to_plot, ggplot2::aes(
-      Var1, Var2, fill = coef)) +
-  ggplot2::geom_tile() +
-  ggplot2::scale_fill_gradient(
-    low = "white", high = "red",
-    name = scale_fill_name) +
-  ggplot2::theme_minimal() +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(
-      angle = 45, vjust = 1, size = 12, hjust = 1),
-    axis.text.y = ggplot2::element_text(size = 12)) +
-  ggplot2::coord_fixed() +
-  ggplot2::geom_text(ggplot2::aes(
-      Var1, Var2, label = sprintf("%.2f", coef)), color = "black", size = 4) +
-  ggplot2::theme(
-    axis.title.x = ggplot2::element_blank(),
-    axis.title.y = ggplot2::element_blank(),
-    panel.grid.major = ggplot2::element_blank(),
-    panel.border = ggplot2::element_blank(),
-    panel.background = ggplot2::element_blank(),
-    axis.ticks = ggplot2::element_blank())
 
-ggplot2::ggsave(
-  file.path(
-    options$output_folder,
-    sprintf("%s.png", options$name_prefix)),
-  p,
+# p <- ggplot2::ggplot(data_to_plot, ggplot2::aes(
+#       Var1, Var2, fill = coef)) +
+#   ggplot2::geom_tile() +
+#   ggplot2::scale_fill_gradient(
+#     low = "white", high = "red",
+#     name = scale_fill_name) +
+#   ggplot2::theme_minimal() +
+#   ggplot2::theme(
+#     axis.text.x = ggplot2::element_text(
+#       angle = 45, vjust = 1, size = 12, hjust = 1),
+#     axis.text.y = ggplot2::element_text(size = 12)) +
+#   ggplot2::coord_fixed() +
+#   ggplot2::geom_text(ggplot2::aes(
+#       Var1, Var2, label = sprintf("%.2f", coef)), color = "black", size = 4) +
+#   ggplot2::theme(
+#     axis.title.x = ggplot2::element_blank(),
+#     axis.title.y = ggplot2::element_blank(),
+#     panel.grid.major = ggplot2::element_blank(),
+#     panel.border = ggplot2::element_blank(),
+#     panel.background = ggplot2::element_blank(),
+#     axis.ticks = ggplot2::element_blank())
+
+# ggplot2::ggsave(
+#   file.path(
+#     options$output_folder,
+#     sprintf("%s.png", options$name_prefix)),
+#   p,
+#   width = length(options$positionals),
+#   height = length(options$positionals))
+
+p <- ComplexHeatmap::Heatmap(
+  cormat,
+  name = scale_fill_name,
+  col = c("white", "red"),
+  row_names_side = "left",
+  row_dend_side = "left",
+  column_names_side = "bottom",
+  column_dend_side = "top",
+  column_names_rot = 45,
+  show_column_dend = FALSE,
+
+  cell_fun = function(j, i, x, y, width, height, fill) {
+    grid::grid.text(
+      sprintf("%.2f", cormat[i, j]),
+      x, y, gp = grid::gpar(fontsize = 14)
+    )
+  }
+)
+
+pngfile <- file.path(
+  options$output_folder, sprintf("%s.png", options$name_prefix))
+png(filename = pngfile,
   width = length(options$positionals),
-  height = length(options$positionals))
+  height = length(options$positionals),
+  units = "in",
+  res = 300)
+ComplexHeatmap::draw(p)
+invisible(dev.off())
