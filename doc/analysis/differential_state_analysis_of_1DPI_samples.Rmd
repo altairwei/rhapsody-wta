@@ -1,0 +1,385 @@
+# Differential State Analysis of 1DPI Samples
+
+## Data preparation
+
+`muscat` 包要求输入数据需要预先经过处理，比如整合、聚类和细胞注释等等，因此这里我们直接加载已经处理过的 `Seurat` 对象。
+
+```{r message=FALSE}
+library(magrittr)
+
+obj <- readRDS("../../results/IntegratedAnalysis/1DPI-All/Seurat_Object_Combined.rds")
+sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
+```
+
+## Data overview
+
+差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
+
+```{r}
+t(table(sce$cluster_id, sce$sample_id))
+```
+
+## Differential State (DS) analysis
+
+### Aggregation of single-cell to pseudobulk data
+
+差异状态分析有两类方法，其中之一是基于聚合数据的差异基因表达方法。
+
+所以我们首先将单细胞数据聚合成 pseudo-bulk 数据：
+
+```{r warning=FALSE}
+pb_list <- list(
+  "counts" = rhapsodykit::calculate_pseudo_bulk(sce, "counts"),
+  "logcounts" = rhapsodykit::calculate_pseudo_bulk(sce, "logcounts"),
+  "cpm" = rhapsodykit::calculate_pseudo_bulk(sce, "cpm")
+  #"vstresiduals" = rhapsodykit::calculate_pseudo_bulk(sce, "vstresiduals")
+)
+```
+
+变量 `pb` 实际上也是一个 `SingleCellExperiment` 对象，每一个 assay 都是一个 cluster 的 pseudo-bulk 数据。
+
+我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性：
+
+```{r}
+mds_plot_list <- lapply(pb_list, function(pb) {
+  pb_mds <- muscat::pbMDS(pb)
+  pb_mds +
+    ggplot2::scale_shape_manual(values = c(15, 8, 10)) +
+    ggplot2::theme(legend.position = "right", legend.box = "horizontal")
+})
+```
+
+首先我们看看 `logcounts` 类型 pseudo-bulk 数据：
+
+```{r}
+mds_plot_list$logcounts
+```
+
+理论上，MDS 的第一个维度应该将 cluster 分开，第二个维度应该讲 group 分开。从结果上来看，MDS1 确实将 cluster 分开了；而 MDS2 也将 group 区分开，1DPI-MOCK 在 cluster 中总是靠下，1DPI-PNR2 靠中，1DPI-TR4 总是靠上。
+
+然后是 `counts` 类型：
+
+```{r}
+mds_plot_list$counts
+```
+
+从 `counts` 类型数据的 MDS 图来看，我们可以很清晰的认识到 cluster 就是沿着 MDS1 被分开的。但是 group 在 MDS2 上的趋势不是很明显。
+
+接着是 `cpm` 类型：
+
+```{r}
+mds_plot_list$cpm
+```
+
+我们可以发现 `cpm` 和 `counts` 类型数据的 MDS 图非常相似，因为本质上它们两者是一致的。
+
+### Sample-level analysis: Pseudobulk methods
+
+当我们组装好 pseudo-bulk 数据后，就可以开展基于聚合的差异状态分析了。基于聚合的差异状态方法依赖于 bulk RNA-Seq 领域已经常用的差异基表达分析方法，而这些方法对输入数据的数值类型是有要求的吗，比如：
+
+-   limma-voom 和 edgeR 处理 pseudo-bulk counts
+-   limma-trend 处理 library-size 归一化并且 log 转化后的 counts 平均值
+-   DESeq2 应该也是处理 pseudo-bulk counts
+
+各种差异状态分析方法依赖的数值类型可以参考 [HelenaLC/muscat-comparison](https://github.com/HelenaLC/muscat-comparison) 仓库库中 `scripts/meth_pars.R` 文件内容:
+
+```{r eval=FALSE, include=FALSE}
+pb <- dplyr::bind_rows(
+    expand.grid(
+        stringsAsFactors = FALSE,
+        assay = "counts", fun = "sum", scale = FALSE, 
+        method = c("edgeR", "limma-voom"),
+        treat = c(FALSE, TRUE)
+    ),
+    expand.grid(
+        stringsAsFactors = FALSE, scale = FALSE,
+        assay = c("logcounts", "vstresiduals"),
+        fun = "mean", method = "limma-trend"
+    ),
+    data.frame(
+        stringsAsFactors = FALSE, scale = TRUE,
+        assay = "cpm", fun = "sum", method = "edgeR",
+        treat = c(FALSE, TRUE)
+    )
+)
+```
+
+可以使用 `muscat::pbDS` 函数完成任务，不过当要比较的 group 超过两个时，我们需要首先构建 design 矩阵以及 contrast 矩阵：
+
+我们看看实验相关的信息，主要是 sample 属于哪个 group ：
+
+```{r message=FALSE}
+ei <- S4Vectors::metadata(sce)$experiment_info
+ei
+```
+
+design 矩阵起着指示器的作用，它用于表明样本属于哪个组。而 `model.matrix` 的统计学含义以及用法可以参考 [Expressing design formula in R](https://genomicsclass.github.io/book/pages/expressing_design_formula.html) 。
+
+```{r}
+mm <- model.matrix(~ 0 + group_id, ei)
+dimnames(mm) <- list(ei$sample_id, levels(ei$group_id))
+mm
+```
+
+contrast 矩阵：
+
+```{r}
+contrast <- limma::makeContrasts(
+  X1DPI.PNR2-X1DPI.MOCK, X1DPI.TR4-X1DPI.MOCK, levels = mm)
+contrast
+```
+
+然后使用 `muscat::pbDS` 计算差异基因：
+
+```{r}
+# run DS analysis
+res <- muscat::pbDS(
+  pb_list$counts, method = "edgeR", design = mm, contrast = contrast, verbose = FALSE)
+
+res_deseq2 <- muscat::pbDS(
+  pb_list$counts, method = "DESeq2", design = mm, contrast = contrast, verbose = FALSE)
+
+str(res$table, max.level = 2)
+```
+
+差异基因表达分析的结果储存在 `table` 列表中，而其成员则是 `contrast` 参数所指定的比较组合。每个比较组合又是一个列表，并且包含了针对每个 cluster 的差异表达分析结果。
+
+```{r}
+# access results table for 1st comparison
+cluster1 <- res$table[["X1DPI.PNR2 - X1DPI.MOCK"]][["1"]]
+head(cluster1)
+```
+
+1DPI-PNR2 vs. 1DPI-MOCK 比较组合中 cluster 1 的差异基因表达结果如上所示。
+
+### Cell-level analysis: Mixed models
+
+如果我们不愿意基于聚合来展开差异状态分析，还可以基于细胞水平数据通过 Mixed Models 来完成差异状态分析。`muscat` 主要实现了三种方法：
+
+1.  fitting linear mixed models (LMMs) on log-normalized data with observational weights;
+2.  fitting LMMs on variance-stabilized data;
+3.  fitting generalized linear mixed models (GLMMs) directly on counts.
+
+```{r message=FALSE, eval=FALSE}
+# 1st approach
+mm_dream = muscat::mmDS(sce, n_threads = 2, method = "dream", n_cells = 10, n_samples = 2, min_count = 1, min_cells = 20)
+
+# 2nd & 3rd approach
+mm_vst = muscat::mmDS(sce, n_threads = 2, method = "vst", vst = "sctransform")
+mm_nbinom = muscat::mmDS(sce, n_threads = 2, method = "nbinom")
+
+str(mm_dream)
+```
+
+### Find group marker genes
+
+这里出现一个很有意义的问题：**如何找出 group 特异性的 DS 基因集**？
+
+是否可以参考 Seurat 包鉴定 cluster 特异性 marker 的方法，将某个 group 与其余所有 group 一起比较。
+
+阅读 `Seurat::FindAllMarkers` 源代码，找到鉴定 Marker 的方法。
+
+> Seurat can help you find markers that define clusters via differential expression. By default, it identifies positive and negative markers of a single cluster (specified in `ident.1`), compared to all other cells.
+
+也就是说，contrast 的一方是目标组，另一方是剩下所有样品。
+
+首先我们要重新安排 group 信息：
+
+```{r}
+mrk <- sce
+target_group <- "X1DPI.PNR2"
+lvs <- levels(ei$group_id)
+lvs <- lvs[lvs != target_group]
+S4Vectors::metadata(mrk)$experiment_info$group_id <- forcats::fct_collapse(ei$group_id, background = lvs)
+S4Vectors::metadata(mrk)$experiment_info
+```
+
+然后准备比较方法：
+
+```{r}
+mrk_ei <- S4Vectors::metadata(mrk)$experiment_info
+
+mrk_mm <- model.matrix(~ 0 + group_id, mrk_ei)
+dimnames(mrk_mm) <- list(mrk_ei$sample_id, levels(mrk_ei$group_id))
+
+mrk_contrast <- limma::makeContrasts(
+  paste(target_group, "background", sep = "-"), levels = mrk_mm)
+mrk_contrast
+```
+
+最后可以查找差异基因了：
+
+```{r}
+mrk_res <- muscat::pbDS(
+  pb_list$counts, method = "edgeR", design = mrk_mm, contrast = mrk_contrast, verbose = FALSE)
+str(mrk_res$table, max.level = 2)
+```
+
+## Handling results
+
+### Results filtering & overview
+
+首先我们要对差异状态分析的结果进行过滤，我们基于基因表达的变化幅度和显著性来过滤：
+
+```{r}
+# filter FDR < 5%, abs(logFC) > 1 & sort by adj. p-value
+tbl_filtered <- lapply(res$table[["X1DPI.PNR2 - X1DPI.MOCK"]], function(u) {
+ u <- dplyr::filter(u, p_adj.loc < 0.05, abs(logFC) > 1)
+ dplyr::arrange(u, p_adj.loc)
+})
+
+# nb. of DS genes & % of total by cluster
+n_de <- vapply(tbl_filtered, nrow, numeric(1))
+p_de <- format(n_de / nrow(sce) * 100, digits = 3)
+
+data.frame("#DS" = n_de, "%DS" = p_de, check.names = FALSE)
+```
+
+大略看看基因：
+
+```{r}
+# view top 2 hits in each cluster
+top2 <- dplyr::bind_rows(lapply(tbl_filtered, dplyr::top_n, 5, p_adj.loc))
+format(top2[, -ncol(top2)], digits = 2)
+```
+
+### Calculating expression frequencies
+
+除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
+
+```{r}
+# one sheet per cluster
+frq <- muscat::calcExprFreqs(sce, assay = "counts", th = 0)
+
+# expression frequencies in each
+# sample & group; 1st cluster
+head(SummarizedExperiment::assay(frq), 5)
+```
+
+我们可以依据这个表达频率表来过滤基因：
+
+```{r}
+# Get genes that are expressed in an average of 10% of cells in at least 1 group
+group_ids <- levels(sce$group_id)
+frq10 <- vapply(
+  as.list(SummarizedExperiment::assays(frq)),
+  function(clu_frq) apply(clu_frq[, group_ids] > 0.1, 1, any), 
+  logical(nrow(sce))
+)
+head(frq10)
+```
+
+计算一下它们所占的比例：
+
+```{r}
+cluster_ids <- levels(sce$cluster_id)
+names(cluster_ids) <- cluster_ids
+
+# Retain genes that are passed filter criteria
+tbl_filtered2 <- lapply(cluster_ids, function(k) {
+  dplyr::filter(
+    tbl_filtered[[k]],
+    gene %in% names(which(frq10[, k]))
+  )
+})
+
+# nb. of DS genes & % of total by cluster
+n_de <- vapply(tbl_filtered2, nrow, numeric(1))
+p_de <- format(n_de / nrow(sce) * 100, digits = 3)
+data.frame("#DS" = n_de, "%DS" = p_de, check.names = FALSE)
+```
+
+### Formatting results
+
+当比较的组别数量非常多时，我们就需要将它们转化为一个方便查看或者操作的格式。
+
+```{r eval=FALSE, include=FALSE}
+# tidy format; attach pre-computed expression frequencies
+muscat::resDS(sce, res, bind = "row", frq = frq)
+
+# big-table (wide) format; attach CPMs
+muscat::resDS(sce, res, bind = "col", cpm = TRUE)
+
+# compute expression frequencies on the fly
+muscat::resDS(sce, res, frq = TRUE)
+```
+
+## Visualizing results
+
+### Between-cluster concordance
+
+我们可以通过集合的可视化来看看细胞亚群之间的 DS 基因是否有交集：
+
+```{r}
+de_gs_by_k <- purrr::map(tbl_filtered, "gene")
+UpSetR::upset(UpSetR::fromList(de_gs_by_k))
+```
+
+TODO: 那么如何使用 UpSetR 来查看不同 contrast 间基因集的差异呢？
+
+### Dim Reduction colored by expression
+
+既然知道了差异基因，那么我们可以尝试将表达量投影到降维散点图中。
+
+```{r}
+# pull top-4 DS genes across all clusters
+top4 <- dplyr::bind_rows(tbl_filtered) %>% 
+  dplyr::top_n(4, dplyr::desc(p_adj.loc)) %>% 
+  dplyr::pull("gene") %>%
+  .[1:4]
+
+# for ea. gene in 'top4', plot t-SNE colored by its expression 
+ps <- lapply(top4, function(gene) {
+  Seurat::DefaultAssay(obj) <- "RNA"
+  Seurat::FeaturePlot(
+      obj, gene,
+      reduction = "tsne",
+      pt.size = 0.05,
+      label = TRUE) +
+    ggplot2::ggtitle(gene) +
+    ggplot2::theme_bw(8) +
+    ggplot2::theme(legend.position = "none")
+})
+
+# arrange plots
+cowplot::plot_grid(plotlist = ps, ncol = 2, align = "vh")
+```
+
+### Cell-level viz.: Violin plots
+
+我们可以从细胞水平来看看这些 DS 基因的差异性分布：
+
+```{r}
+scater::plotExpression(sce[, sce$cluster_id == "14"],
+  features = tbl_filtered$`14`$gene[seq_len(6)],
+  x = "sample_id", colour_by = "group_id", ncol = 3) +
+  ggplot2::guides(fill = ggplot2::guide_legend(override.aes = list(size = 5, alpha = 1))) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+用 `Seurat::VlnPlot` 画不出上面这个图。
+
+### Sample-level viz.: Pseudobulk heatmaps
+
+如果我们基于聚合来做 DS 分析，那么我们天然会想到画一个热图：
+
+```{r}
+pb_arr <- abind::abind(as.list(pb_list$logcounts@assays@data), along = 3)
+
+genes <- dplyr::bind_rows(tbl_filtered) %>%
+  dplyr::pull("gene")
+
+# top-5 DS genes per cluster
+rhapsodykit::heatmap_cross_sample(
+  pb_arr, genes,
+  clusters = c("1", "14"),
+  type = "logcounts",
+  show_row_names = FALSE)
+```
+
+待改进之处：
+
+-   添加横坐标 group 注释
+-   将横坐标以 group 分割
+
+TODO: 参考 (Crowell et al. 2020) Fig. 4D 绘制一幅热图，寻找差异表达模组。

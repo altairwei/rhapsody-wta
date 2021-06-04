@@ -16,3 +16,5 @@ screenlog*
 cromwell-executions
 Rplot*
 build/
+.Rproj.user
+doc/analysis/**/*.html
