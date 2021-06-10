@@ -77,9 +77,8 @@ mds_plot_list$cpm
 
 当我们组装好 pseudo-bulk 数据后，就可以开展基于聚合的差异状态分析了。基于聚合的差异状态方法依赖于 bulk RNA-Seq 领域已经常用的差异基表达分析方法，而这些方法对输入数据的数值类型是有要求的吗，比如：
 
--   limma-voom 和 edgeR 处理 pseudo-bulk counts
+-   limma-voom 和 edgeR 处理 pseudo-bulk counts；DESeq2 应该也是处理 pseudo-bulk counts
 -   limma-trend 处理 library-size 归一化并且 log 转化后的 counts 平均值
--   DESeq2 应该也是处理 pseudo-bulk counts
 
 各种差异状态分析方法依赖的数值类型可以参考 [HelenaLC/muscat-comparison](https://github.com/HelenaLC/muscat-comparison) 仓库库中 `scripts/meth_pars.R` 文件内容:
 
@@ -109,44 +108,42 @@ pb <- dplyr::bind_rows(
 我们看看实验相关的信息，主要是 sample 属于哪个 group ：
 
 ```{r message=FALSE}
-ei <- S4Vectors::metadata(sce)$experiment_info
-ei
+S4Vectors::metadata(sce)$experiment_info
 ```
 
-design 矩阵起着指示器的作用，它用于表明样本属于哪个组。而 `model.matrix` 的统计学含义以及用法可以参考 [Expressing design formula in R](https://genomicsclass.github.io/book/pages/expressing_design_formula.html) 。
-
-```{r}
-mm <- model.matrix(~ 0 + group_id, ei)
-dimnames(mm) <- list(ei$sample_id, levels(ei$group_id))
-mm
-```
-
-contrast 矩阵：
-
-```{r}
-contrast <- limma::makeContrasts(
-  X1DPI.PNR2-X1DPI.MOCK, X1DPI.TR4-X1DPI.MOCK, levels = mm)
-contrast
-```
-
-然后使用 `muscat::pbDS` 计算差异基因：
+在需要提供的数据中，design 矩阵起着指示器的作用，它用于表明样本属于哪个组。而 `model.matrix` 的统计学含义以及用法可以参考 [Expressing design formula in R](https://genomicsclass.github.io/book/pages/expressing_design_formula.html) 。contrast 矩阵用于表明我们想要比较哪两个组，以 `stim-ctrl` 字符串的形式指定，实验组在 `-` 前，对照组在后。我在 `rhapsodykit` 中提供了一个方便的帮助函数，自动构建 design 和 contrast 矩阵。
 
 ```{r}
 # run DS analysis
-res <- muscat::pbDS(
-  pb_list$counts, method = "edgeR", design = mm, contrast = contrast, verbose = FALSE)
+ds_res <- list(
+  edgeR = rhapsodykit::pseudobulk_diff_state(
+    sce, pb_list$counts,
+    method = "edgeR",
+    contrasts = c(
+      "X1DPI.PNR2-X1DPI.MOCK",
+      "X1DPI.TR4-X1DPI.MOCK",
+      "X1DPI.PNR2-X1DPI.TR4"
+    )
+  ),
+  DESeq2 = rhapsodykit::pseudobulk_diff_state(
+    sce, pb_list$counts,
+    method = "DESeq2",
+    contrasts = c(
+      "X1DPI.PNR2-X1DPI.MOCK",
+      "X1DPI.TR4-X1DPI.MOCK",
+      "X1DPI.PNR2-X1DPI.TR4"
+    )
+  )
+)
 
-res_deseq2 <- muscat::pbDS(
-  pb_list$counts, method = "DESeq2", design = mm, contrast = contrast, verbose = FALSE)
-
-str(res$table, max.level = 2)
+str(ds_res$edgeR$table, max.level = 1)
 ```
 
-差异基因表达分析的结果储存在 `table` 列表中，而其成员则是 `contrast` 参数所指定的比较组合。每个比较组合又是一个列表，并且包含了针对每个 cluster 的差异表达分析结果。
+差异基因表达分析的结果储存在 `res_list` 列表中，而其成员则是 `contrast` 参数所指定的比较组合。每个比较组合又是一个列表，并且包含了针对每个 cluster 的差异表达分析结果。
 
 ```{r}
 # access results table for 1st comparison
-cluster1 <- res$table[["X1DPI.PNR2 - X1DPI.MOCK"]][["1"]]
+cluster1 <- ds_res$DESeq2$table[["X1DPI.PNR2-X1DPI.MOCK"]][["1"]]
 head(cluster1)
 ```
 
@@ -183,128 +180,109 @@ str(mm_dream)
 
 也就是说，contrast 的一方是目标组，另一方是剩下所有样品。
 
-首先我们要重新安排 group 信息：
-
 ```{r}
-mrk <- sce
-target_group <- "X1DPI.PNR2"
-lvs <- levels(ei$group_id)
-lvs <- lvs[lvs != target_group]
-S4Vectors::metadata(mrk)$experiment_info$group_id <- forcats::fct_collapse(ei$group_id, background = lvs)
-S4Vectors::metadata(mrk)$experiment_info
-```
+markers <- list(
+  "PNR2"= rhapsodykit::find_group_marker_genes(sce, pb_list$counts, "X1DPI.PNR2" ,method = "DESeq2")
+)
 
-然后准备比较方法：
-
-```{r}
-mrk_ei <- S4Vectors::metadata(mrk)$experiment_info
-
-mrk_mm <- model.matrix(~ 0 + group_id, mrk_ei)
-dimnames(mrk_mm) <- list(mrk_ei$sample_id, levels(mrk_ei$group_id))
-
-mrk_contrast <- limma::makeContrasts(
-  paste(target_group, "background", sep = "-"), levels = mrk_mm)
-mrk_contrast
-```
-
-最后可以查找差异基因了：
-
-```{r}
-mrk_res <- muscat::pbDS(
-  pb_list$counts, method = "edgeR", design = mrk_mm, contrast = mrk_contrast, verbose = FALSE)
-str(mrk_res$table, max.level = 2)
+markers$PNR2 %>%
+  rhapsodykit::diff_state_filter() %>%
+  rhapsodykit::diff_state_summary()
 ```
 
 ## Handling results
 
 ### Results filtering & overview
 
-首先我们要对差异状态分析的结果进行过滤，我们基于基因表达的变化幅度和显著性来过滤：
+我们要对差异状态分析的结果进行过滤，我们基于基因表达的变化幅度和显著性来过滤：
 
 ```{r}
 # filter FDR < 5%, abs(logFC) > 1 & sort by adj. p-value
-tbl_filtered <- lapply(res$table[["X1DPI.PNR2 - X1DPI.MOCK"]], function(u) {
- u <- dplyr::filter(u, p_adj.loc < 0.05, abs(logFC) > 1)
- dplyr::arrange(u, p_adj.loc)
-})
-
-# nb. of DS genes & % of total by cluster
-n_de <- vapply(tbl_filtered, nrow, numeric(1))
-p_de <- format(n_de / nrow(sce) * 100, digits = 3)
-
-data.frame("#DS" = n_de, "%DS" = p_de, check.names = FALSE)
+ds_res$edgeR %>%
+  rhapsodykit::diff_state_filter(0.05, 1) %>%
+  rhapsodykit::diff_state_summary()
 ```
 
-大略看看基因：
+然后是 DESeq2 的分析结果：
 
 ```{r}
-# view top 2 hits in each cluster
-top2 <- dplyr::bind_rows(lapply(tbl_filtered, dplyr::top_n, 5, p_adj.loc))
-format(top2[, -ncol(top2)], digits = 2)
+ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_filter(0.05, 1) %>%
+  rhapsodykit::diff_state_summary()
 ```
+
 
 ### Calculating expression frequencies
 
 除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
 
 ```{r}
-# one sheet per cluster
-frq <- muscat::calcExprFreqs(sce, assay = "counts", th = 0)
-
-# expression frequencies in each
-# sample & group; 1st cluster
-head(SummarizedExperiment::assay(frq), 5)
-```
-
-我们可以依据这个表达频率表来过滤基因：
-
-```{r}
-# Get genes that are expressed in an average of 10% of cells in at least 1 group
-group_ids <- levels(sce$group_id)
-frq10 <- vapply(
-  as.list(SummarizedExperiment::assays(frq)),
-  function(clu_frq) apply(clu_frq[, group_ids] > 0.1, 1, any), 
-  logical(nrow(sce))
-)
-head(frq10)
-```
-
-计算一下它们所占的比例：
-
-```{r}
-cluster_ids <- levels(sce$cluster_id)
-names(cluster_ids) <- cluster_ids
-
-# Retain genes that are passed filter criteria
-tbl_filtered2 <- lapply(cluster_ids, function(k) {
-  dplyr::filter(
-    tbl_filtered[[k]],
-    gene %in% names(which(frq10[, k]))
-  )
-})
-
-# nb. of DS genes & % of total by cluster
-n_de <- vapply(tbl_filtered2, nrow, numeric(1))
-p_de <- format(n_de / nrow(sce) * 100, digits = 3)
-data.frame("#DS" = n_de, "%DS" = p_de, check.names = FALSE)
+ds_res$edgeR %>%
+  rhapsodykit::diff_state_filter(0.05, 1) %>%
+  rhapsodykit::expr_freq_filter(sce) %>%
+  rhapsodykit::diff_state_summary()
 ```
 
 ### Formatting results
 
-当比较的组别数量非常多时，我们就需要将它们转化为一个方便查看或者操作的格式。
+当比较的组别数量非常多时，我们就需要将它们转化为一个方便查看或者操作的格式。其中 `res` 必须是 `muscat::pbDS` 或 `muscat::mmDS` 的计算结果。
 
-```{r eval=FALSE, include=FALSE}
+```{r eval=FALSE}
 # tidy format; attach pre-computed expression frequencies
-muscat::resDS(sce, res, bind = "row", frq = frq)
+resDS(sce, res, bind = "row", frq = frq)
 
 # big-table (wide) format; attach CPMs
-muscat::resDS(sce, res, bind = "col", cpm = TRUE)
+resDS(sce, res, bind = "col", cpm = TRUE)
 
 # compute expression frequencies on the fly
-muscat::resDS(sce, res, frq = TRUE)
+resDS(sce, res, frq = TRUE)
 ```
 
 ## Visualizing results
+
+### Number of DS genes
+
+我们可以查看一下 edgeR 和 DESeq2 两种方法发现的差异基因数量：
+
+```{r}
+patchwork::wrap_plots(
+  ds_res$edgeR %>%
+    rhapsodykit::diff_state_filter() %>%
+    rhapsodykit::genecount_diff_state() +
+    ggplot2::ggtitle("edgeR"),
+  ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_filter() %>%
+    rhapsodykit::genecount_diff_state() +
+    ggplot2::ggtitle("DESeq2"),
+  ncol = 1,
+  guides = "collect"
+)
+```
+
+总体来说，edgeR 与 DESeq2 发现的基因数量大体趋势是一致的，只不过两种方法计算出的 p_adj.loc 可能有所差别。从 TR4 与 PNR2 相对于 MOCK 的转录反应来看，小麦胚芽鞘似乎都不知道 *Fusarium. graminearum* 以及进入体内了。
+
+我们首先画一下 `X1DPI.PNR2-X1DPI.MOCK` 火山图：
+
+```{r}
+df_to_plot <- ds_res$edgeR %>% rhapsodykit::diff_state_format()
+dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs. 1DPI-MOCK")
+```
+
+然后看一下 `X1DPI.TR4-X1DPI.MOCK` 的火山图：
+
+```{r}
+dplyr::filter(df_to_plot, contrast == "X1DPI.TR4-X1DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "X1DPI.TR4-X1DPI.MOCK")
+```
+
+最后比较一下 `X1DPI.PNR2-X1DPI.TR4`:
+
+```{r}
+dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.TR4") %>%
+  rhapsodykit::volcano_diff_state(title = "X1DPI.PNR2-X1DPI.TR4")
+```
+
 
 ### Between-cluster concordance
 
@@ -383,3 +361,7 @@ rhapsodykit::heatmap_cross_sample(
 -   将横坐标以 group 分割
 
 TODO: 参考 (Crowell et al. 2020) Fig. 4D 绘制一幅热图，寻找差异表达模组。
+
+### 基因功能探索
+
+聚类
