@@ -1,6 +1,6 @@
-# Differential State Analysis of 1DPI Samples
+# 1DPI 样品的差异状态分析 (Differential State analysis)
 
-## Data preparation
+## 数据准备
 
 `muscat` 包要求输入数据需要预先经过处理，比如整合、聚类和细胞注释等等，因此这里我们直接加载已经处理过的 `Seurat` 对象。
 
@@ -11,7 +11,7 @@ obj <- readRDS("../../results/IntegratedAnalysis/1DPI-All/Seurat_Object_Combined
 sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
 ```
 
-## Data overview
+## 数据概览
 
 差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
 
@@ -19,9 +19,9 @@ sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
 t(table(sce$cluster_id, sce$sample_id))
 ```
 
-## Differential State (DS) analysis
+## 差异状态分析
 
-### Aggregation of single-cell to pseudobulk data
+### 将单细胞聚合成 pseudo-bulk 数据
 
 差异状态分析有两类方法，其中之一是基于聚合数据的差异基因表达方法。
 
@@ -71,9 +71,9 @@ mds_plot_list$counts
 mds_plot_list$cpm
 ```
 
-我们可以发现 `cpm` 和 `counts` 类型数据的 MDS 图非常相似，因为本质上它们两者是一致的。
+我们可以发现 `cpm` 和 `counts` 类型数据的 MDS 图非常相似。因为本质上它们两者是一致的，并且都没有经过归一化，所以不适合用来画 MDS 图。
 
-### Sample-level analysis: Pseudobulk methods
+### 样品水平的分析: 基于聚合的方法
 
 当我们组装好 pseudo-bulk 数据后，就可以开展基于聚合的差异状态分析了。基于聚合的差异状态方法依赖于 bulk RNA-Seq 领域已经常用的差异基表达分析方法，而这些方法对输入数据的数值类型是有要求的吗，比如：
 
@@ -149,7 +149,7 @@ head(cluster1)
 
 1DPI-PNR2 vs. 1DPI-MOCK 比较组合中 cluster 1 的差异基因表达结果如上所示。
 
-### Cell-level analysis: Mixed models
+### 细胞水平的分析: 混合模型
 
 如果我们不愿意基于聚合来展开差异状态分析，还可以基于细胞水平数据通过 Mixed Models 来完成差异状态分析。`muscat` 主要实现了三种方法：
 
@@ -168,7 +168,7 @@ mm_nbinom = muscat::mmDS(sce, n_threads = 2, method = "nbinom")
 str(mm_dream)
 ```
 
-### Find group marker genes
+### 寻找组间特异性标识基因
 
 这里出现一个很有意义的问题：**如何找出 group 特异性的 DS 基因集**？
 
@@ -190,9 +190,9 @@ markers$PNR2 %>%
   rhapsodykit::diff_state_summary()
 ```
 
-## Handling results
+## 处理结果
 
-### Results filtering & overview
+### 结果的过滤与概览
 
 我们要对差异状态分析的结果进行过滤，我们基于基因表达的变化幅度和显著性来过滤：
 
@@ -212,7 +212,7 @@ ds_res$DESeq2 %>%
 ```
 
 
-### Calculating expression frequencies
+### 计算表达频率
 
 除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
 
@@ -223,24 +223,24 @@ ds_res$edgeR %>%
   rhapsodykit::diff_state_summary()
 ```
 
-### Formatting results
+### 格式化结果
 
 当比较的组别数量非常多时，我们就需要将它们转化为一个方便查看或者操作的格式。其中 `res` 必须是 `muscat::pbDS` 或 `muscat::mmDS` 的计算结果。
 
 ```{r eval=FALSE}
 # tidy format; attach pre-computed expression frequencies
-resDS(sce, res, bind = "row", frq = frq)
+muscat::resDS(sce, res, bind = "row", frq = frq)
 
 # big-table (wide) format; attach CPMs
-resDS(sce, res, bind = "col", cpm = TRUE)
+muscat::resDS(sce, res, bind = "col", cpm = TRUE)
 
 # compute expression frequencies on the fly
-resDS(sce, res, frq = TRUE)
+muscat::resDS(sce, res, frq = TRUE)
 ```
 
-## Visualizing results
+## 对结果可视化
 
-### Number of DS genes
+### 可视化 DS 基因的数量
 
 我们可以查看一下 edgeR 和 DESeq2 两种方法发现的差异基因数量：
 
@@ -284,18 +284,22 @@ dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.TR4") %>%
 ```
 
 
-### Between-cluster concordance
+### 细胞亚群间的一致性
 
 我们可以通过集合的可视化来看看细胞亚群之间的 DS 基因是否有交集：
 
 ```{r}
+tbl_filtered <- ds_res$edgeR %>%
+  rhapsodykit::diff_state_filter() %>%
+  .$table %>% .[["X1DPI.PNR2-X1DPI.MOCK"]]
+
 de_gs_by_k <- purrr::map(tbl_filtered, "gene")
 UpSetR::upset(UpSetR::fromList(de_gs_by_k))
 ```
 
 TODO: 那么如何使用 UpSetR 来查看不同 contrast 间基因集的差异呢？
 
-### Dim Reduction colored by expression
+### 表达量在降维图上的投影
 
 既然知道了差异基因，那么我们可以尝试将表达量投影到降维散点图中。
 
@@ -323,7 +327,7 @@ ps <- lapply(top4, function(gene) {
 cowplot::plot_grid(plotlist = ps, ncol = 2, align = "vh")
 ```
 
-### Cell-level viz.: Violin plots
+### 细胞水平的可视化: 小提琴图
 
 我们可以从细胞水平来看看这些 DS 基因的差异性分布：
 
@@ -337,7 +341,7 @@ scater::plotExpression(sce[, sce$cluster_id == "14"],
 
 用 `Seurat::VlnPlot` 画不出上面这个图。
 
-### Sample-level viz.: Pseudobulk heatmaps
+### 样本水平的可视化: Pseudobulk 热图
 
 如果我们基于聚合来做 DS 分析，那么我们天然会想到画一个热图：
 
@@ -361,7 +365,3 @@ rhapsodykit::heatmap_cross_sample(
 -   将横坐标以 group 分割
 
 TODO: 参考 (Crowell et al. 2020) Fig. 4D 绘制一幅热图，寻找差异表达模组。
-
-### 基因功能探索
-
-聚类
