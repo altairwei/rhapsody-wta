@@ -16,8 +16,59 @@ sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
 差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
 
 ```{r}
-t(table(sce$cluster_id, sce$sample_id))
+cluster_stats <- table(sce$cluster_id, sce$sample_id)
+t(cluster_stats)
 ```
+
+### 相对细胞群集丰度
+
+```{r warning=FALSE}
+cluster_prop <- prop.table(cluster_stats, 2)
+cluster_prop_df <- reshape2::melt(
+  cluster_prop,
+  varnames = c("cluster_id", "sample_id"),
+  value.name = "frequency",
+  as.is = TRUE
+)
+
+cluster_prop_df$cluster_id <- factor(type.convert(cluster_prop_df$cluster_id))
+cluster_prop_df$group_id <- sce$group_id[match(cluster_prop_df$sample_id, sce$sample_id)]
+
+cluster_prop_df %>%
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = cluster_id)) +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+  ggplot2::facet_wrap("group_id", ncol = 1, scales = "free_y") +
+  ggplot2::geom_bar(stat = "identity", col = "white",  width = 1, size = 0.2) + 
+  ggplot2::scale_x_discrete(expand = c(0, 0)) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+    aspect.ratio = NULL, 
+    panel.grid = ggplot2::element_blank(), panel.spacing = grid::unit(1, "mm"), 
+    strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
+```
+
+### 样本细胞数量
+
+```{r}
+# cell counts by sample
+sample_cells_df <- reshape2::melt(table(sce$sample_id), varnames = "sample_id", value.name = "n_cells")
+sample_cells_df$group_id <- sce$group_id[match(sample_cells_df$sample_id, sce$sample_id)]
+
+sample_cells_df %>%
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = n_cells, fill = group_id)) +
+  ggplot2::scale_y_continuous("nb. of cells", limits = c(0, 7500), 
+        breaks = seq(0, 7500, 2500), expand = c(0, 0)) +
+  ggplot2::facet_wrap("group_id", ncol = 1, scales = "free_y") +
+  ggplot2::geom_bar(stat = "identity", col = "white",  width = 1, size = 0.2) + 
+  ggplot2::scale_x_discrete(expand = c(0, 0)) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(aspect.ratio = NULL, 
+    panel.grid = ggplot2::element_blank(), panel.spacing = grid::unit(1, "mm"), 
+    strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
+```
+
 
 ## 差异状态分析
 
