@@ -6,21 +6,185 @@
 
 ```{r message=FALSE}
 library(magrittr)
+library(patchwork)
 
 obj <- readRDS("../../results/IntegratedAnalysis/1DPI-All/Seurat_Object_Combined.rds")
-sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
 ```
 
 ## 数据概览
+
+### 样本细胞降维度图
+
+```{r}
+Seurat::DimPlot(obj, reduction = "tsne", group.by = "group")
+Seurat::DimPlot(obj, reduction = "tsne", label = TRUE, repel = TRUE)
+```
+
+### 细胞身份注释
+
+TODO: 从拟南芥、水稻等根部 scRNA-Seq 找维管束相关基因。
+
+```{r fig.width=15, fig.height=8}
+Seurat::DefaultAssay(obj) <- "RNA"
+
+Seurat::DotPlot(
+  obj,
+  features = list(
+    "FDH" = c(
+      "TraesCS4B02G297500",
+      "TraesCS4D02G296400",
+      "TraesCS4A02G007400"
+    ),
+    "ATML1" = c(
+      "TraesCS2A02G474000",
+      "TraesCS2D02G473700"
+    ),
+    "DCR" = c(
+      "TraesCS1A02G341300",
+      "TraesCS1D02G343400"
+    ),
+    # EP3 是排水孔相关基因
+    "EP3" = c(
+      "TraesCS2A02G350700",
+      "TraesCS2D02G348800",
+      "TraesCS6D02G199500",
+      "TraesCS6A02G216100"
+    ),
+    "ALMT12" = c(
+      "TraesCS1D02G194000",
+      "TraesCS1A02G189900",
+      "TraesCS1B02G192000"
+    ),
+    "MYB60" = c(
+      "TraesCS4A02G322200",
+      "TraesCS5D02G552200"
+    ),
+    "HIC" = c(
+      "TraesCS4D02G226100"
+    ),
+    "RBCS" = c(
+      "TraesCS2A02G066800",
+      #"TraesCS2B02G079200",
+      #"TraesCS2D02G065200",
+      #"TraesCS2D02G065300",
+      "TraesCS5A02G165400",
+      #"TraesCS5A02G165700",
+      #"TraesCS5B02G162600",
+      #"TraesCS5B02G162800",
+      #"TraesCS5D02G169600",
+      "TraesCS5D02G169900"
+    ),
+    "CAB3" = c(
+      "TraesCS7A02G276400",
+      #"TraesCS1D02G411300",
+      "TraesCS1B02G317500",
+      #"TraesCS7D02G276300",
+      #"TraesCS5B02G353200",
+      #"TraesCS5A02G350600",
+      "TraesCS1A02G403300"
+    ),
+    "LHCB2.1" = c(
+      "TraesCS5D02G329200",
+      "TraesCS5B02G322900",
+      "TraesCS5A02G322500"
+    ),
+    "CA1" = c(
+      #"TraesCS7D02G443400",
+      "TraesCS7B02G354800",
+      "TraesCS3A02G230000",
+      #"TraesCS3D02G223300",
+      "TraesCS3B02G259300"
+    ),
+    "AOC2" = c(
+      "TraesCS6D02G314300",
+      "TraesCS6A02G334800",
+      "TraesCS6B02G365200"
+    ),
+    "SULTR3;4" = c(
+      "TraesCS7A02G088700",
+      "TraesCS4A02G388000",
+      "TraesCS7D02G084100"
+    ),
+    "TaGSr" = c(
+      "TraesCS4B02G240900",
+      "TraesCS4D02G240700",
+      "TraesCS4A02G063800"
+    ),
+    "gl-OXO" = c(
+      "TraesCS4D02G032000",
+      "TraesCS4B02G033300",
+      "TraesCS4A02G279200",
+      "TraesCS4D02G031800"
+    ),
+    "TaSUT1" = c(
+      "TraesCS4A02G016400",
+      "TraesCS4B02G287800",
+      "TraesCS4D02G286500"
+    ),
+    "CPIII" = c(
+      "TraesCS6B02G050700",
+      "TraesCS6D02G041700",
+      "TraesCS6A02G036100"
+    ),
+    "AT1G62510" = c(
+      "TraesCS2A02G424800",
+      "TraesCS2B02G444500",
+      #"TraesCS2D02G422700",
+      #"TraesCS2D02G422800",
+      "TraesCS2A02G424861"
+    ),
+    # Bulliform
+    "PFA-DSP2" = c(
+      "TraesCS5B02G163200",
+      "TraesCS5D02G170400"
+    )
+  )
+) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1),
+    strip.text.x = ggplot2::element_text(angle = 90)
+  )
+```
+
+依据 marker 基因对类群重命名：
+
+```{r}
+Seurat::DefaultAssay(obj) <- "integrated"
+
+obj <- Seurat::RenameIdents(
+  obj,
+  `0` = "Mesophyll Cells 4",
+  `1` = "Vascular Cells 4",
+  `2` = "Vascular Cells 6",
+  `3` = "Mesophyll Cells 2",
+  `4` = "Mesophyll Cells 3",
+  `5` = "Vascular Cells 5",
+  `6` = "Unknown",
+  `7` = "Cortex Cells 3",
+  `8` = "Cortex Cells 2",
+  `9` = "Cortex Cells 1",
+  `10` = "Vascular Cells 2",
+  `11` = "Epidermal Cells 1",
+  `12` = "Mesophyll Cells 1",
+  `13` = "Epidermal Cells 2",
+  `14` = "Vascular Cells 1",
+  `15` = "Guardian Cells"
+)
+
+sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
+```
+
+
+### 相对细胞群集丰度
 
 差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
 
 ```{r}
 cluster_stats <- table(sce$cluster_id, sce$sample_id)
-t(cluster_stats)
+cluster_stats
 ```
 
-### 相对细胞群集丰度
+看看各个类群在各自样本中所占的比例：
 
 ```{r warning=FALSE}
 cluster_prop <- prop.table(cluster_stats, 2)
@@ -48,6 +212,10 @@ cluster_prop_df %>%
     strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
 ```
 
+TODO: 计算丰度变化的显著性。
+
+> Statistical significance of differences in the proportion of clusters between separate arrays and sequencing runs was performed using a Chi-square test. (Macosko, Evan Z., Anindita Basu, Rahul Satija, James Nemesh, Karthik Shekhar, Melissa Goldman, Itay Tirosh, et al. 2015. “Highly Parallel Genome-Wide Expression Profiling of Individual Cells Using Nanoliter Droplets.” Cell 161 (5): 1202–14. https://doi.org/10.1016/j.cell.2015.05.002.)
+
 ### 样本细胞数量
 
 ```{r}
@@ -68,7 +236,6 @@ sample_cells_df %>%
     panel.grid = ggplot2::element_blank(), panel.spacing = grid::unit(1, "mm"), 
     strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
 ```
-
 
 ## 差异状态分析
 
@@ -237,7 +404,7 @@ markers <- list(
 )
 
 markers$PNR2 %>%
-  rhapsodykit::diff_state_filter() %>%
+  rhapsodykit::diff_state_significant() %>%
   rhapsodykit::diff_state_summary()
 ```
 
@@ -250,7 +417,7 @@ markers$PNR2 %>%
 ```{r}
 # filter FDR < 5%, abs(logFC) > 1 & sort by adj. p-value
 ds_res$edgeR %>%
-  rhapsodykit::diff_state_filter(0.05, 1) %>%
+  rhapsodykit::diff_state_significant(0.05, 1) %>%
   rhapsodykit::diff_state_summary()
 ```
 
@@ -258,7 +425,7 @@ ds_res$edgeR %>%
 
 ```{r}
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_filter(0.05, 1) %>%
+  rhapsodykit::diff_state_significant(0.05, 1) %>%
   rhapsodykit::diff_state_summary()
 ```
 
@@ -269,7 +436,7 @@ ds_res$DESeq2 %>%
 
 ```{r}
 ds_res$edgeR %>%
-  rhapsodykit::diff_state_filter(0.05, 1) %>%
+  rhapsodykit::diff_state_significant(0.05, 1) %>%
   rhapsodykit::expr_freq_filter(sce) %>%
   rhapsodykit::diff_state_summary()
 ```
@@ -298,11 +465,11 @@ muscat::resDS(sce, res, frq = TRUE)
 ```{r}
 patchwork::wrap_plots(
   ds_res$edgeR %>%
-    rhapsodykit::diff_state_filter() %>%
+    rhapsodykit::diff_state_significant() %>%
     rhapsodykit::genecount_diff_state() +
     ggplot2::ggtitle("edgeR"),
   ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_filter() %>%
+    rhapsodykit::diff_state_significant() %>%
     rhapsodykit::genecount_diff_state() +
     ggplot2::ggtitle("DESeq2"),
   ncol = 1,
@@ -335,20 +502,216 @@ dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.TR4") %>%
 ```
 
 
-### 细胞亚群间的一致性
+### 细胞亚群间差异状态的一致性
+
+首先我们要准备具有丰富数据的 UpSetR 数据格式，参考 https://github.com/VCG/upset/wiki 页面来准备：
+
+```{r}
+fromListToUpSetData <- function(input) {
+  data <- UpSetR::fromList(input)
+  elements <- unique(unlist(input))
+  rownames(data) <- elements
+  data
+}
+```
+
 
 我们可以通过集合的可视化来看看细胞亚群之间的 DS 基因是否有交集：
 
 ```{r}
-tbl_filtered <- ds_res$edgeR %>%
-  rhapsodykit::diff_state_filter() %>%
+tbl_filtered <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
   .$table %>% .[["X1DPI.PNR2-X1DPI.MOCK"]]
 
 de_gs_by_k <- purrr::map(tbl_filtered, "gene")
-UpSetR::upset(UpSetR::fromList(de_gs_by_k))
+
+# 用于查询某个交集的元素数量
+intersection_counts <- function(bin, ...) {
+  sets <- as.character(list(...))
+  sum(apply(bin, 1, function(x) {
+    all(x[sets] == 1) && sum(x) == length(sets)
+  }))
+}
+
+# 提取出差异基因列表，指定比较名，返回以 cluster 为组件的列表
+diff_state_genelist <- function(results, contrast) {
+  results$table %>%
+    .[[contrast]] %>%
+    purrr::map("gene") %>%
+    purrr::compact()
+}
+
+gene_sets_list <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  diff_state_genelist("X1DPI.PNR2-X1DPI.MOCK")
+
+make_upset_data <- function(binary) {
+  binary %>%
+    fromListToUpSetData() %>%
+    tibble::as_tibble(rownames = "gene") %>%
+    tidyr::gather(-gene, key = "cluster", value = "is_diff_expr") %>%
+    dplyr::filter(is_diff_expr == 1) %>%
+    dplyr::group_by(gene) %>%
+    dplyr::summarize(clusters = list(cluster))
+}
+
+upset_plot <- function(df) {
+  main_plot <- df %>%
+    ggplot2::ggplot(ggplot2::aes(x = clusters)) +
+    ggplot2::geom_bar() +
+    ggplot2::geom_text(
+      stat = "count", size = 2, vjust = -1,
+      mapping = ggplot2::aes(label = ggplot2::after_stat(count))) +
+    ggupset::scale_x_upset(n_intersections = 15, expand = ggplot2::expansion(c(0, 0), c(0.8, 0.8))) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(c(0, 0), c(0, 40))) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(plot.margin = ggplot2::margin(0.5, 0.5, 0.5, 1.5, unit = "cm"))
+
+  main_plot
+}
+
+gene_sets_list %>%
+  make_upset_data() %>%
+  upset_plot()
 ```
 
-TODO: 那么如何使用 UpSetR 来查看不同 contrast 间基因集的差异呢？
+TODO: 将上调和下调的基因分别显示出来。如何解决一个问题，某个基因在 cluster_1 中是上调，在 cluster_2 中是下调。 将上调基因与下调基因分成两个类别，分别计算出用于 UpSet Plot 的数据框。当某个基因在在两个集合中分别是上调基因和下调基因时，那么它在交集中就不会出现。
+
+可以考虑将 up-regulated 和 down-regulated 分别生成两张可以直接画图的表格。然后将两张并合并在一起，标记一个 up 或者 down ，然后用 dogde 条形图绘制出来。
+
+```{r}
+up_list <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_filter(logFC > 0) %>%
+  rhapsodykit::diff_state_significant() %>%
+  .$table %>% .[["X1DPI.TR4-X1DPI.MOCK"]] %>%
+  purrr::map("gene") %>%
+  purrr::compact()
+
+down_list <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_filter(logFC < 0) %>%
+  rhapsodykit::diff_state_significant() %>%
+  .$table %>% .[["X1DPI.TR4-X1DPI.MOCK"]] %>%
+  purrr::map("gene") %>%
+  purrr::compact()
+  
+
+upset_updown_regulated <- function(up_list, down_list) {
+  up_data <- make_upset_data(up_list)
+  down_data <- make_upset_data(down_list)
+  
+  up_data$regulated <- factor("up", c("up", "down"))
+  down_data$regulated <- factor("down", c("up", "down"))
+
+  df_to_plot <- dplyr::bind_rows(up_data, down_data)
+  
+  main_plot <- df_to_plot %>%
+    ggplot2::ggplot(ggplot2::aes(x = clusters, fill = regulated)) +
+    ggplot2::geom_bar(
+      width = 0.9,
+      position = ggplot2::position_dodge(width = 0.9)) +
+    ggplot2::geom_text(
+      stat = "count", size = 2, vjust = -1,
+      position = ggplot2::position_dodge(width = 0.9),
+      mapping = ggplot2::aes(label = ggplot2::after_stat(count))) +
+    ggupset::scale_x_upset(
+      n_intersections = 15,
+      expand = ggplot2::expansion(c(0, 0), c(0.8, 0.8))) +
+    ggplot2::scale_y_continuous(
+      expand = ggplot2::expansion(c(0, 0), c(0, 40))) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(plot.margin = ggplot2::margin(0.5, 0.5, 0.5, 1.5, unit = "cm"))
+
+  main_plot
+}
+
+p1 <- up_list %>%
+  make_upset_data() %>%
+  upset_plot() + ggplot2::ggtitle("Up-regulated genes")
+
+p2 <- down_list %>%
+  make_upset_data() %>%
+  upset_plot() + ggplot2::ggtitle("Down-regulated genes")
+
+p1 + p2
+
+upset_updown_regulated(up_list, down_list)
+```
+
+
+Tips: 为什么 UpSetR 与 ggupset 画出来的数据不一致呢？当 `UpSetR::upset` 设置了 `nsets` 参数时，集合的交集计算只会在选定的集合之间进行。而 ggupset 默认显示所有集合，因此在默认参数状态下 UpSetR 与 ggupset 是有可能不一致的。
+
+### 样本间差异状态的一致性
+
+```{r}
+upset_contrasts <- function(input) {
+  sets_list <- input$table %>%
+    purrr::map(function(x) {
+      purrr::map(x, "gene") %>%
+        purrr::compact()
+    })
+  
+  sets_metadata <- sets_list %>%
+    purrr::imap(function(contrast, key) {
+      cbind(
+        sets = sprintf("%s [%s]", key, names(contrast)),
+        contrast = key,
+        cluster = names(contrast)
+      )
+    }) %>%
+    do.call(rbind, .) %>%
+    as.data.frame()
+
+  sets_to_plot <- sets_list %>%
+    unlist(recursive = FALSE)
+  
+  names(sets_to_plot) <- sets_metadata$sets
+
+  sets_to_plot %>%
+    fromListToUpSetData() %>%
+    UpSetR::upset(
+      nsets = 6,
+      cutoff = 5,
+      text.scale = c(1, 1, 1, 1, 1, 0.75),
+      set.metadata = list(
+        data = sets_metadata,
+        plots = list(
+          list(
+            type = "matrix_rows",
+            column = "contrast",
+            alpha = 0.4,
+            colors = c(
+              "X1DPI.PNR2-X1DPI.MOCK" = "green",
+              "X1DPI.TR4-X1DPI.MOCK" = "navy",
+              "X1DPI.PNR2-X1DPI.TR4" = "yellow"
+            )
+          )
+        )
+      ),
+      # queries = list(
+      #   list(
+      #     query = UpSetR::intersects,
+      #     params = list("X1DPI.PNR2-X1DPI.MOCK [1]", "X1DPI.TR4-X1DPI.MOCK [1]"),
+      #     color = "orange",
+      #     active = FALSE
+      #   ),
+      #   list(
+      #     query = UpSetR::intersects,
+      #     params = list("X1DPI.PNR2-X1DPI.MOCK [14]", "X1DPI.TR4-X1DPI.MOCK [14]"),
+      #     color = "deepskyblue",
+      #     active = FALSE
+      #   )
+      # )
+    )
+}
+
+ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  upset_contrasts()
+```
+
+因为有不同的 contrast ，所以无法显示上调与下调的基因。
+
+TODO: 针对某个 cluster ，绘制所有 contrast 的 UpSet 图。
 
 ### 表达量在降维图上的投影
 
@@ -383,8 +746,8 @@ cowplot::plot_grid(plotlist = ps, ncol = 2, align = "vh")
 我们可以从细胞水平来看看这些 DS 基因的差异性分布：
 
 ```{r}
-scater::plotExpression(sce[, sce$cluster_id == "14"],
-  features = tbl_filtered$`14`$gene[seq_len(6)],
+scater::plotExpression(sce[, sce$cluster_id == "Vascular Cells 4"],
+  features = tbl_filtered$`Vascular Cells 4`$gene[seq_len(6)],
   x = "sample_id", colour_by = "group_id", ncol = 3) +
   ggplot2::guides(fill = ggplot2::guide_legend(override.aes = list(size = 5, alpha = 1))) +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
@@ -405,7 +768,7 @@ genes <- dplyr::bind_rows(tbl_filtered) %>%
 # top-5 DS genes per cluster
 rhapsodykit::heatmap_cross_sample(
   pb_arr, genes,
-  clusters = c("1", "14"),
+  clusters = c("Vascular Cells 4", "Vascular Cells 1"),
   type = "logcounts",
   show_row_names = FALSE)
 ```
