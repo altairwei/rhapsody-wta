@@ -4,7 +4,7 @@
 
 `muscat` 包要求输入数据需要预先经过处理，比如整合、聚类和细胞注释等等，因此这里我们直接加载已经处理过的 `Seurat` 对象。
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
 library(magrittr)
 library(patchwork)
 
@@ -15,7 +15,7 @@ obj <- readRDS("../../results/IntegratedAnalysis/1DPI-All/Seurat_Object_Combined
 
 ### 样本细胞降维度图
 
-```{r}
+```{r warning=FALSE}
 Seurat::DimPlot(obj, reduction = "tsne", group.by = "group")
 Seurat::DimPlot(obj, reduction = "tsne", label = TRUE, repel = TRUE)
 ```
@@ -198,7 +198,7 @@ cluster_prop_df <- reshape2::melt(
 cluster_prop_df$cluster_id <- factor(type.convert(cluster_prop_df$cluster_id))
 cluster_prop_df$group_id <- sce$group_id[match(cluster_prop_df$sample_id, sce$sample_id)]
 
-cluster_prop_df %>%
+p_cluster_percent <- cluster_prop_df %>%
   ggplot2::ggplot(ggplot2::aes(
     x = sample_id, y = frequency, fill = cluster_id)) +
   ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
@@ -223,7 +223,7 @@ TODO: 计算丰度变化的显著性。
 sample_cells_df <- reshape2::melt(table(sce$sample_id), varnames = "sample_id", value.name = "n_cells")
 sample_cells_df$group_id <- sce$group_id[match(sample_cells_df$sample_id, sce$sample_id)]
 
-sample_cells_df %>%
+p_sample_cells <- sample_cells_df %>%
   ggplot2::ggplot(ggplot2::aes(
     x = sample_id, y = n_cells, fill = group_id)) +
   ggplot2::scale_y_continuous("nb. of cells", limits = c(0, 7500), 
@@ -237,9 +237,18 @@ sample_cells_df %>%
     strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
 ```
 
+我们将两幅图合并起来：
+
+```{r fig.height=5, fig.width=14}
+p_cluster_percent + p_sample_cells
+```
+
+
 ## 差异状态分析
 
-### 将单细胞聚合成 pseudo-bulk 数据
+### 实施 DS 分析
+
+#### 将单细胞聚合成 pseudo-bulk 数据
 
 差异状态分析有两类方法，其中之一是基于聚合数据的差异基因表达方法。
 
@@ -291,7 +300,7 @@ mds_plot_list$cpm
 
 我们可以发现 `cpm` 和 `counts` 类型数据的 MDS 图非常相似。因为本质上它们两者是一致的，并且都没有经过归一化，所以不适合用来画 MDS 图。
 
-### 样品水平的分析: 基于聚合的方法
+#### 样品水平的分析: 基于聚合的方法
 
 当我们组装好 pseudo-bulk 数据后，就可以开展基于聚合的差异状态分析了。基于聚合的差异状态方法依赖于 bulk RNA-Seq 领域已经常用的差异基表达分析方法，而这些方法对输入数据的数值类型是有要求的吗，比如：
 
@@ -361,13 +370,13 @@ str(ds_res$edgeR$table, max.level = 1)
 
 ```{r}
 # access results table for 1st comparison
-cluster1 <- ds_res$DESeq2$table[["X1DPI.PNR2-X1DPI.MOCK"]][["1"]]
+cluster1 <- ds_res$DESeq2$table[["X1DPI.PNR2-X1DPI.MOCK"]][[1]]
 head(cluster1)
 ```
 
 1DPI-PNR2 vs. 1DPI-MOCK 比较组合中 cluster 1 的差异基因表达结果如上所示。
 
-### 细胞水平的分析: 混合模型
+#### 细胞水平的分析: 混合模型
 
 如果我们不愿意基于聚合来展开差异状态分析，还可以基于细胞水平数据通过 Mixed Models 来完成差异状态分析。`muscat` 主要实现了三种方法：
 
@@ -386,7 +395,7 @@ mm_nbinom = muscat::mmDS(sce, n_threads = 2, method = "nbinom")
 str(mm_dream)
 ```
 
-### 寻找组间特异性标识基因
+#### 寻找组间特异性标识基因
 
 这里出现一个很有意义的问题：**如何找出 group 特异性的 DS 基因集**？
 
@@ -408,9 +417,9 @@ markers$PNR2 %>%
   rhapsodykit::diff_state_summary()
 ```
 
-## 处理结果
+### 处理结果
 
-### 结果的过滤与概览
+#### 结果的过滤与概览
 
 我们要对差异状态分析的结果进行过滤，我们基于基因表达的变化幅度和显著性来过滤：
 
@@ -430,7 +439,7 @@ ds_res$DESeq2 %>%
 ```
 
 
-### 计算表达频率
+#### 计算表达频率
 
 除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
 
@@ -441,7 +450,7 @@ ds_res$edgeR %>%
   rhapsodykit::diff_state_summary()
 ```
 
-### 格式化结果
+#### 格式化结果
 
 当比较的组别数量非常多时，我们就需要将它们转化为一个方便查看或者操作的格式。其中 `res` 必须是 `muscat::pbDS` 或 `muscat::mmDS` 的计算结果。
 
@@ -456,13 +465,13 @@ muscat::resDS(sce, res, bind = "col", cpm = TRUE)
 muscat::resDS(sce, res, frq = TRUE)
 ```
 
-## 对结果可视化
+### 对结果可视化
 
-### 可视化 DS 基因的数量
+#### 可视化 DS 基因的数量
 
 我们可以查看一下 edgeR 和 DESeq2 两种方法发现的差异基因数量：
 
-```{r}
+```{r fig.height=7, fig.width=7}
 patchwork::wrap_plots(
   ds_res$edgeR %>%
     rhapsodykit::diff_state_significant() %>%
@@ -482,7 +491,7 @@ patchwork::wrap_plots(
 我们首先画一下 `X1DPI.PNR2-X1DPI.MOCK` 火山图：
 
 ```{r}
-df_to_plot <- ds_res$edgeR %>% rhapsodykit::diff_state_format()
+df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
 dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.MOCK") %>%
   rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs. 1DPI-MOCK")
 ```
@@ -502,7 +511,7 @@ dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.TR4") %>%
 ```
 
 
-### 细胞亚群间差异状态的一致性
+#### 细胞亚群间差异状态的一致性
 
 首先我们要准备具有丰富数据的 UpSetR 数据格式，参考 https://github.com/VCG/upset/wiki 页面来准备：
 
@@ -640,7 +649,7 @@ upset_updown_regulated(up_list, down_list)
 
 Tips: 为什么 UpSetR 与 ggupset 画出来的数据不一致呢？当 `UpSetR::upset` 设置了 `nsets` 参数时，集合的交集计算只会在选定的集合之间进行。而 ggupset 默认显示所有集合，因此在默认参数状态下 UpSetR 与 ggupset 是有可能不一致的。
 
-### 样本间差异状态的一致性
+#### 样本间差异状态的一致性
 
 ```{r}
 upset_contrasts <- function(input) {
@@ -713,7 +722,7 @@ ds_res$DESeq2 %>%
 
 TODO: 针对某个 cluster ，绘制所有 contrast 的 UpSet 图。
 
-### 表达量在降维图上的投影
+#### 表达量在降维图上的投影
 
 既然知道了差异基因，那么我们可以尝试将表达量投影到降维散点图中。
 
@@ -731,7 +740,7 @@ ps <- lapply(top4, function(gene) {
       obj, gene,
       reduction = "tsne",
       pt.size = 0.05,
-      label = TRUE) +
+      label = FALSE) +
     ggplot2::ggtitle(gene) +
     ggplot2::theme_bw(8) +
     ggplot2::theme(legend.position = "none")
@@ -741,7 +750,7 @@ ps <- lapply(top4, function(gene) {
 cowplot::plot_grid(plotlist = ps, ncol = 2, align = "vh")
 ```
 
-### 细胞水平的可视化: 小提琴图
+#### 细胞水平的可视化: 小提琴图
 
 我们可以从细胞水平来看看这些 DS 基因的差异性分布：
 
@@ -755,7 +764,7 @@ scater::plotExpression(sce[, sce$cluster_id == "Vascular Cells 4"],
 
 用 `Seurat::VlnPlot` 画不出上面这个图。
 
-### 样本水平的可视化: Pseudobulk 热图
+#### 样本水平的可视化: Pseudobulk 热图
 
 如果我们基于聚合来做 DS 分析，那么我们天然会想到画一个热图：
 
@@ -779,3 +788,342 @@ rhapsodykit::heatmap_cross_sample(
 -   将横坐标以 group 分割
 
 TODO: 参考 (Crowell et al. 2020) Fig. 4D 绘制一幅热图，寻找差异表达模组。
+
+#### 差异基因的热图
+
+利用 logFC 的表达情况来对基因集进行聚类，找出在表达模式上一致的模块。然后对这些模块再进行富集分析。
+
+```{r eval=FALSE}
+pbs <- pb_list$counts
+ns <- length(levels(sce$sample_id))
+
+
+# construct SCE containing logFCs for ea. cluster
+ref <- pbs$group_id == "X1DPI.MOCK"
+lfc <- lapply(
+  SummarizedExperiment::assays(pbs),
+  function(u) {
+    y <- edgeR::DGEList(u)
+    y <- edgeR::calcNormFactors(y)
+    lcpm <- log1p(edgeR::cpm.DGEList(y))
+    lfc <- lcpm - rowMeans(lcpm[, ref])
+    SingleCellExperiment::SingleCellExperiment(
+      lfc, colData = SingleCellExperiment::colData(pbs)
+    )
+  }
+) %>% do.call(what = cbind)
+
+lfc$cluster_id <- factor(
+    rep(SummarizedExperiment::assayNames(pbs), each = ns), 
+    levels = SummarizedExperiment::assayNames(pbs))
+
+# consensus clustering of DS genes
+ds_gs_by_k <- ds_res$edgeR %>%
+  rhapsodykit::diff_state_significant() %>%
+  .$table %>% .[["X1DPI.PNR2-X1DPI.MOCK"]] %>%
+  purrr::map("gene")
+
+ds_gs <- unique(unlist(ds_gs_by_k))
+cc <- M3C::M3C(
+  t(SummarizedExperiment::assay(lfc[ds_gs, ])),
+  method = 2, 
+  seed = NULL,
+  removeplots = TRUE)
+cc_ids <- cc$realdataresults[[3]]$assignments
+cc_cols <- RColorBrewer::brewer.pal(length(unique(cc_ids)), "Set2")
+names(cc_cols) <- unique(cc_ids)
+
+# column & row annoations 
+col_df <- data.frame(
+    cluster_id = rep(SummarizedExperiment::assayNames(pbs), each = ns), 
+    group_id = rep(pbs$group_id, length(SummarizedExperiment::assays(pbs))))
+col_anno <- ComplexHeatmap::HeatmapAnnotation(
+    df = col_df,
+    show_annotation_name = FALSE,
+    annotation_legend_param = list(
+      title_gp = grid::gpar(fontsize = 8), 
+      labels_gp = grid::gpar(fontsize = 6)
+    )
+)
+
+row_anno <- ComplexHeatmap::rowAnnotation(
+    show_annotation_name = FALSE,
+    df = data.frame(consensus_id = cc_ids),
+    col = list(consensus_id = cc_cols),
+    simple_anno_size = grid::unit(2, "mm"),
+    annotation_legend_param = list(
+      title_gp = grid::gpar(fontsize = 8), 
+      labels_gp = grid::gpar(fontsize = 6)
+    )
+)
+# get axis limits by rounding limits of x to nearest n -------------------------
+.get_brks <- function(x, n) {
+    n <- 1 / n
+    min <- floor(min(x) * n) / n
+    max <- ceiling(max(x) * n) / n
+    c(0, min, max)
+}
+
+.hm_lgd_aes <- list(
+    title_gp = grid::gpar(fontsize = 8), 
+    labels_gp = grid::gpar(fontsize = 6))
+
+# cluster-wise logFC heatmap wrapper -------------------------------------------
+.hm_cols <- c("navy", "cyan", "violet")
+
+.plot_hm <- function(sce, col, brks, col_anno = NULL, row_anno = NULL, 
+    row_split = NULL, row_nms = FALSE, col_title = NULL, ...)
+    ComplexHeatmap::Heatmap(assay(sce), col, name = "logFC", 
+        column_title = col_title, cluster_columns = FALSE, 
+        show_row_names = row_nms, show_column_names = FALSE,
+        show_row_dend = FALSE, show_column_dend = TRUE,
+        row_split = row_split, column_split = sce$cluster_id,
+        top_annotation = col_anno, left_annotation = row_anno, 
+        heatmap_legend_param = c(.hm_lgd_aes, list(at = brks)),
+        row_names_side = "left", ...)
+
+qs <- quantile(SummarizedExperiment::assay(lfc[ds_gs, ]), c(0.01, 0.99))
+brks <- .get_brks(qs, 0.5)
+cols <- circlize::colorRamp2(brks, .hm_cols)
+(hm <- .plot_hm(lfc[ds_gs, ], cols, brks, 
+    col_anno, row_anno, cc_ids, row_title = NULL, 
+    cluster_row_slices = FALSE, cluster_column_slices = FALSE, 
+    use_raster = TRUE, raster_device = "CairoPNG"))
+```
+
+## 基因功能分析
+
+### 基于 GO 注释的功能分析
+
+首先我们要拿到小麦 GO 注释数据：
+
+```{r}
+# Get GO Data
+# quote="" argument is neccessary for reading the complete table,
+# because it disables quoting.
+go_data <- read.table(
+  "../../data/GOData.tsv", header = TRUE, sep = "\t", quote = "") %>%
+  tibble::as_tibble()
+
+go_data <- go_data %>%
+  dplyr::filter(GO_ID != "")
+
+go2gene <- go_data %>%
+  dplyr::select(GO_ID, Gene_ID)
+go2name <- go_data %>%
+  dplyr::select(GO_ID, GO_Name)
+```
+
+#### 对差异状态基因做富集分析
+
+要做富集分析我们首先要拿到一个基因列表。
+
+```{r fig.height=7, fig.width=14}
+p1 <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 1", "gene") %>%
+  rhapsodykit::enrichment_analysis(go_data) %>%
+  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 1 of 1DPI-TR4 vs. 1DPI-MOCK")
+
+p2 <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "Vascular Cells 1", "gene") %>%
+  rhapsodykit::enrichment_analysis(go_data) %>%
+  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 1 of 1DPI-PNR2 vs. 1DPI-MOCK")
+
+p3 <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.TR4", "Unknown", "gene") %>%
+  rhapsodykit::enrichment_analysis(go_data) %>%
+  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Unknown of 1DPI-PNR2 vs. 1DPI-TR4")
+
+p1 + p2 + p3
+```
+
+现在我们可以从基因与 GO 的关系绘图：
+
+```{r fig.height=8, fig.width=12}
+sig_genes <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant()
+genes <- sig_genes %>%
+  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 1", "gene")
+fc <- sig_genes %>%
+  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 1", "logFC")
+names(fc) <- genes
+
+enr <- genes %>%
+  clusterProfiler::enricher(TERM2GENE = go2gene, TERM2NAME = go2name)
+
+n_category <- 20
+
+p <- enr %>%
+  enrichplot::cnetplot(
+    foldChange = fc,
+    showCategory = n_category,
+    circular = FALSE,
+    node_label = "none",
+    colorEdge = FALSE
+  )
+
+p <- p + ggraph::geom_node_text(
+  ggplot2::aes_(label=~name),
+  data = p$data[1:n_category, ],
+  repel=TRUE,
+  bg.color = "white"
+)
+
+p
+```
+
+如果我们不将基因显示为 node ，而是将 GO 词条之间的链接定义为重叠基因的数量，也就是说 GO 词条之间重叠基因越多他们在图上的距离也就越近。这个功能叫做 Enrichment Map 。
+
+```{r fig.height=7, fig.width=7}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(cex_label_category = 0.6)
+```
+
+
+当要展示很多 GO 词条时，网络图就会变得非常复杂，我们可以试试 clusterProfiler 的 Heatmap-like functional classification 功能。不过这个热图似乎没有聚类，也就不是很方便人类阅读和理解了。TODO: 
+
+```{r fig.height=7, fig.width=10}
+enr %>%
+  clusterProfiler::heatplot(foldChange = fc) +
+  ggplot2::theme(axis.text.x = ggplot2::element_blank())
+```
+
+使用 UpSet 图似乎看起来更有意义。
+
+```{r}
+enr %>% enrichplot::upsetplot()
+```
+
+#### 对差异状态基因做 GSEA 分析
+
+基于差异基因表达的富集分析可以找到差异较大的基因，但它发现不了那些虽然差异较小的，但在一组相关基因中以协调的方式得到证明的基因。因此 Gene Set Enrichment Analysis (GSEA) 直接关注这个问题。
+
+GSEA 将一个基因集内各基因的统计数据聚合起来，因此有可能检测到一个预定义的基因集中所有基因以小而协调的方式变化的情况。因为许多相关的表型差异很可能是由一组基因中微小但一致的变化表现出来的。
+
+基因是根据其表型进行排名的。给定一个预先的基因集 S (例如，共享相同 DO 类别的基因) ，GSEA 的目标是确定 S 的成员是随机分布在整个排序好的基因列表 (L)，还是主要存在于顶部或底部。.
+
+For gene set enrichment analysis, we need a ranked list of genes. Suppose you are importing your own data from a csv file and the file contains two columns, one for gene ID (no duplicated allowed) and another one for fold change, you can prepare your own geneList via the following command:
+
+```{r}
+## 我们不需要依据 FDR 来筛选基因，只需要 logFC 来排序
+gsea_df <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 1", c("gene", "logFC"))
+
+## feature 1: numeric vector
+geneList <- gsea_df[,2]
+
+## feature 2: named vector
+names(geneList) <- as.character(gsea_df[,1])
+
+## feature 3: decreasing order
+geneList <- sort(geneList, decreasing = TRUE)
+
+```
+
+问题是从哪里去找通路数据库呢？似乎 [Plant Reactome](https://plantreactome.gramene.org/) 很不错的样子。
+
+似乎可以用 `clusterProfiler::GSEA()` 函数：
+
+```{r}
+gsea <- clusterProfiler::GSEA(geneList, TERM2GENE = go2gene, TERM2NAME = go2name)
+
+p <- gsea %>% enrichplot::cnetplot(
+  foldChange = geneList,
+  showCategory = 10,
+  circular = FALSE,
+  node_label = "none",
+  colorEdge = FALSE
+)
+
+p <- p + ggraph::geom_node_text(
+  ggplot2::aes_(label=~name),
+  data = p$data[1:10, ],
+  repel=TRUE,
+  bg.color = "white"
+)
+
+p
+```
+
+```{r fig.height=10, fig.width=7}
+gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(cex_label_category = 0.6)
+```
+
+```{r fig.height=7, fig.width=10}
+gsea %>%
+  enrichplot::upsetplot()
+```
+
+
+```{r fig.height=7, fig.width=14}
+gsea %>%
+  enrichplot::ridgeplot()
+```
+
+```{r}
+gsea %>%
+  enrichplot::gseaplot(geneSetID = 3, title = gsea$Description[3])
+```
+
+```{r fig.height=7, fig.width=14}
+gsea %>%
+  enrichplot::gseaplot2(geneSetID = 1:5)
+```
+
+```{r}
+gsea %>%
+  enrichplot::gsearank(geneSetID = 3, title = gsea$Description[3])
+```
+
+#### 差异状态基因的生物主题比较
+
+我们可以试试 clusterProfiler 生物主题比较功能：
+
+```{r fig.height=14, fig.width=8}
+compare_list <- list(
+  "VCs_1.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 1", "gene"),
+  "VCs_1.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "Vascular Cells 1", "gene"),
+  "VCs_4.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 4", "gene"),
+  "VCs_4.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "Vascular Cells 4", "gene")
+)
+
+comp_enr <- clusterProfiler::compareCluster(compare_list, fun = "enricher", TERM2GENE = go2gene, TERM2NAME = go2name)
+
+enrichplot::dotplot(comp_enr, showCategory = 20, by = "count") +
+  #ggplot2::scale_y_discrete(expand = ggplot2::expansion(c(0, 0), c(1, 1))) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+TODO: 将 dotplot 按照 cluster 来 facet 化，然后 x 轴显示 contrast 就好了。
+TODO: 将 enrichplot::dotplot 与 ggupset 结合到一起，看看能否提供更方便快捷的理解方式。
+
+参考资料：
+* [Biological theme comparison](http://yulab-smu.top/clusterProfiler-book/chapter11.html)
+* [biological-theme-comparison](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html#biological-theme-comparison) 
+* Yu, G., Wang, L.-G., Han, Y., & He, Q.-Y. (2012). clusterProfiler: An R Package for Comparing Biological Themes Among Gene Clusters. OMICS: A Journal of Integrative Biology, 16(5), 284–287. https://doi.org/10.1089/omi.2011.0118
+
+然后看看 GO 词条之间的关联：
+
+```{r fig.height=7, fig.width=10}
+comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(legend_n = 2)
+```
+
+### 其他注释的功能分析
+
+比如 KEGG 或 [Plant Reactome](https://plantreactome.gramene.org/)
