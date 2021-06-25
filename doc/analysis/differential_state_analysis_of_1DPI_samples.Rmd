@@ -513,17 +513,7 @@ dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.TR4") %>%
 
 #### 细胞亚群间差异状态的一致性
 
-首先我们要准备具有丰富数据的 UpSetR 数据格式，参考 https://github.com/VCG/upset/wiki 页面来准备：
-
-```{r}
-fromListToUpSetData <- function(input) {
-  data <- UpSetR::fromList(input)
-  elements <- unique(unlist(input))
-  rownames(data) <- elements
-  data
-}
-```
-
+首先我们要准备具有丰富数据的 UpSetR 数据格式，参考 https://github.com/VCG/upset/wiki 页面来准备。
 
 我们可以通过集合的可视化来看看细胞亚群之间的 DS 基因是否有交集：
 
@@ -534,54 +524,26 @@ tbl_filtered <- ds_res$DESeq2 %>%
 
 de_gs_by_k <- purrr::map(tbl_filtered, "gene")
 
-# 用于查询某个交集的元素数量
-intersection_counts <- function(bin, ...) {
-  sets <- as.character(list(...))
-  sum(apply(bin, 1, function(x) {
-    all(x[sets] == 1) && sum(x) == length(sets)
-  }))
-}
-
-# 提取出差异基因列表，指定比较名，返回以 cluster 为组件的列表
-diff_state_genelist <- function(results, contrast) {
-  results$table %>%
-    .[[contrast]] %>%
-    purrr::map("gene") %>%
-    purrr::compact()
-}
-
-gene_sets_list <- ds_res$DESeq2 %>%
+ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
-  diff_state_genelist("X1DPI.PNR2-X1DPI.MOCK")
+  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:16, "gene") %>%
+  rhapsodykit::from_list_to_upset() %>%
+  rhapsodykit::upset_dataframe() %>%
+  rhapsodykit::upset_plot()
 
-make_upset_data <- function(binary) {
-  binary %>%
-    fromListToUpSetData() %>%
-    tibble::as_tibble(rownames = "gene") %>%
-    tidyr::gather(-gene, key = "cluster", value = "is_diff_expr") %>%
-    dplyr::filter(is_diff_expr == 1) %>%
-    dplyr::group_by(gene) %>%
-    dplyr::summarize(clusters = list(cluster))
-}
+ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", 1:16, "gene") %>%
+  rhapsodykit::from_list_to_upset() %>%
+  rhapsodykit::upset_dataframe() %>%
+  rhapsodykit::upset_plot()
 
-upset_plot <- function(df) {
-  main_plot <- df %>%
-    ggplot2::ggplot(ggplot2::aes(x = clusters)) +
-    ggplot2::geom_bar() +
-    ggplot2::geom_text(
-      stat = "count", size = 2, vjust = -1,
-      mapping = ggplot2::aes(label = ggplot2::after_stat(count))) +
-    ggupset::scale_x_upset(n_intersections = 15, expand = ggplot2::expansion(c(0, 0), c(0.8, 0.8))) +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(c(0, 0), c(0, 40))) +
-    ggplot2::theme_classic() +
-    ggplot2::theme(plot.margin = ggplot2::margin(0.5, 0.5, 0.5, 1.5, unit = "cm"))
-
-  main_plot
-}
-
-gene_sets_list %>%
-  make_upset_data() %>%
-  upset_plot()
+ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.TR4", 1:16, "gene") %>%
+  rhapsodykit::from_list_to_upset() %>%
+  rhapsodykit::upset_dataframe() %>%
+  rhapsodykit::upset_plot()
 ```
 
 TODO: 将上调和下调的基因分别显示出来。如何解决一个问题，某个基因在 cluster_1 中是上调，在 cluster_2 中是下调。 将上调基因与下调基因分成两个类别，分别计算出用于 UpSet Plot 的数据框。当某个基因在在两个集合中分别是上调基因和下调基因时，那么它在交集中就不会出现。
@@ -589,61 +551,23 @@ TODO: 将上调和下调的基因分别显示出来。如何解决一个问题�
 可以考虑将 up-regulated 和 down-regulated 分别生成两张可以直接画图的表格。然后将两张并合并在一起，标记一个 up 或者 down ，然后用 dogde 条形图绘制出来。
 
 ```{r}
-up_list <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_filter(logFC > 0) %>%
-  rhapsodykit::diff_state_significant() %>%
-  .$table %>% .[["X1DPI.TR4-X1DPI.MOCK"]] %>%
-  purrr::map("gene") %>%
-  purrr::compact()
-
-down_list <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_filter(logFC < 0) %>%
-  rhapsodykit::diff_state_significant() %>%
-  .$table %>% .[["X1DPI.TR4-X1DPI.MOCK"]] %>%
-  purrr::map("gene") %>%
-  purrr::compact()
+plot_updown <- function(contrast) {
+  up_list <- ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_filter(logFC > 0) %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull(contrast, 1:16, "gene")
   
-
-upset_updown_regulated <- function(up_list, down_list) {
-  up_data <- make_upset_data(up_list)
-  down_data <- make_upset_data(down_list)
+  down_list <- ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_filter(logFC < 0) %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull(contrast, 1:16, "gene")
   
-  up_data$regulated <- factor("up", c("up", "down"))
-  down_data$regulated <- factor("down", c("up", "down"))
-
-  df_to_plot <- dplyr::bind_rows(up_data, down_data)
-  
-  main_plot <- df_to_plot %>%
-    ggplot2::ggplot(ggplot2::aes(x = clusters, fill = regulated)) +
-    ggplot2::geom_bar(
-      width = 0.9,
-      position = ggplot2::position_dodge(width = 0.9)) +
-    ggplot2::geom_text(
-      stat = "count", size = 2, vjust = -1,
-      position = ggplot2::position_dodge(width = 0.9),
-      mapping = ggplot2::aes(label = ggplot2::after_stat(count))) +
-    ggupset::scale_x_upset(
-      n_intersections = 15,
-      expand = ggplot2::expansion(c(0, 0), c(0.8, 0.8))) +
-    ggplot2::scale_y_continuous(
-      expand = ggplot2::expansion(c(0, 0), c(0, 40))) +
-    ggplot2::theme_classic() +
-    ggplot2::theme(plot.margin = ggplot2::margin(0.5, 0.5, 0.5, 1.5, unit = "cm"))
-
-  main_plot
+  rhapsodykit::upset_updown_regulated(up_list, down_list)
 }
 
-p1 <- up_list %>%
-  make_upset_data() %>%
-  upset_plot() + ggplot2::ggtitle("Up-regulated genes")
-
-p2 <- down_list %>%
-  make_upset_data() %>%
-  upset_plot() + ggplot2::ggtitle("Down-regulated genes")
-
-p1 + p2
-
-upset_updown_regulated(up_list, down_list)
+plot_updown("X1DPI.PNR2-X1DPI.MOCK") + ggplot2::ggtitle("1DPI PNR2 vs. MOCK")
+plot_updown("X1DPI.TR4-X1DPI.MOCK") + ggplot2::ggtitle("1DPI TR4 vs. MOCK")
+plot_updown("X1DPI.PNR2-X1DPI.TR4") + ggplot2::ggtitle("1DPI PNR2 vs. TR4")
 ```
 
 
@@ -676,7 +600,7 @@ upset_contrasts <- function(input) {
   names(sets_to_plot) <- sets_metadata$sets
 
   sets_to_plot %>%
-    fromListToUpSetData() %>%
+    rhapsodykit::from_list_to_upset() %>%
     UpSetR::upset(
       nsets = 6,
       cutoff = 5,
@@ -937,7 +861,7 @@ p3 <- ds_res$DESeq2 %>%
   rhapsodykit::enrichment_analysis(go_data) %>%
   rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Unknown of 1DPI-PNR2 vs. 1DPI-TR4")
 
-p1 + p2 + p3
+p1 + p2 + p3 * cowplot::theme_cowplot()
 ```
 
 现在我们可以从基因与 GO 的关系绘图：
@@ -954,25 +878,7 @@ names(fc) <- genes
 enr <- genes %>%
   clusterProfiler::enricher(TERM2GENE = go2gene, TERM2NAME = go2name)
 
-n_category <- 20
-
-p <- enr %>%
-  enrichplot::cnetplot(
-    foldChange = fc,
-    showCategory = n_category,
-    circular = FALSE,
-    node_label = "none",
-    colorEdge = FALSE
-  )
-
-p <- p + ggraph::geom_node_text(
-  ggplot2::aes_(label=~name),
-  data = p$data[1:n_category, ],
-  repel=TRUE,
-  bg.color = "white"
-)
-
-p
+rhapsodykit::enrich_cnetplot(enr, fold_change = fc, show_category = 20)
 ```
 
 如果我们不将基因显示为 node ，而是将 GO 词条之间的链接定义为重叠基因的数量，也就是说 GO 词条之间重叠基因越多他们在图上的距离也就越近。这个功能叫做 Enrichment Map 。
@@ -1031,22 +937,7 @@ geneList <- sort(geneList, decreasing = TRUE)
 ```{r}
 gsea <- clusterProfiler::GSEA(geneList, TERM2GENE = go2gene, TERM2NAME = go2name)
 
-p <- gsea %>% enrichplot::cnetplot(
-  foldChange = geneList,
-  showCategory = 10,
-  circular = FALSE,
-  node_label = "none",
-  colorEdge = FALSE
-)
-
-p <- p + ggraph::geom_node_text(
-  ggplot2::aes_(label=~name),
-  data = p$data[1:10, ],
-  repel=TRUE,
-  bg.color = "white"
-)
-
-p
+rhapsodykit::enrich_cnetplot(gsea, fold_change = geneList, show_category = 20)
 ```
 
 ```{r fig.height=10, fig.width=7}
@@ -1112,6 +1003,7 @@ TODO: 将 dotplot 按照 cluster 来 facet 化，然后 x 轴显示 contrast 就
 TODO: 将 enrichplot::dotplot 与 ggupset 结合到一起，看看能否提供更方便快捷的理解方式。
 
 参考资料：
+
 * [Biological theme comparison](http://yulab-smu.top/clusterProfiler-book/chapter11.html)
 * [biological-theme-comparison](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html#biological-theme-comparison) 
 * Yu, G., Wang, L.-G., Han, Y., & He, Q.-Y. (2012). clusterProfiler: An R Package for Comparing Biological Themes Among Gene Clusters. OMICS: A Journal of Integrative Biology, 16(5), 284–287. https://doi.org/10.1089/omi.2011.0118
