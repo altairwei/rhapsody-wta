@@ -100,6 +100,13 @@ parser <- add_option(parser,
   default = 1L,
   type = "integer",
   help = paste0("How many processes to use. [default: %default]"))
+parser <- add_option(parser,
+  c("--mem-size"),
+  dest = "memory",
+  action = "store",
+  default = 4L,
+  type = "integer",
+  help = paste0("How many memory (GB) to use. [default: %default GB]"))
 arguments <- parse_args2(parser)
 options <- arguments$options
 options$positionals <- arguments$args
@@ -112,8 +119,7 @@ if (options$process > 1) {
   if (suppressPackageStartupMessages(!requireNamespace("future")))
     install.packages("future")
   future::plan("multiprocess", workers = options$process)
-  # Set global size to 2GB
-  options(future.globals.maxSize = 6 * 1024^3)
+  options(future.globals.maxSize = options$memory * 1024^3)
 }
 
 if (isTRUE(options$integrate)) {
