@@ -1,0 +1,177 @@
+准备：
+
+```{r}
+library(magrittr)
+```
+
+
+首先准备两个主要的函数：
+
+```{r}
+sample_correlation_matrix <- function(
+  data_folders,
+  normalization = c("LogNormalize", "CLR", "RC", "SCTransform"),
+  aggregation = c("avg", "sum"),
+  correlation = c("pearson", "spearman", "kendall"),
+  ...
+) {
+  normalization <- match.arg(normalization)
+  aggregation <- match.arg(aggregation)
+  correlation <- match.arg(correlation)
+
+  fun_to_apply <- switch (aggregation,
+    "sum" = Matrix::rowSums,
+    "avg" = Matrix::rowMeans,
+    Matrix::rowMeans
+  )
+
+  expr_df <- rhapsodykit::make_pseudo_bulk(
+    data_folders,
+    normalization = normalization,
+    method = aggregation,
+    ...
+  )
+
+  cormat <- cor(expr_df, method = correlation, use = "complete.obs")
+
+  cormat
+}
+
+sample_correlation_heatmap <- function(
+  cormat,
+  matrix_name = NULL,
+  simple_annotation = NULL,
+  ...
+) {
+  p <- ComplexHeatmap::Heatmap(
+    cormat,
+    name = matrix_name,
+    col = c("white", "red"),
+    row_names_side = "left",
+    row_dend_side = "left",
+    column_names_side = "bottom",
+    column_dend_side = "top",
+    column_names_rot = 45,
+    show_column_dend = FALSE,
+    
+    left_annotation = do.call(ComplexHeatmap::rowAnnotation, c(simple_annotation, show_annotation_name = FALSE)),
+  
+    cell_fun = function(j, i, x, y, width, height, fill) {
+      grid::grid.text(
+        sprintf("%.2f", cormat[i, j]),
+        x, y, gp = grid::gpar(fontsize = 14)
+      )
+    },
+
+    ...
+  )
+
+  p
+}
+```
+
+然后准备样本数据：
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  "3DPI-PNR2-2",
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+data_folders <- paste0("../../results/", samples)
+
+perform_sample_correlation_analysis <- function(
+  data_folders,
+  normalization = c("LogNormalize", "CLR", "RC", "SCTransform"),
+  aggregation = c("avg", "sum"),
+  correlation = c("pearson", "spearman", "kendall"),
+  group_rule = NULL,
+  ...
+) {
+  cormat <- sample_correlation_matrix(
+    data_folders,
+    normalization = match.arg(normalization),
+    aggregation = match.arg(aggregation),
+    correlation = match.arg(correlation)
+  )
+
+  simple_annotation <- NULL
+
+  if (!is.null(group_rule)) {
+    groups <- structure(
+      stringr::str_extract(
+        basename(data_folders), group_rule),
+      names = basename(data_folders)
+    )
+    groups <- groups[rownames(cormat)]
+
+    simple_annotation <- list(group = groups)
+  }
+
+  matrix_name <- switch(
+    match.arg(correlation),
+    pearson = "Pearson's r",
+    kendall = "Kendall's tau",
+    spearman = "Spearman's rho"
+  )
+
+  sample_correlation_heatmap(
+    cormat,
+    matrix_name = matrix_name,
+    simple_annotation = simple_annotation
+  )
+}
+```
+
+我们先用 pearson + LogNormalize 看一下：
+
+```{r fig.height=12, fig.width=14, message=FALSE, warning=FALSE}
+perform_sample_correlation_analysis(
+  data_folders, "LogNormalize", "avg", "pearson", group_rule = "\\dDPI", verbose)
+```
+
+用 pearson + SCTransform:
+
+```{r fig.height=12, fig.width=14, message=FALSE, warning=FALSE}
+perform_sample_correlation_analysis(
+  data_folders, "SCTransform", "avg", "pearson", group_rule = "\\dDPI", verbose = FALSE)
+```
+
+
+用 spearman + LogNormalize:
+
+```{r fig.height=12, fig.width=14, warning=FALSE, message=FALSE}
+perform_sample_correlation_analysis(
+  data_folders, "LogNormalize", "avg", "spearman", group_rule = "\\dDPI")
+```
+
+
+我们用 spearman + SCTransform 看一下：
+
+```{r fig.height=12, fig.width=14, warning=FALSE, message=FALSE}
+perform_sample_correlation_analysis(
+  data_folders, "SCTransform", "avg", "spearman", group_rule = "\\dDPI", verbose = FALSE)
+```
+
