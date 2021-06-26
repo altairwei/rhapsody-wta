@@ -861,7 +861,7 @@ p3 <- ds_res$DESeq2 %>%
   rhapsodykit::enrichment_analysis(go_data) %>%
   rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Unknown of 1DPI-PNR2 vs. 1DPI-TR4")
 
-p1 + p2 + p3 * cowplot::theme_cowplot()
+p1 + p2 + p3
 ```
 
 现在我们可以从基因与 GO 的关系绘图：
@@ -940,7 +940,7 @@ gsea <- clusterProfiler::GSEA(geneList, TERM2GENE = go2gene, TERM2NAME = go2name
 rhapsodykit::enrich_cnetplot(gsea, fold_change = geneList, show_category = 20)
 ```
 
-```{r fig.height=10, fig.width=7}
+```{r fig.height=7, fig.width=7}
 gsea %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::emapplot(cex_label_category = 0.6)
