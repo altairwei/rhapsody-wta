@@ -128,6 +128,14 @@ parser <- add_option(parser,
   default = "Sample_Correlation",
   type = "character",
   help = "The name prefix of output file. [default: %default]")
+parser <- add_option(parser,
+  c("--group-rule"),
+  dest = "group_rule",
+  action = "store",
+  default = NULL,
+  type = "character",
+  help = paste0("The pattern to extract group information from sample name.")
+)
 arguments <- parse_args2(parser)
 options <- arguments$options
 options$positionals <- arguments$args
@@ -137,7 +145,7 @@ fun_to_apply <- if (options$average) Matrix::rowMeans else Matrix::rowSums
 #TODO: 对相关性热图进行聚类分析。
 #TODO: 增加选项输出 psuedo-bulk RNA-Seq 数据
 
-expr_df <- rhapsodykit::make_psuedo_bulk(
+expr_df <- rhapsodykit::make_pseudo_bulk(
   options$positionals,
   normalization = options$norm_method,
   method = ifelse(options$average, "avg", "sum"))
@@ -206,6 +214,20 @@ p <- ComplexHeatmap::Heatmap(
     )
   }
 )
+
+if (!is.null(options$group_rule)) {
+  groups <- structure(
+    stringr::str_extract(
+      basename(options$positionals), options$group_rule),
+    names = options$positionals
+  )
+
+  groups <- groups[rownames(cormat)]
+
+  browser()
+
+  p <- p + ComplexHeatmap::rowAnnotation(Date = groups)
+}
 
 pngfile <- file.path(
   options$output_folder, sprintf("%s.png", options$name_prefix))
