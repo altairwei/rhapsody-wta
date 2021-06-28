@@ -41,5 +41,8 @@ for (rds_filename in options$positionals) {
 
   saveRDS(obj, paste0(rds_filename, ".new"))
 
+  file.remove(rds_filename)
+  file.rename(paste0(rds_filename, ".new"), rds_filename)
+
   gc()
 }
