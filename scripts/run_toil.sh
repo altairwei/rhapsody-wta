@@ -49,13 +49,15 @@ RUN_ID=$(date +%Y%m%d_%H%M%S)
 
 # Create folders for workflow
 RESULTS_FOLDER=results/$SAMPLE_NAME
+LOG_FOLDER=logs/$(date +%Y%m%d)
 export TMPDIR=tmp/$SAMPLE_NAME/tmpwork
 mkdir -p $RESULTS_FOLDER
+mkdir -p $LOG_FOLDER
 mkdir -p $TMPDIR
 
 # Arguments for toil
 JOBSTORE=tmp/$SAMPLE_NAME/jobstore
-LOG_FILE=logs/cwltoil_${SAMPLE_NAME}_${RUN_ID}.log
+LOG_FILE=$LOG_FOLDER/cwltoil_${SAMPLE_NAME}_${RUN_ID}.log
 
 # Environment variables for toil
 export TOIL_TORQUE_ARGS="-q batch"
