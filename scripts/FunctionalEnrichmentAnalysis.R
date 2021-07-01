@@ -57,15 +57,39 @@ go2gene <- go_data %>%
 go2name <- go_data %>%
   dplyr::select(GO_ID, GO_Name)
 
-compare_ora <- list(
-  "VCs_1.1DPI.TR4.MOCK" = rhapsodykit::enrich_significant_lfc(
-      ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 1") %>% names(),
-  "VCs_1.1DPI.PNR2.MOCK" = rhapsodykit::enrich_significant_lfc(
-      ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Vascular Cells 1") %>% names(),
-  "VCs_4.1DPI.TR4.MOCK" = rhapsodykit::enrich_significant_lfc(
-      ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 4") %>% names(),
-  "VCs_4.1DPI.PNR2.MOCK" = rhapsodykit::enrich_significant_lfc(
-      ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Vascular Cells 4") %>% names()
+prepare_data_list <- function(
+  data,
+  contrasts,
+  clusters,
+  fun
+) {
+  res <- purrr::imap(clusters, function(clr, clr_name) {
+    purrr::imap(contrasts, function(con, con_name) {
+      fun(data, con, clr)
+    })
+  })
+
+  unlist(res, recursive = FALSE)
+}
+
+compare_ora <- prepare_data_list(
+  ds_res$DESeq2,
+  contrasts = c(
+    "3DPI.TR4.MOCK" = "X3DPI.TR4-X3DPI.MOCK",
+    "3DPI.PNR2.MOCK" = "X3DPI.PNR2-X3DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_6" = "Vascular Cells 6",
+    "VCs_5" = "Vascular Cells 5",
+    "VCs_1" = "Vascular Cells 1",
+    "VCs_2" = "Vascular Cells 2",
+    "VCs_4" = "Vascular Cells 4",
+    "ECs" = "Epidermal Cells"
+  ),
+  fun = function(data, con, clr) {
+    rhapsodykit::enrich_significant_lfc(
+      data, con, clr, 0.01, 2) %>% names()
+  }
 )
 
 compare_ora <- clusterProfiler::compareCluster(
@@ -88,15 +112,23 @@ dev.off()
 # Biological theme comparison for GSEA
 # --------------------------------------
 
-compare_list <- list(
-  "VCs_1.1DPI.TR4.MOCK" = rhapsodykit::enrich_ranked_lfc(
-    ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 1"),
-  "VCs_1.1DPI.PNR2.MOCK" = rhapsodykit::enrich_ranked_lfc(
-    ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Vascular Cells 1"),
-  "VCs_4.1DPI.TR4.MOCK" = rhapsodykit::enrich_ranked_lfc(
-    ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "Vascular Cells 4"),
-  "VCs_4.1DPI.PNR2.MOCK" = rhapsodykit::enrich_ranked_lfc(
-    ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Vascular Cells 4")
+compare_list <- prepare_data_list(
+  ds_res$DESeq2,
+  contrasts = c(
+    "3DPI.TR4.MOCK" = "X3DPI.TR4-X3DPI.MOCK",
+    "3DPI.PNR2.MOCK" = "X3DPI.PNR2-X3DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_6" = "Vascular Cells 6",
+    "VCs_5" = "Vascular Cells 5",
+    "VCs_1" = "Vascular Cells 1",
+    "VCs_2" = "Vascular Cells 2",
+    "VCs_4" = "Vascular Cells 4",
+    "ECs" = "Epidermal Cells"
+  ),
+  fun = function(data, con, clr) {
+    rhapsodykit::enrich_ranked_lfc(data, con, clr)
+  }
 )
 
 comp_gsea <- rhapsodykit::enrich_compare_gsea(
