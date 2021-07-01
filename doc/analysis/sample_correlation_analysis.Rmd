@@ -114,7 +114,8 @@ perform_sample_correlation_analysis <- function(
     data_folders,
     normalization = match.arg(normalization),
     aggregation = match.arg(aggregation),
-    correlation = match.arg(correlation)
+    correlation = match.arg(correlation),
+    ...
   )
 
   simple_annotation <- NULL
@@ -149,7 +150,7 @@ perform_sample_correlation_analysis <- function(
 
 ```{r fig.height=12, fig.width=14, message=FALSE, warning=FALSE}
 perform_sample_correlation_analysis(
-  data_folders, "LogNormalize", "avg", "pearson", group_rule = "\\dDPI", verbose)
+  data_folders, "LogNormalize", "avg", "pearson", group_rule = "\\dDPI")
 ```
 
 用 pearson + SCTransform:
