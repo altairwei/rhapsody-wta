@@ -147,7 +147,8 @@ if (isTRUE(options$integrate)) {
       seurat_obj
     })
 
-    obj_combined <- rhapsodykit::integrated_sample_analysis(obj_list)
+    obj_combined <- rhapsodykit::integrated_sample_analysis(
+      obj_list, reduction = "rpca", k.anchor = 20)
   }
 
   output_folder <- options$output_folder

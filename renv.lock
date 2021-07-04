@@ -228,10 +228,10 @@
     },
     "Matrix": {
       "Package": "Matrix",
-      "Version": "1.3-2",
+      "Version": "1.3-4",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "ff280503079ad8623d3c4b1519b24ea2"
+      "Hash": "4ed05e9c9726267e4a5872e09c04587c"
     },
     "MatrixGenerics": {
       "Package": "MatrixGenerics",
@@ -365,10 +365,17 @@
     },
     "Seurat": {
       "Package": "Seurat",
-      "Version": "3.2.3",
+      "Version": "4.0.3",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "ffcee86b35e60b6cd91ea050d152b1cf"
+      "Hash": "7249f329b663f90bf99ffe06097ea3e7"
+    },
+    "SeuratObject": {
+      "Package": "SeuratObject",
+      "Version": "4.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "e5959242d66cfe4de9116fdcec327f80"
     },
     "SingleCellExperiment": {
       "Package": "SingleCellExperiment",
@@ -1672,8 +1679,8 @@
       "RemoteRepo": "rhapsodykit",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "0c86c04f5feffdf73480e8268f789ff046b6ddff",
-      "Hash": "f6b673f24c23f370447216a95660d1e2"
+      "RemoteSha": "cb459603732ab281a60624006218012be014daeb",
+      "Hash": "fd703efb9af0ea1f5f7e0f0ee08f4361"
     },
     "rhdf5": {
       "Package": "rhdf5",
@@ -1901,12 +1908,12 @@
       "Source": "Bioconductor",
       "Hash": "1841edbaa151c369bd671a1b61bad097"
     },
-    "spatstat": {
-      "Package": "spatstat",
-      "Version": "1.64-1",
+    "spatstat.core": {
+      "Package": "spatstat.core",
+      "Version": "1.65-5",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "bf01485c922fd3bb6af165b9304539dd"
+      "Hash": "74234d199bf6269479efa737f597068a"
     },
     "spatstat.data": {
       "Package": "spatstat.data",
@@ -1914,6 +1921,20 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "582315d096bd9187bda3bb4dc64cefa8"
+    },
+    "spatstat.geom": {
+      "Package": "spatstat.geom",
+      "Version": "1.65-5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "b6fb37ec48e549c35baa6e7ecfd79734"
+    },
+    "spatstat.sparse": {
+      "Package": "spatstat.sparse",
+      "Version": "2.0-0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "615efff0d33e612b15dc3fc3ba0cc554"
     },
     "spatstat.utils": {
       "Package": "spatstat.utils",
