@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#PBS -l mem=20gb,nodes=1:ppn=6,walltime=24:00:00
+#PBS -l mem=64gb,nodes=1:ppn=6,walltime=24:00:00
 #PBS -q batch
 #PBS -N seurat_analysis
 #PBS -o logs
@@ -14,6 +14,4 @@ cd $PBS_O_WORKDIR
 source activate renv
 source env.sh
 
-INPUT_DIR=$1
-
-SeuratAnalysis.R --compress -d --process 6 -c "${INPUT_DIR}"
+SeuratAnalysis.R --mem-size 64 --compress -d --process 6 -c "$@"

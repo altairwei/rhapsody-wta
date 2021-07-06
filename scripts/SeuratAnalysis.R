@@ -104,6 +104,22 @@ parser <- add_option(parser,
     "separated by comma.")
 )
 parser <- add_option(parser,
+  c("--anchors"),
+  dest = "anchors",
+  action = "store",
+  default = 5,
+  type = "integer",
+  help = paste0("How many neighbors to use when picking anchors. [default: %default]")
+)
+parser <- add_option(parser,
+  c("-r", "--reduction"),
+  dest = "reduction",
+  action = "store",
+  default = "cca",
+  type = "character",
+  help = paste0("Dimensional reduction to perform when finding anchors. [default: %default]")
+)
+parser <- add_option(parser,
   c("--process"),
   dest = "process",
   action = "store",
@@ -159,7 +175,7 @@ if (isTRUE(options$integrate)) {
     })
 
     obj_combined <- rhapsodykit::integrated_sample_analysis(
-      obj_list, reduction = "rpca", k.anchor = 20,
+      obj_list, reduction = options$reduction, k.anchor = options$anchors,
       reference = options$reference
     )
   }
