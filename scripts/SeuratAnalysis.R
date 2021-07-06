@@ -94,6 +94,16 @@ parser <- add_option(parser,
   help = paste0("The pattern to extract group information from sample name.")
 )
 parser <- add_option(parser,
+  c("-R", "--reference"),
+  dest = "reference",
+  action = "store",
+  default = NULL,
+  type = "character",
+  help = paste0("Perform reference-based integration based on provided",
+    "reference locations (integer). Multiple references should be ",
+    "separated by comma.")
+)
+parser <- add_option(parser,
   c("--process"),
   dest = "process",
   action = "store",
@@ -110,6 +120,11 @@ parser <- add_option(parser,
 arguments <- parse_args2(parser)
 options <- arguments$options
 options$positionals <- arguments$args
+
+if (is.character(options$reference)) {
+  options$reference <- type.convert(
+    strsplit(options$reference, ",")[[1]], as.is = TRUE)
+}
 
 if (length(options$positionals) < 1) {
   stop("At least one position argument is required.\n")
@@ -140,15 +155,13 @@ if (isTRUE(options$integrate)) {
         seurat_obj$group <- seurat_obj$sample
       }
 
-      # TODO: 增加 SCTransform 的选项！
-      seurat_obj <- Seurat::NormalizeData(seurat_obj)
-      seurat_obj <- Seurat::FindVariableFeatures(
-        seurat_obj, selection.method = "vst", nfeatures = 2000)
       seurat_obj
     })
 
     obj_combined <- rhapsodykit::integrated_sample_analysis(
-      obj_list, reduction = "rpca", k.anchor = 20)
+      obj_list, reduction = "rpca", k.anchor = 20,
+      reference = options$reference
+    )
   }
 
   output_folder <- options$output_folder
