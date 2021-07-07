@@ -1,20 +1,5 @@
 #!/usr/bin/env Rscript
 
-require_dependencies <- function(x) {
-  stopifnot(is.character(x))
-  dep_status <- suppressPackageStartupMessages(
-    sapply(x, requireNamespace)
-  )
-  pkg_to_install <- names(dep_status[dep_status == FALSE])
-  if (length(pkg_to_install) > 0)
-    install.packages(pkg_to_install)
-}
-
-require_dependencies(c(
-  "optparse",
-  "rhapsodykit"
-))
-
 library(optparse)
 
 ggplot2::theme_set(cowplot::theme_cowplot())
@@ -141,6 +126,15 @@ parser <- add_option(parser,
   default = 4L,
   type = "integer",
   help = paste0("How many memory (GB) to use. [default: %default GB]"))
+parser <- add_option(parser,
+  c("-L", "--data-list"),
+  dest = "data_list",
+  action = "store",
+  default = NULL,
+  type = "character",
+  help = paste0("Provide a CSV file which lists data folder in `data_folder`",
+    "column and reference in `use_as_ref` column."))
+
 arguments <- parse_args2(parser)
 options <- arguments$options
 options$positionals <- arguments$args
@@ -150,9 +144,46 @@ if (is.character(options$reference)) {
     strsplit(options$reference, ",")[[1]], as.is = TRUE)
 }
 
-if (length(options$positionals) < 1) {
+data_folders <- character(0)
+
+if (!is.null(options$data_list)) {
+  data_df <- readr::read_csv(
+    options$data_list,
+    col_names = TRUE,
+    col_types = readr::cols(
+      data_folder = readr::col_character(),
+      use_as_ref = readr::col_logical()
+    )
+  )
+
+  options$data_folders <- ifelse(
+    startsWith(data_df$data_folder, "/"),
+    data_df$data_folder,
+    file.path(dirname(options$data_list), data_df$data_folder)
+  )
+
+  if (is.null(options$reference) &&
+      length(which(data_df$use_as_ref)) != 0) {
+    options$reference <- which(data_df$use_as_ref)
+  }
+
+} else {
+  options$data_folders <- options$positionals
+}
+
+if (length(options$data_folders) < 1) {
   stop("At least one position argument is required.\n")
 }
+
+message("Options:")
+message(
+  paste(
+    capture.output(
+      str(options, vec.len = 50, no.list = TRUE)
+    ),
+    collapse = "\n"
+  )
+)
 
 if (options$process > 1) {
   if (suppressPackageStartupMessages(!requireNamespace("future")))
@@ -166,7 +197,7 @@ if (isTRUE(options$integrate)) {
   if (!is.null(options$use_cache)) {
     obj_combined <- readRDS(options$use_cache)
   } else {
-    obj_list <- lapply(options$positionals, function(base_dir) {
+    obj_list <- lapply(options$data_folders, function(base_dir) {
       expr_matrix <- rhapsodykit::read_rhapsody_wta(base_dir, options$use_mtx)
       seurat_obj <- Seurat::CreateSeuratObject(
         counts = expr_matrix, project = basename(base_dir))
@@ -218,7 +249,7 @@ if (isTRUE(options$integrate)) {
   }
 } else {
   invisible(
-    lapply(options$positionals, function(base_dir) {
+    lapply(options$data_folders, function(base_dir) {
       expr_matrix <- rhapsodykit::read_rhapsody_wta(base_dir, options$use_mtx)
 
       if (isTRUE(options$compress) && !isTRUE(options$use_mtx)) {
