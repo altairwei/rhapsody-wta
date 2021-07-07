@@ -28,6 +28,14 @@ parser <- add_option(parser,
   type = "logical",
   help = paste0("Draw plots for Seurat analysis. [default: %default]"))
 parser <- add_option(parser,
+  c("--diff-gene"),
+  dest = "diff_gene",
+  action = "store_true",
+  default = FALSE,
+  type = "logical",
+  help = paste0("Perform differential expression analysis to ",
+    "find markers. [default: %default]"))
+parser <- add_option(parser,
   c("--compress"),
   dest = "compress",
   action = "store_true",
@@ -185,16 +193,20 @@ if (isTRUE(options$integrate)) {
     dir.create(output_folder)
   }
 
-  #FIXME: Does this make sense?
-  rhapsodykit::perform_find_all_markers(obj_combined, output_folder)
+  if (isTRUE(options$diff_gene)) {
+    #FIXME: Does this make sense?
+    rhapsodykit::perform_find_all_markers(obj_combined, output_folder)
 
-  # Conserved markers across conditions
-  markers_conserved_df <- rhapsodykit::find_all_conserved_markers(obj_combined)
-  readr::write_csv(
-    markers_conserved_df, file.path(output_folder, "Markers_Conserved.csv"))
+    # Conserved markers across conditions
+    markers_conserved_df <- rhapsodykit::find_all_conserved_markers(
+      obj_combined)
+    readr::write_csv(
+      markers_conserved_df, file.path(output_folder, "Markers_Conserved.csv"))
 
-  # Identify differential expressed genes across conditions
-  rhapsodykit::perform_diff_gene(obj_combined, output_folder, options$draw_plot)
+    # Identify differential expressed genes across conditions
+    rhapsodykit::perform_diff_gene(
+      obj_combined, output_folder, options$draw_plot)
+  }
 
   if (isTRUE(options$produce_cache)) {
     saveRDS(obj_combined,
@@ -236,7 +248,9 @@ if (isTRUE(options$integrate)) {
       seurat_obj <- rhapsodykit::single_sample_analysis(
         seurat_obj, options$mt_gene_file, options$cp_gene_file)
 
-      rhapsodykit::perform_find_all_markers(seurat_obj, output_folder)
+      if (isTRUE(options$diff_gene)) {
+        rhapsodykit::perform_find_all_markers(seurat_obj, output_folder)
+      }
 
       if (isTRUE(options$produce_cache)) {
         saveRDS(seurat_obj,
