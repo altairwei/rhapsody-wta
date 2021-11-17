@@ -1,0 +1,230 @@
+---
+title: "Sample Integration"
+output: html_document
+---
+
+## 1 数据整合的方法
+
+### 1.1 本数据集对批次效应工具的需求
+
+-   同一个 Treatment 在不同重复之间的需要批次对齐。
+-   不同 Treatment 之间的批次不需要对齐。需要避免**过度修正**的问题。
+-   保留了不同细胞群的分离。
+
+### 1.2 目前比较常见的批次效应去除方法
+
+数据整合的方法与批次效应是同时进行的。有几种算法处理批次效应问题：
+
+1.  Regression - 常规的批次效应去除
+2.  CCA - Seurat 数据整合默认实现。汤富酬教授点评比较暴力，有点过度矫正。
+3.  MNN - 汤富酬教授较为推荐。可以通过 k 值调整过拟合的情况。
+4.  RPCA - Seurat 数据整合的另一种实现。
+5.  Harmony - 效率提高，但不能方便的阻止过拟合。
+
+### 1.3 Seurat 实现的数据整合方法
+
+-   基于 CCA 的整合方法
+
+    > By identifying shared sources of variation between datasets, CCA is well-suited for identifying anchors when cell types are conserved, but there are very substantial differences in gene expression across experiments. CCA-based integration therefore enables integrative analysis when experimental conditions or disease states introduce very strong expression shifts, or when integrating datasets across modalities and species. However, CCA-based integration may also lead to overcorrection, especially when a large proportion of cells are non-overlapping across datasets.
+
+    当细胞类型保守而不同的实验在基因表达方面存在非常大的差异时，CCA 很适合用来识别锚点。当实验条件或疾病状态引入非常强烈的表达变化时，或在整合不同模式和物种的数据集时，可以用基于 CCA 的方式来整合数据。但是基于 CCA 的整合也可能导致过度校正，特别是当很大一部分细胞在不同的数据集之间不重叠时。
+
+-   基于 RPCA 的整合方法
+
+    > When determining anchors between any two datasets using RPCA, we project each dataset into the others PCA space and constrain the anchors by the same mutual neighborhood requirement.
+    >
+    > RPCA-based integration runs significantly faster, and also represents a more conservative approach where cells in different biological states are less likely to 'align' after integration. We therefore, recommend RPCA during integrative analysis where:
+    >
+    > -   A substantial fraction of cells in one dataset have no matching type in the other
+    >
+    > -   Datasets originate from the same platform (i.e. multiple lanes of 10x genomics)
+    >
+    > -   There are a large number of datasets or cells to integrate (see INSERT LINK for more tips on integrating large datasets)
+
+    基于 RPCA 的整合运行速度明显更快，也代表了一种更保守的方法，处于不同生物状态的细胞在整合后不太可能 "对齐"。基于 RPCA 的方法适用于以下情景：(1) 一个数据集中的相当一部分细胞在另一个数据集中没有匹配的类型； (2) 数据集来自于同一平台； (3) 有大量的数据集或细胞需要整合。
+
+-   reference-based integration
+
+    > In the standard workflow, we identify anchors between all pairs of datasets. While this gives datasets equal weight in downstream integration, it can also become computationally intensive. For example when integrating 10 different datasets, we perform 45 different pairwise comparisons. As an alternative, we introduce here the possibility of specifying one or more of the datasets as the 'reference' for integrated analysis, with the remainder designated as 'query' datasets. In this workflow, we do not identify anchors between pairs of query datasets, reducing the number of comparisons. For example, when integrating 10 datasets with one specified as a reference, we perform only 9 comparisons. Reference-based integration can be applied to either log-normalized or SCTransform-normalized datasets.
+    >
+    > In general, we observe strikingly similar results between the standard workflow and the one demonstrated here (reference-based + rpca), with substantial reduction in compute time and memory. However, **if the datasets are highly divergent (for example, cross-modality mapping or cross-species mapping), where only a small subset of features can be used to facilitate integration, and you may observe superior results using CCA**.
+
+    也就是说当数据集的异质性非常大（比如跨模式或跨物种）时，只有一小部分特征可以用来促进整合，那么你可能会观察到使用 CCA 的效果更好。
+
+## 2 数据整合面临的问题
+
+### 2.1 数据整合的最大内存需求问题
+
+在整合 21 个样本时，如果直接使用基于 CCA 的方法，那么在合并数据集时内存需求远超 90 G，这导致普通工作站或服务器完全无法满足计算需求。Seurat 同时提供了另外两种方法：
+
+1.  Reciprocal PCA (RPCA)
+2.  Reference-based integration
+
+经过实测，大内存的需求主要发生在 `Seurat::IntegrateData` 这一步骤，而 RPCA 和 reference-based 方法对效率的提升主要体现在 `Seurat::FindIntegrationAnchors` 中，因此无助于减少最大内存需求。而且 CCA 和 RPCA 其实是适用于不同实验情况，因此不是简单的效率提升问题。详细见 [Fast integration using reciprocal PCA (RPCA)](https://satijalab.org/seurat/articles/integration_rpca.html)
+
+现在唯一有希望能够减少最大内存需求的方法是基于参考集的数据整合方法：
+
+> For example when integrating 10 different datasets, we perform 45 different pairwise comparisons. As an alternative, we introduce here the possibility of specifying one or more of the datasets as the 'reference' for integrated analysis, with the remainder designated as 'query' datasets. In this workflow, we do not identify anchors between pairs of query datasets, reducing the number of comparisons. For example, when integrating 10 datasets with one specified as a reference, we perform only 9 comparisons. Reference-based integration can be applied to either log-normalized or SCTransform-normalized datasets.
+
+### 2.2 无参考整合方法的长向量支持问题
+
+long vectors not supported yet
+
+<https://github.com/satijalab/seurat/issues/1029#issuecomment-452350624>
+
+reference-based 数据整合 + rpca 方法联合在一起，可以降低内存需求，以解决 long vectors not supported yet 问题。
+
+| 方法                       | 问题                              |
+|----------------------------|-----------------------------------|
+| All-Sample-NoRef-CCA-An5   | 没问题                            |
+| All-Sample-NoRef-CCA-An10  | long vectors not supported yet    |
+| All-Sample-NoRef-CCA-An15  | long vectors not supported yet    |
+| All-Sample-NoRef-CCA-An20  | long vectors not supported yet    |
+| All-Sample-NoRef-RPCA-An5  | 没问题                            |
+| All-Sample-NoRef-RPCA-An10 | long vectors not supported yet    |
+| All-Sample-NoRef-RPCA-An15 | Cholmod error 'problem too large' |
+| All-Sample-NoRef-RPCA-An20 | long vectors not supported yet    |
+
+看起来只有设置 `k.anchor = 5` 才能在**无参**的情况下整合 21 个样本。
+
+## 3 不修正批次效应的数据合并
+
+### 3.1 呈现样本中的批次效应
+
+思路：直接使用 Seurat 的 merge 功能，然后使用原始数据进行 UMAP 聚类。
+
+首先使用 \``scripts/SeuratAnalysis.R`\` 直接合并所有样本，不进行任何批次效应修正。
+
+```{r warning=FALSE}
+library(magrittr)
+library(patchwork)
+
+obj_merged <- readRDS("../../results/IntegratedAnalysis/All-Sample-Merge/Seurat_Object_Merged.rds")
+```
+
+绘制 UMAP 看看：
+
+```{r}
+Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "group")
+Seurat::DimPlot(obj_merged, reduction = "tsne", label = TRUE, repel = TRUE)
+```
+
+将 t-SNE 拆成不同天数来看看：
+
+```{r fig.height=5, fig.width=10}
+obj_merged$day <- sapply(strsplit(obj_merged$group, "-"), "[[", 1)
+Seurat::DimPlot(
+  obj_merged, reduction = "tsne", group.by = "group", split.by = "day") + ggplot2::theme(legend.position = "bottom")
+```
+
+绘制各样本细胞类群组成情况：
+
+```{r fig.height=5, fig.width=10}
+rhapsodykit::barplot_cluster_abundance(obj_merged)
+```
+
+我们可以发现，如果不移除批次效应的话，相同处理的两个重复之间细胞比例比较一致，只有 3DPI-PNR2 样本重复间差异较大。但是不同样本处理间的差异就非常悬殊了。
+
+### 3.2 评估批次效应移除的工具
+
+使用 BatchBench 跑一遍本数据集。
+
+## 4 使用 Seurat 进行数据整合
+
+### 4.1 如何选择 Seurat 整合的方法
+
+-   CCA
+
+    -   当细胞类型保守而不同的实验在基因表达方面存在非常大的差异时，CCA 很适合用来识别锚点。当实验条件或疾病状态引入非常强烈的表达变化时，或在整合**不同模式和物种**的数据集时，可以用基于 CCA 的方式来整合数据。
+
+    -   当数据集的异质性非常大（比如**跨模式或跨物种**）时，只有一小部分特征可以用来促进整合，那么你可能会观察到使用 CCA 的效果更好。
+
+    -   但是基于 CCA 的整合也可能导致过度校正，特别是当很大一部分细胞在不同的数据集之间不重叠时。
+
+-   RPCA
+
+    -   基于 RPCA 的整合运行速度明显更快，也代表了一种更保守的方法，**处于不同生物状态的细胞在整合后不太可能 "对齐"**。
+
+    -   基于 RPCA 的方法适用于以下情景：(1) 一个数据集中的相当一部分细胞在另一个数据集中没有匹配的类型； (2) 数据集来自于同一平台； (3) 有大量的数据集或细胞需要整合。
+
+-   reference-based
+
+    -   基于参考数据集的整合能够极大地降低计算需求。
+
+    -   
+
+我们需要 Treatment 内部生物学重复之间 "对齐" 地更好，而在不同 Treatment 之间不要**过度修正**，保留 Treatment 造成的差异性。这样的话选择 RPCA 方法更加合适。
+
+### 4.2 无参的 CCA 方法
+
+使用 `scripts/SeuratAnalysis.R` 整合样本。
+
+```{r}
+obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-NoRef-CCA-An5/Seurat_Object_Combined.rds")
+```
+
+我们将样本拆分成不同天数来看看：
+
+```{r fig.height=5, fig.width=10}
+obj_integrated$day <- sapply(strsplit(obj_integrated$group, "-"), "[[", 1)
+Seurat::DimPlot(
+  obj_integrated, reduction = "tsne", group.by = "group", split.by = "day") + ggplot2::theme(legend.position = "bottom")
+```
+
+然后看看在批次效应修正后，各样本细胞群集比例有没有什么新特征：
+
+```{r fig.height=5, fig.width=10}
+rhapsodykit::barplot_cluster_abundance(obj_integrated)
+```
+
+看起来各个样本间的细胞组成比例没有显著的变化，这会不会是 Seurat NoRef-CCA 方法的过拟合现象呢？
+
+### 4.3 以 Mock 为参考的 CCA 方法
+
+```{r}
+obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-MockRef-CCA-An20/Seurat_Object_Combined.rds")
+```
+
+```{r fig.height=5, fig.width=10}
+obj_integrated$day <- sapply(strsplit(obj_integrated$group, "-"), "[[", 1)
+Seurat::DimPlot(
+  obj_integrated, reduction = "tsne", group.by = "group", split.by = "day") + ggplot2::theme(legend.position = "bottom")
+```
+
+```{r fig.height=5, fig.width=10}
+rhapsodykit::barplot_cluster_abundance(obj_integrated)
+```
+
+TODO: 用 dodge 图来表示。
+
+### 4.4 无参的 RPCA 方法
+
+```{r}
+obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seurat_Object_Combined.rds")
+```
+
+```{r fig.height=5, fig.width=10}
+obj_integrated$day <- sapply(strsplit(obj_integrated$group, "-"), "[[", 1)
+Seurat::DimPlot(
+  obj_integrated, reduction = "tsne", group.by = "group", split.by = "day") + ggplot2::theme(legend.position = "bottom")
+```
+
+```{r fig.height=5, fig.width=10}
+rhapsodykit::barplot_cluster_abundance(obj_integrated)
+```
+
+### 4.5 以 Mock 为参考的 RPCA 方法
+
+```{r}
+obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-MockRef-RPCA-An20/Seurat_Object_Combined.rds")
+```
+
+```{r fig.height=5, fig.width=10}
+obj_integrated$day <- sapply(strsplit(obj_integrated$group, "-"), "[[", 1)
+Seurat::DimPlot(
+  obj_integrated, reduction = "tsne", group.by = "group", split.by = "day") + ggplot2::theme(legend.position = "bottom")
+```
+
+```{r fig.height=5, fig.width=10}
+rhapsodykit::barplot_cluster_abundance(obj_integrated)
+```

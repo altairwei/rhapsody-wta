@@ -1,0 +1,34 @@
+首先是样品准备：
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  "3DPI-PNR2-2",
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+data_folders <- paste0("../../results/", samples)
+```
+
+然后解析 
