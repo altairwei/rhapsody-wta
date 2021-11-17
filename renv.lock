@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.0.3",
+    "Version": "4.0.5",
     "Repositories": [
       {
         "Name": "CRAN",
@@ -588,6 +588,13 @@
       "Repository": "CRAN",
       "Hash": "b7d7f1e926dfcd57c74ce93f5c048e80"
     },
+    "checkmate": {
+      "Package": "checkmate",
+      "Version": "2.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "a667800d5f0350371bedeb8b8b950289"
+    },
     "circlize": {
       "Package": "circlize",
       "Version": "0.4.12",
@@ -635,6 +642,13 @@
       "Version": "3.18.1",
       "Source": "Bioconductor",
       "Hash": "5f344773b73f177d66183d4c807c2670"
+    },
+    "clustree": {
+      "Package": "clustree",
+      "Version": "0.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "470cb22cacabbc141eee2bd5388099a0"
     },
     "codetools": {
       "Package": "codetools",
@@ -1505,10 +1519,10 @@
     },
     "plotly": {
       "Package": "plotly",
-      "Version": "4.9.3",
+      "Version": "4.9.4.1",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "f6b85d9e4ed88074ea0ede1aa74bb00e"
+      "Hash": "af4b92cb3828aa30002e2f945c49c2d7"
     },
     "plotrix": {
       "Package": "plotrix",
@@ -1672,15 +1686,15 @@
     },
     "rhapsodykit": {
       "Package": "rhapsodykit",
-      "Version": "0.0.0.9000",
+      "Version": "0.0.0.9008",
       "Source": "GitHub",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "rhapsodykit",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "21435fe39c670d26d10ec5a114aafdda88f62246",
-      "Hash": "c1d9435b529be3d308efa05a12d56fa4"
+      "RemoteSha": "26759233a4bdda68c6d57a96a6f6128dd9aa7005",
+      "Hash": "d4736f69f965206b4a6b6f210531845d"
     },
     "rhdf5": {
       "Package": "rhdf5",
@@ -1710,10 +1724,10 @@
     },
     "rmarkdown": {
       "Package": "rmarkdown",
-      "Version": "2.7",
+      "Version": "2.11",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "edbf4cb1aefae783fd8d3a008ae51943"
+      "Hash": "320017b52d05a943981272b295750388"
     },
     "roxygen2": {
       "Package": "roxygen2",
