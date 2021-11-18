@@ -1,4 +1,4 @@
-# 2DPI 样品的差异状态分析 (Differential State analysis)
+# 3DPI 样品的差异状态分析 (Differential State analysis)
 
 ## 数据准备
 
@@ -6,7 +6,7 @@
 library(magrittr)
 library(patchwork)
 
-obj <- readRDS("../../results/IntegratedAnalysis/2DPI-All/Seurat_Object_Combined.rds")
+obj <- readRDS("../results/IntegratedAnalysis/3DPI-All/Seurat_Object_Combined.rds")
 ```
 
 ## 数据概览
@@ -149,23 +149,22 @@ Seurat::DefaultAssay(obj) <- "integrated"
 
 obj <- Seurat::RenameIdents(
   obj,
-  `0` = "Mesophyll Cells 4",
-  `1` = "Mesophyll Cells 1",
-  `2` = "Vascular Cells 4",
-  `3` = "Cortex Cells 2",
-  `4` = "Mesophyll Cells 5",
-  `5` = "Vascular Cells 5",
-  `6` = "Mesophyll Cells 2",
-  `7` = "Mesophyll Cells 3",
-  `8` = "Cortex Cells 3",
-  `9` = "Vascular Cells 2",
+  `0` = "Cortex Cells 2",
+  `1` = "Vascular Cells 6",
+  `2` = "Mesophyll Cells 2",
+  `3` = "Mesophyll Cells 3",
+  `4` = "Vascular Cells 2",
+  `5` = "Mesophyll Cells 4",
+  `6` = "Vascular Cells 5",
+  `7` = "Vascular Cells 4",
+  `8` = "Unknown",
+  `9` = "Mesophyll Cells 5",
   `10` = "Epidermal Cells",
-  `11` = "Vascular Cells 7",
-  `12` = "Unknown",
-  `13` = "Vascular Cells 6",
-  `14` = "Vascular Cells 1",
-  `15` = "Guardian Cells",
-  `16` = "Cortex Cells 1"
+  `11` = "Mesophyll Cells 1",
+  `12` = "Cortex Cells 1",
+  `13` = "Vascular Cells 1",
+  `14` = "Vascular Cells 3",
+  `15` = "Guardian Cells"
 )
 
 sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
@@ -239,7 +238,6 @@ p_sample_cells <- sample_cells_df %>%
 p_cluster_percent + p_sample_cells
 ```
 
-
 ## 差异状态分析
 
 ### 实施 DS 分析
@@ -288,9 +286,9 @@ ds_res <- list(
     sce, pb_list$counts,
     method = "edgeR",
     contrasts = c(
-      "X2DPI.PNR2-X2DPI.MOCK",
-      "X2DPI.TR4-X2DPI.MOCK",
-      "X2DPI.PNR2-X2DPI.TR4"
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.TR4"
     ),
     verbose = FALSE
   ),
@@ -298,9 +296,9 @@ ds_res <- list(
     sce, pb_list$counts,
     method = "DESeq2",
     contrasts = c(
-      "X2DPI.PNR2-X2DPI.MOCK",
-      "X2DPI.TR4-X2DPI.MOCK",
-      "X2DPI.PNR2-X2DPI.TR4"
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.TR4"
     ),
     verbose = FALSE
   )
@@ -337,26 +335,26 @@ patchwork::wrap_plots(
 )
 ```
 
-我们首先画一下 `X2DPI.PNR2-X2DPI.MOCK` 火山图：
+我们首先画一下 `X3DPI.PNR2-X3DPI.MOCK` 火山图：
 
 ```{r}
 df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
-dplyr::filter(df_to_plot, contrast == "X2DPI.PNR2-X2DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "2DPI-PNR2 vs. 2DPI-MOCK")
+dplyr::filter(df_to_plot, contrast == "X3DPI.PNR2-X3DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "3DPI-PNR2 vs. 3DPI-MOCK")
 ```
 
-然后看一下 `X2DPI.TR4-X2DPI.MOCK` 的火山图：
+然后看一下 `X3DPI.TR4-X3DPI.MOCK` 的火山图：
 
 ```{r}
-dplyr::filter(df_to_plot, contrast == "X2DPI.TR4-X2DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "2DPI-TR4 vs. 2DPI-MOCK")
+dplyr::filter(df_to_plot, contrast == "X3DPI.TR4-X3DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "3DPI-TR4 vs. 3DPI-MOCK")
 ```
 
-最后比较一下 `X2DPI.PNR2-X2DPI.TR4`:
+最后比较一下 `X3DPI.PNR2-X3DPI.TR4`:
 
 ```{r}
-dplyr::filter(df_to_plot, contrast == "X2DPI.PNR2-X2DPI.TR4") %>%
-  rhapsodykit::volcano_diff_state(title = "2DPI-PNR2 vs. 2DPI-TR4")
+dplyr::filter(df_to_plot, contrast == "X3DPI.PNR2-X3DPI.TR4") %>%
+  rhapsodykit::volcano_diff_state(title = "3DPI-PNR2 vs. 3DPI-TR4")
 ```
 
 
@@ -367,27 +365,27 @@ dplyr::filter(df_to_plot, contrast == "X2DPI.PNR2-X2DPI.TR4") %>%
 ```{r}
 tbl_filtered <- ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2) %>%
-  .$table %>% .[["X2DPI.PNR2-X2DPI.MOCK"]]
+  .$table %>% .[["X3DPI.PNR2-X3DPI.MOCK"]]
 
 de_gs_by_k <- purrr::map(tbl_filtered, "gene")
 
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2) %>%
-  rhapsodykit::diff_state_pull("X2DPI.PNR2-X2DPI.MOCK", 1:12, "gene") %>%
+  rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.MOCK", 1:15, "gene") %>%
   rhapsodykit::from_list_to_upset() %>%
   rhapsodykit::upset_dataframe() %>%
   rhapsodykit::upset_plot()
 
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2) %>%
-  rhapsodykit::diff_state_pull("X2DPI.TR4-X2DPI.MOCK", 1:12, "gene") %>%
+  rhapsodykit::diff_state_pull("X3DPI.TR4-X3DPI.MOCK", 1:15, "gene") %>%
   rhapsodykit::from_list_to_upset() %>%
   rhapsodykit::upset_dataframe() %>%
   rhapsodykit::upset_plot()
 
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2) %>%
-  rhapsodykit::diff_state_pull("X2DPI.PNR2-X2DPI.TR4", 1:12, "gene") %>%
+  rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.TR4", 1:15, "gene") %>%
   rhapsodykit::from_list_to_upset() %>%
   rhapsodykit::upset_dataframe() %>%
   rhapsodykit::upset_plot()
@@ -398,19 +396,19 @@ plot_updown <- function(contrast) {
   up_list <- ds_res$DESeq2 %>%
     rhapsodykit::diff_state_filter(logFC > 0) %>%
     rhapsodykit::diff_state_significant(0.01, 2) %>%
-    rhapsodykit::diff_state_pull(contrast, 1:12, "gene")
+    rhapsodykit::diff_state_pull(contrast, 1:15, "gene")
   
   down_list <- ds_res$DESeq2 %>%
     rhapsodykit::diff_state_filter(logFC < 0) %>%
     rhapsodykit::diff_state_significant(0.01, 2) %>%
-    rhapsodykit::diff_state_pull(contrast, 1:12, "gene")
+    rhapsodykit::diff_state_pull(contrast, 1:15, "gene")
   
-  rhapsodykit::upset_updown_regulated(up_list, down_list)
+  rhapsodykit::upset_updown_regulated(up_list, down_list, n_sets = 10)
 }
 
-plot_updown("X2DPI.PNR2-X2DPI.MOCK") + ggplot2::ggtitle("2DPI PNR2 vs. MOCK")
-plot_updown("X2DPI.TR4-X2DPI.MOCK") + ggplot2::ggtitle("2DPI TR4 vs. MOCK")
-plot_updown("X2DPI.PNR2-X2DPI.TR4") + ggplot2::ggtitle("2DPI PNR2 vs. TR4")
+plot_updown("X3DPI.PNR2-X3DPI.MOCK") + ggplot2::ggtitle("3DPI PNR2 vs. MOCK")
+plot_updown("X3DPI.TR4-X3DPI.MOCK") + ggplot2::ggtitle("3DPI TR4 vs. MOCK")
+plot_updown("X3DPI.PNR2-X3DPI.TR4") + ggplot2::ggtitle("3DPI PNR2 vs. TR4")
 ```
 
 #### 样本间差异状态的一致性
@@ -453,9 +451,9 @@ upset_contrasts <- function(input) {
             column = "contrast",
             alpha = 0.4,
             colors = c(
-              "X2DPI.PNR2-X2DPI.MOCK" = "green",
-              "X2DPI.TR4-X2DPI.MOCK" = "navy",
-              "X2DPI.PNR2-X2DPI.TR4" = "yellow"
+              "X3DPI.PNR2-X3DPI.MOCK" = "green",
+              #"X3DPI.TR4-X3DPI.MOCK" = "navy",
+              "X3DPI.PNR2-X3DPI.TR4" = "yellow"
             )
           )
         )
@@ -497,18 +495,18 @@ go2name <- go_data %>%
 
 ```{r fig.height=7, fig.width=7}
 compare_list <- list(
-  "VCs_6.2DPI.TR4.MOCK" = ds_res$DESeq2 %>%
+  "VCs_5.3DPI.TR4.MOCK" = ds_res$DESeq2 %>%
     rhapsodykit::diff_state_significant(0.01, 2) %>%
-    rhapsodykit::diff_state_pull("X2DPI.TR4-X2DPI.MOCK", "Vascular Cells 6", "gene"),
-  "VCs_6.2DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_pull("X3DPI.TR4-X3DPI.MOCK", "Vascular Cells 5", "gene"),
+  "VCs_5.3DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
     rhapsodykit::diff_state_significant(0.01, 2) %>%
-    rhapsodykit::diff_state_pull("X2DPI.PNR2-X2DPI.MOCK", "Vascular Cells 6", "gene"),
-  "MCs_2.2DPI.TR4.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.MOCK", "Vascular Cells 5", "gene"),
+  "VCs_6.3DPI.TR4.MOCK" = ds_res$DESeq2 %>%
     rhapsodykit::diff_state_significant(0.01, 2) %>%
-    rhapsodykit::diff_state_pull("X2DPI.TR4-X2DPI.MOCK", "Mesophyll Cells 2", "gene"),
-  "MCs_2.2DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_pull("X3DPI.TR4-X3DPI.MOCK", "Vascular Cells 6", "gene"),
+  "VCs_6.3DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
     rhapsodykit::diff_state_significant(0.01, 2) %>%
-    rhapsodykit::diff_state_pull("X2DPI.PNR2-X2DPI.MOCK", "Mesophyll Cells 2", "gene")
+    rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.MOCK", "Vascular Cells 6", "gene")
 )
 
 comp_enr <- clusterProfiler::compareCluster(compare_list, fun = "enricher", TERM2GENE = go2gene, TERM2NAME = go2name)
@@ -533,21 +531,21 @@ comp_enr %>%
 ```{r fig.height=7, fig.width=14}
 p1 <- ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2) %>%
-  rhapsodykit::diff_state_pull("X2DPI.TR4-X2DPI.MOCK", "Vascular Cells 6", "gene") %>%
+  rhapsodykit::diff_state_pull("X3DPI.TR4-X3DPI.MOCK", "Vascular Cells 5", "gene") %>%
   rhapsodykit::enrichment_analysis(go_data) %>%
-  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 6 of 2DPI-TR4 vs. 2DPI-MOCK")
+  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 5 of 3DPI-TR4 vs. 3DPI-MOCK")
 
 p2 <- ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2) %>%
-  rhapsodykit::diff_state_pull("X2DPI.PNR2-X2DPI.MOCK", "Vascular Cells 6", "gene") %>%
+  rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.MOCK", "Vascular Cells 5", "gene") %>%
   rhapsodykit::enrichment_analysis(go_data) %>%
-  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 6 of 2DPI-PNR2 vs. 2DPI-MOCK")
+  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 5 of 3DPI-PNR2 vs. 3DPI-MOCK")
 
 p3 <- ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2) %>%
-  rhapsodykit::diff_state_pull("X2DPI.PNR2-X2DPI.TR4", "Vascular Cells 6", "gene") %>%
+  rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.TR4", "Vascular Cells 5", "gene") %>%
   rhapsodykit::enrichment_analysis(go_data) %>%
-  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 6 of 2DPI-PNR2 vs. 2DPI-TR4")
+  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "Vascular Cells 5 of 3DPI-PNR2 vs. 3DPI-TR4")
 
 p1 + p2 + p3
 ```
@@ -558,9 +556,9 @@ p1 + p2 + p3
 sig_genes <- ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.01, 2)
 genes <- sig_genes %>%
-  rhapsodykit::diff_state_pull("X2DPI.TR4-X2DPI.MOCK", "Vascular Cells 6", "gene")
+  rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.MOCK", "Vascular Cells 5", "gene")
 fc <- sig_genes %>%
-  rhapsodykit::diff_state_pull("X2DPI.TR4-X2DPI.MOCK", "Vascular Cells 6", "logFC")
+  rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.MOCK", "Vascular Cells 5", "logFC")
 names(fc) <- genes
 
 enr <- genes %>%
@@ -605,7 +603,7 @@ For gene set enrichment analysis, we need a ranked list of genes. Suppose you ar
 ```{r}
 ## 我们不需要依据 FDR 来筛选基因，只需要 logFC 来排序
 gsea_df <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_pull("X2DPI.TR4-X2DPI.MOCK", "Vascular Cells 6", c("gene", "logFC"))
+  rhapsodykit::diff_state_pull("X3DPI.PNR2-X3DPI.MOCK", "Vascular Cells 5", c("gene", "logFC"))
 
 ## feature 1: numeric vector
 geneList <- gsea_df[,2]

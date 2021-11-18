@@ -99,7 +99,7 @@ reference-based 数据整合 + rpca 方法联合在一起，可以降低内存�
 library(magrittr)
 library(patchwork)
 
-obj_merged <- readRDS("../../results/IntegratedAnalysis/All-Sample-Merge/Seurat_Object_Merged.rds")
+obj_merged <- readRDS("../results/IntegratedAnalysis/All-Sample-Merge/Seurat_Object_Merged.rds")
 ```
 
 绘制 UMAP 看看：

@@ -3,17 +3,19 @@ title: "Cell Annotation"
 output: html_document
 ---
 
+```{r, include=FALSE}
+library(magrittr)
+library(patchwork)
+```
+
 ## 1 所有样本的整合
 
 ### 1.1 构建整合的参考数据集
 
-使用 `scripts/SeuratAnalysis.R` 整合样本。基于 [sample_integration](./sample_integration.Rmd) 做出的决定，选择无参考的 RPCA 方法整合所有样本。
+使用 `scripts/SeuratAnalysis.R` 整合样本。基于 [sample_integration](./sample_integration.Rmd) 做出的决定，选择**无参考的 RPCA 方法**整合所有样本。
 
 ```{r}
-library(magrittr)
-library(patchwork)
-
-obj <- readRDS("../../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seurat_Object_Combined.rds")
+obj <- readRDS("../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seurat_Object_Combined.rds")
 ```
 
 ### 1.2 细胞分群的调整
@@ -26,7 +28,7 @@ obj <- readRDS("../../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seura
 
 > By connecting clusters in this way we can see how clusters are related to each other, which are clearly distinct and which are unstable.
 
-```{r fig.height=14, fig.width=10}
+```{r fig.height=14, fig.width=10, eval=FALSE}
 library(clustree)
 obj <- Seurat::FindClusters(
   obj, resolution = seq(0, 1.6, 0.2), verbose = FALSE)
@@ -41,7 +43,7 @@ clustree::clustree(obj, prefix = "integrated_snn_res.")
 
 我们可以将聚类树覆盖到 t-SNE 空间中：
 
-```{r fig.height=10, fig.width=14}
+```{r fig.height=10, fig.width=14, eval=FALSE}
 clustree::clustree_overlay(
   obj,
   prefix = "integrated_snn_res.",
@@ -369,7 +371,7 @@ Seurat::FeaturePlot(obj, features = c("TraesCS2D02G008400", "TraesCS2A02G538500"
 library(magrittr)
 library(patchwork)
 
-obj <- readRDS("../../results/IntegratedAnalysis/All-MOCK-CCA-An5/Seurat_Object_Combined.rds")
+obj <- readRDS("../results/IntegratedAnalysis/All-MOCK-CCA-An5/Seurat_Object_Combined.rds")
 ```
 
 ### 2.1 细胞注释

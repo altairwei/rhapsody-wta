@@ -960,6 +960,13 @@
       "Repository": "CRAN",
       "Hash": "dcbfac00cf60125f43791a135ef68285"
     },
+    "getPass": {
+      "Package": "getPass",
+      "Version": "0.2-2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "07a91f99e56951818ab911366db77700"
+    },
     "getopt": {
       "Package": "getopt",
       "Version": "1.20.3",
@@ -1029,6 +1036,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "05129b4387282404780d2f8593636388"
+    },
+    "git2r": {
+      "Package": "git2r",
+      "Version": "0.28.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f64fd34026f6025de71a4354800e6d79"
     },
     "gitcreds": {
       "Package": "gitcreds",
@@ -1207,10 +1221,10 @@
     },
     "knitr": {
       "Package": "knitr",
-      "Version": "1.31",
+      "Version": "1.36",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "c3994c036d19fc22c5e2a209c8298bfb"
+      "Hash": "46344b93f8854714cdf476433a59ed10"
     },
     "labeling": {
       "Package": "labeling",
@@ -1308,13 +1322,6 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "41287f1ac7d28a92f0a286ed507928d3"
-    },
-    "markdown": {
-      "Package": "markdown",
-      "Version": "1.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "61e4a10781dd00d7d81dd06ca9b94e95"
     },
     "mathjaxr": {
       "Package": "mathjaxr",
@@ -1999,6 +2006,13 @@
       "Repository": "CRAN",
       "Hash": "6e899d7c097698d50ec87b1d8e65f246"
     },
+    "targets": {
+      "Package": "targets",
+      "Version": "0.8.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "082656166cf9d1286c0cbf59b555eb1e"
+    },
     "tensor": {
       "Package": "tensor",
       "Version": "1.5",
@@ -2159,12 +2173,19 @@
       "Repository": "CRAN",
       "Hash": "caf4781c674ffa549a4676d2d77b13cc"
     },
-    "xfun": {
-      "Package": "xfun",
-      "Version": "0.21",
+    "workflowr": {
+      "Package": "workflowr",
+      "Version": "1.6.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "f3ddcca198959a42e8cb6b06c30d4f1e"
+      "Hash": "8d14d7ca1a1ac543614002af0b95c49e"
+    },
+    "xfun": {
+      "Package": "xfun",
+      "Version": "0.28",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f7f3a61ab62cd046d307577a8ae12999"
     },
     "xml2": {
       "Package": "xml2",

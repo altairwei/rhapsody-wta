@@ -3,7 +3,7 @@
 library(magrittr)
 library(patchwork)
 
-obj <- readRDS("../../results/IntegratedAnalysis/All-Sample-Ref-RPCA-An15/Seurat_Object_Combined.rds")
+obj <- readRDS("../results/IntegratedAnalysis/All-Sample-Ref-RPCA-An15/Seurat_Object_Combined.rds")
 ```
 
 

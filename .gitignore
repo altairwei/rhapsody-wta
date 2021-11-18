@@ -16,5 +16,16 @@ screenlog*
 cromwell-executions
 Rplot*
 build/
+_targets/
+_targets_r/
 .Rproj.user
-doc/analysis/**/*.html
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+.DS_Store
+analysis/figure
+analysis/*png
+analysis/*html
+analysis/*_cache
+analysis/site_libs

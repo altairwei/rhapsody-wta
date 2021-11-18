@@ -100,7 +100,7 @@ samples <- c(
   "3DPI-TR4-2"
 )
 
-data_folders <- paste0("../../results/", samples)
+data_folders <- paste0("../results/", samples)
 
 perform_sample_correlation_analysis <- function(
   data_folders,

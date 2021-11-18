@@ -8,7 +8,7 @@
 library(magrittr)
 library(patchwork)
 
-obj <- readRDS("../../results/IntegratedAnalysis/1DPI-All/Seurat_Object_Combined.rds")
+obj <- readRDS("../results/IntegratedAnalysis/1DPI-All/Seurat_Object_Combined.rds")
 ```
 
 ## 数据概览
