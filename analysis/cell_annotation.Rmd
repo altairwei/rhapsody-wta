@@ -28,7 +28,7 @@ obj <- readRDS("../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seurat_O
 
 > By connecting clusters in this way we can see how clusters are related to each other, which are clearly distinct and which are unstable.
 
-```{r fig.height=14, fig.width=10, eval=FALSE}
+```{r fig.height=14, fig.width=10}
 library(clustree)
 obj <- Seurat::FindClusters(
   obj, resolution = seq(0, 1.6, 0.2), verbose = FALSE)
@@ -43,7 +43,7 @@ clustree::clustree(obj, prefix = "integrated_snn_res.")
 
 我们可以将聚类树覆盖到 t-SNE 空间中：
 
-```{r fig.height=10, fig.width=14, eval=FALSE}
+```{r fig.height=10, fig.width=14}
 clustree::clustree_overlay(
   obj,
   prefix = "integrated_snn_res.",
@@ -55,15 +55,16 @@ clustree::clustree_overlay(
 )
 ```
 
-细胞身份注释:
+### 1.3 定义细胞群集身份
 
-```{r fig.width=15, fig.height=10}
-Seurat::DefaultAssay(obj) <- "RNA"
+通过查找拟南芥叶片中的细胞类型 marker ，然后找到小麦中的对应同源基因。另外一部分基因是通过查找小麦文献寻找的。我们利用这些基因来注释细胞类型：
 
+```{r}
 plot_markers <- function(obj) {
   Seurat::DotPlot(
     obj,
     features = list(
+      # Epidermal Cells
       "FDH" = c(
         "TraesCS4B02G297500",
         "TraesCS4D02G296400",
@@ -77,6 +78,7 @@ plot_markers <- function(obj) {
         "TraesCS1A02G341300",
         "TraesCS1D02G343400"
       ),
+
       # EP3 是排水孔相关基因
       "EP3" = c(
         "TraesCS2A02G350700",
@@ -84,6 +86,8 @@ plot_markers <- function(obj) {
         "TraesCS6D02G199500",
         "TraesCS6A02G216100"
       ),
+
+      # Guardian Cells
       "ALMT12" = c(
         "TraesCS1D02G194000",
         "TraesCS1A02G189900",
@@ -96,6 +100,8 @@ plot_markers <- function(obj) {
       "HIC" = c(
         "TraesCS4D02G226100"
       ),
+
+      # Mesophyll Cells
       "RBCS" = c(
         "TraesCS2A02G066800",
         #"TraesCS2B02G079200",
@@ -134,6 +140,8 @@ plot_markers <- function(obj) {
         "TraesCS6A02G334800",
         "TraesCS6B02G365200"
       ),
+
+      # Vascular Cells
       "SULTR3;4" = c(
         "TraesCS7A02G088700",
         "TraesCS4A02G388000",
@@ -160,6 +168,8 @@ plot_markers <- function(obj) {
         "TraesCS6D02G041700",
         "TraesCS6A02G036100"
       ),
+
+      # Cortex Cells
       "AT1G62510" = c(
         "TraesCS2A02G424800",
         "TraesCS2B02G444500",
@@ -182,6 +192,7 @@ plot_markers <- function(obj) {
 
 choose_indent_res <- function(obj, meta_col) {
   Seurat::Idents(obj) <- meta_col
+  #TODO: 用更简单的方式改变排序
   lvs <- type.convert(levels(obj))
   Seurat::Idents(obj) <- factor(Seurat::Idents(obj), levels = sort(lvs))
   obj
@@ -196,387 +207,172 @@ plot_markers_by_res <- function(obj, res, prefix) {
     ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
 }
 
-plot_markers_by_res(obj, 0.5, "integrated_snn_res.")
-plot_markers_by_res(obj, 0.6, "integrated_snn_res.")
-plot_markers_by_res(obj, 0.8, "integrated_snn_res.")
-plot_markers_by_res(obj, 1, "integrated_snn_res.")
-plot_markers_by_res(obj, 1.2, "integrated_snn_res.")
-plot_markers_by_res(obj, 1.4, "integrated_snn_res.")
 ```
 
-表皮细胞分成三个群，气孔细胞分成一个群，维管束表达 SUT 的分成一个群。最后选择 0.8 分辨率作为标准。
+绘制出 Marker 基因表达矩阵：
+
+```{r fig.width=15, fig.height=10}
+Seurat::DefaultAssay(obj) <- "RNA"
+plot_markers_by_res(obj, 0.2, "integrated_snn_res.")
+plot_markers_by_res(obj, 0.8, "integrated_snn_res.")
+```
+
+TODO: 参考 [Heatmap of mean marker-exprs. by cluster](https://htmlpreview.github.io/?https://raw.githubusercontent.com/HelenaLC/muscat-comparison/master/LPS/docs/2-annotation.html) 绘制矩阵。
+
+我们将低分辨率 0.2 添加到 meta_clusters 中：
 
 ```{r}
-obj <- choose_indent_res(obj, "integrated_snn_res.0.8")
+obj$meta_clusters <- obj[["integrated_snn_res.0.2"]]
 ```
+
+我们先依据 marker 基因对 meta_cluster 重命名：
+
+```{r}
+obj$meta_clusters <- rhapsodykit::key_mapping(obj$meta_clusters, c(
+  "0" = "Cortex Cells",
+  "1" = "Mesophyll Cells",
+  "2" = "Mesophyll Cells",
+  "3" = "Mesophyll Cells",
+  "4" = "Mesophyll Cells",
+  "5" = "Cortex Cells",
+  "6" = "Vascular Cells",
+  "7" = "Epidermal Cells",
+  "8" = "Vascular Cells",
+  "9" = "Guardian Cells",
+  "10" = "Epidermal Cells"
+))
+
+Seurat::DimPlot(obj, reduction = "tsne", group.by = "meta_clusters")
+Seurat::DimPlot(obj, reduction = "umap", group.by = "meta_clusters")
+```
+
+然后我们将 0.8 分辨率用于定义细胞精确身份：
 
 依据 marker 基因对类群重命名：
 
 ```{r}
 Seurat::DefaultAssay(obj) <- "integrated"
 
+Seurat::Idents(obj) <- "integrated_snn_res.0.8"
+
 obj <- Seurat::RenameIdents(
   obj,
-  `0` = "Unknown 3",
-  `1` = "Vascular Cells 8",
-  `2` = "Unknown 2",
-  `3` = "Mesophyll Cells 3",
-  `4` = "Mesophyll Cells 4",
-  `5` = "Mesophyll Cells 5",
-  `6` = "Cortex Cells 5",
-  `7` = "Cortex Cells 6",
-  `8` = "Unknown 1",
-  `9` = "Mesophyll Cells 6",
-  `10` = "Mesophyll Cells 7",
-  `11` = "Mesophyll Cells 8",
-  `12` = "Vascular Cells 5",
-  `13` = "Mesophyll Cells 2",
-  `14` = "Vascular Cells 6",
-  `15` = "Cortex Cells 3",
-  `16` = "Vascular Cells 7",
-  `17` = "Epidermal Cells 1",
-  `18` = "Vascular Cells 2",
-  `19` = "Cortex Cells 1",
-  `20` = "Cortex Cells 4",
-  `21` = "Vascular Cells 1",
-  `22` = "Vascular Cells 3",
-  `23` = "Guardian Cells",
-  `24` = "Vascular Cells 4",
-  `25` = "Epidermal Cells 2",
-  `26` = "Cortex Cells 2",
-  `27` = "Mesophyll Cells 1",
-  `28` = "Epidermal Cells 3"
-)
 
-sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
+  # Cortex Cells
+  `2`  = "CCs_1",
+  `3`  = "CCs_2",
+  `14` = "CCs_3",
+  `12` = "CCs_4",
+  `16` = "CCs_5",
+  `8`  = "CCs_6",
+  `0`  = "CCs_7",
+  `10` = "CCs_8",
+
+  # Mesophyll Cells
+  `13` = "MCs_1",
+  `4`  = "MCs_2",
+  `6`  = "MCs_3",
+  `21` = "MCs_4",
+  `15` = "MCs_5",
+
+  # Vascular Cells
+  `18` = "VCs_1",
+  `19` = "VCs_2",
+  `20` = "VCs_3",
+  `7`  = "VCs_4",
+  `1`  = "VCs_5",
+  `9`  = "VCs_6",
+
+  # Epidermal Cells
+  `17` = "ECs_1",
+  `23` = "ECs_2",
+  `24` = "ECs_3",
+
+  # Guardian Cells
+  `22` = "GCs",
+
+  # Unknown Cells
+  `11` = "Un_1",
+  `5`  = "Un_2"
+)
 ```
+
+我们定义细胞身份的颜色：
 
 ```{r}
-Seurat::DimPlot(obj, reduction = "tsne", group.by = "group")
-Seurat::DimPlot(obj, reduction = "tsne", label = TRUE, repel = TRUE)
-Seurat::DimPlot(obj, reduction = "umap", group.by = "group")
-Seurat::DimPlot(obj, reduction = "umap", label = TRUE, repel = TRUE)
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj))), palette = NULL)
 ```
 
-### 1.3 相对细胞群集丰度
+绘制细胞群集的降维图：
+
+```{r}
+Seurat::DimPlot(obj,
+    reduction = "tsne",
+    label = TRUE, repel = TRUE,
+    cols = ident_cols) +
+  ggplot2::theme(legend.position = "right")
+
+Seurat::DimPlot(obj,
+    reduction = "umap",
+    label = TRUE, repel = TRUE,
+    cols = ident_cols) +
+  ggplot2::theme(legend.position = "right")
+```
+
+### 1.4 保存 Seurat 对象
+
+```{r}
+saveRDS(obj, "../output/obj_annotated.rds")
+```
+
+### 1.5 相对细胞群集丰度
 
 差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
 
 ```{r}
-cluster_stats <- table(sce$cluster_id, sce$sample_id)
-cluster_stats
-```
-
-看看各个类群在各自样本中所占的比例：
-
-```{r warning=FALSE}
-cluster_prop <- prop.table(cluster_stats, 2)
-cluster_prop_df <- reshape2::melt(
-  cluster_prop,
-  varnames = c("cluster_id", "sample_id"),
-  value.name = "frequency",
-  as.is = TRUE
-)
-
-cluster_prop_df$cluster_id <- factor(type.convert(cluster_prop_df$cluster_id))
-cluster_prop_df$group_id <- sce$group_id[match(cluster_prop_df$sample_id, sce$sample_id)]
-
-p_cluster_percent <- cluster_prop_df %>%
-  ggplot2::ggplot(ggplot2::aes(
-    x = sample_id, y = frequency, fill = cluster_id)) +
-  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
-  ggplot2::facet_wrap("group_id", ncol = 1, scales = "free_y") +
-  ggplot2::geom_bar(stat = "identity", col = "white",  width = 1, size = 0.2) + 
-  ggplot2::scale_x_discrete(expand = c(0, 0)) +
-  ggplot2::coord_flip() +
-  ggplot2::theme(
-    aspect.ratio = NULL, 
-    panel.grid = ggplot2::element_blank(), panel.spacing = grid::unit(1, "mm"), 
-    strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
-```
-
-### 1.4 样本细胞数量
-
-```{r}
-# cell counts by sample
-sample_cells_df <- reshape2::melt(table(sce$sample_id), varnames = "sample_id", value.name = "n_cells")
-sample_cells_df$group_id <- sce$group_id[match(sample_cells_df$sample_id, sce$sample_id)]
-
-p_sample_cells <- sample_cells_df %>%
-  ggplot2::ggplot(ggplot2::aes(
-    x = sample_id, y = n_cells, fill = group_id)) +
-  ggplot2::scale_y_continuous("nb. of cells", limits = c(0, 7500), 
-        breaks = seq(0, 7500, 2500), expand = c(0, 0)) +
-  ggplot2::facet_wrap("group_id", ncol = 1, scales = "free_y") +
-  ggplot2::geom_bar(stat = "identity", col = "white",  width = 1, size = 0.2) + 
-  ggplot2::scale_x_discrete(expand = c(0, 0)) +
-  ggplot2::coord_flip() +
-  ggplot2::theme(aspect.ratio = NULL, 
-    panel.grid = ggplot2::element_blank(), panel.spacing = grid::unit(1, "mm"), 
-    strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
-```
-
-我们将两幅图合并起来：
-
-```{r fig.height=8, fig.width=14}
-p_cluster_percent + p_sample_cells
+rhapsodykit::barplot_cluster_abundance(obj) +
+  ggplot2::scale_fill_discrete(type = ident_cols)
 ```
 
 由于样本太多，我们最好以另外一种方式来展示数据：
 
 ```{r fig.height=7, fig.width=14}
-cluster_prop_df %>%
-  ggplot2::ggplot(ggplot2::aes(
-    x = cluster_id, y = frequency, fill = sample_id)) +
-  ggplot2::geom_bar(stat = "identity", position = "dodge") + 
-  ggplot2::scale_y_continuous(
-    expand = expansion(mult = c(0, 0.05))
-  ) +
-  cowplot::theme_half_open() +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    legend.position = "bottom",
-    legend.direction = "horizontal"
-  )
+rhapsodykit::barplot_cluster_abundance(obj, position = "dodge")
 ```
 
-### 1.5 待验证的细胞亚群标识基因
+TODO: 参考 [Relative cluster-abundances](https://htmlpreview.github.io/?https://raw.githubusercontent.com/HelenaLC/muscat-comparison/master/LPS/docs/2-annotation.html) 绘制一个细胞群集丰度矩阵，也许能方便地看出丰度变化模式。
 
-> To identify canonical cell type marker genes that are conserved across conditions, we provide the FindConservedMarkers() function. This function performs differential gene expression testing for each dataset/group and combines the p-values using meta-analysis methods from the MetaDE R package.
+### 1.6 3D 降维图
 
-```{r}
-Seurat::DefaultAssay(obj) <- "RNA"
+二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
 
-future::plan("multiprocess", workers = 6)
-
-VCs_1_markers <- Seurat::FindConservedMarkers(
-  obj,
-  ident.1 = "Vascular Cells 1",
-  grouping.var = "sample",
-  verbose = FALSE
-)
-
-head(VCs_1_markers)
-```
-
-看看这些基因的表达情况：
-
-```{r fig.height=7, fig.width=14}
-Seurat::FeaturePlot(obj, features = c("TraesCS2D02G008400", "TraesCS2A02G538500"), reduction = "tsne", min.cutoff = "q9")
-```
-
-## 2 MOCK 样本的整合
-
-```{r}
-library(magrittr)
-library(patchwork)
-
-obj <- readRDS("../results/IntegratedAnalysis/All-MOCK-CCA-An5/Seurat_Object_Combined.rds")
-```
-
-### 2.1 细胞注释
-
-样本细胞降维度图:
-
-```{r warning=FALSE}
-Seurat::DimPlot(obj, reduction = "tsne", group.by = "group")
-Seurat::DimPlot(obj, reduction = "tsne", label = TRUE, repel = TRUE)
-Seurat::DimPlot(obj, reduction = "umap", group.by = "group")
-Seurat::DimPlot(obj, reduction = "umap", label = TRUE, repel = TRUE)
-```
-
-细胞身份注释:
-
-```{r fig.width=15, fig.height=8}
-Seurat::DefaultAssay(obj) <- "RNA"
-
-Seurat::DotPlot(
-  obj,
-  features = list(
-    "FDH" = c(
-      "TraesCS4B02G297500",
-      "TraesCS4D02G296400",
-      "TraesCS4A02G007400"
-    ),
-    "ATML1" = c(
-      "TraesCS2A02G474000",
-      "TraesCS2D02G473700"
-    ),
-    "DCR" = c(
-      "TraesCS1A02G341300",
-      "TraesCS1D02G343400"
-    ),
-    # EP3 是排水孔相关基因
-    "EP3" = c(
-      "TraesCS2A02G350700",
-      "TraesCS2D02G348800",
-      "TraesCS6D02G199500",
-      "TraesCS6A02G216100"
-    ),
-    "ALMT12" = c(
-      "TraesCS1D02G194000",
-      "TraesCS1A02G189900",
-      "TraesCS1B02G192000"
-    ),
-    "MYB60" = c(
-      "TraesCS4A02G322200",
-      "TraesCS5D02G552200"
-    ),
-    "HIC" = c(
-      "TraesCS4D02G226100"
-    ),
-    "RBCS" = c(
-      "TraesCS2A02G066800",
-      #"TraesCS2B02G079200",
-      #"TraesCS2D02G065200",
-      #"TraesCS2D02G065300",
-      "TraesCS5A02G165400",
-      #"TraesCS5A02G165700",
-      #"TraesCS5B02G162600",
-      #"TraesCS5B02G162800",
-      #"TraesCS5D02G169600",
-      "TraesCS5D02G169900"
-    ),
-    "CAB3" = c(
-      "TraesCS7A02G276400",
-      #"TraesCS1D02G411300",
-      "TraesCS1B02G317500",
-      #"TraesCS7D02G276300",
-      #"TraesCS5B02G353200",
-      #"TraesCS5A02G350600",
-      "TraesCS1A02G403300"
-    ),
-    "LHCB2.1" = c(
-      "TraesCS5D02G329200",
-      "TraesCS5B02G322900",
-      "TraesCS5A02G322500"
-    ),
-    "CA1" = c(
-      #"TraesCS7D02G443400",
-      "TraesCS7B02G354800",
-      "TraesCS3A02G230000",
-      #"TraesCS3D02G223300",
-      "TraesCS3B02G259300"
-    ),
-    "AOC2" = c(
-      "TraesCS6D02G314300",
-      "TraesCS6A02G334800",
-      "TraesCS6B02G365200"
-    ),
-    "SULTR3;4" = c(
-      "TraesCS7A02G088700",
-      "TraesCS4A02G388000",
-      "TraesCS7D02G084100"
-    ),
-    "TaGSr" = c(
-      "TraesCS4B02G240900",
-      "TraesCS4D02G240700",
-      "TraesCS4A02G063800"
-    ),
-    "gl-OXO" = c(
-      "TraesCS4D02G032000",
-      "TraesCS4B02G033300",
-      "TraesCS4A02G279200",
-      "TraesCS4D02G031800"
-    ),
-    "TaSUT1" = c(
-      "TraesCS4A02G016400",
-      "TraesCS4B02G287800",
-      "TraesCS4D02G286500"
-    ),
-    "CPIII" = c(
-      "TraesCS6B02G050700",
-      "TraesCS6D02G041700",
-      "TraesCS6A02G036100"
-    ),
-    "AT1G62510" = c(
-      "TraesCS2A02G424800",
-      "TraesCS2B02G444500",
-      #"TraesCS2D02G422700",
-      #"TraesCS2D02G422800",
-      "TraesCS2A02G424861"
-    ),
-    # Bulliform
-    "PFA-DSP2" = c(
-      "TraesCS5B02G163200",
-      "TraesCS5D02G170400"
-    )
-  )
-) +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1),
-    strip.text.x = ggplot2::element_text(angle = 90)
-  )
-```
-
-依据 marker 基因对类群重命名：
-
-```{r}
-Seurat::DefaultAssay(obj) <- "integrated"
-
-obj <- Seurat::RenameIdents(
-  obj,
-  `0` = "Mesophyll Cells 5",
-  `1` = "Mesophyll Cells 2",
-  `2` = "Mesophyll Cells 3",
-  `3` = "Mesophyll Cells 4",
-  `4` = "Mesophyll Cells 1",
-  `5` = "Unknown 2",
-  `6` = "Vascular Cells 2",
-  `7` = "Vascular Cells 3",
-  `8` = "Unknown",
-  `9` = "Cortex Cells 2",
-  `10` = "Cortex Cells 1",
-  `11` = "Vascular Cells 1",
-  `12` = "Epidermal Cells 1",
-  `13` = "Epidermal Cells 2",
-  `14` = "Guardian Cells"
-)
-```
-
-### 2.2 3D 降维图
-
-```{r message=FALSE}
+```{r message=FALSE, eval=FALSE}
 obj <- Seurat::RunTSNE(
   obj, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
 obj <- Seurat::RunUMAP(obj, dims = 1:20, n.components = 3, verbose = FALSE)
-```
 
-```{r warning=FALSE}
 gg_color_hue <- function(n) {
   hues <- seq(15, 375, length = n + 1)
   hcl(h = hues, l = 65, c = 100)[1:n]
 }
 
-
-Dim3DPlot <- function(obj, dim_prefix) {
+Dim3DPlot <- function(obj, dim_prefix, cols) {
   d1 <- paste0(dim_prefix, "1")
   d2 <- paste0(dim_prefix, "2")
   d3 <- paste0(dim_prefix, "3")
 
   df_to_plot <- Seurat::FetchData(obj, vars = c(d1, d2, d3, "ident"))
   
-  df_to_plot$ident <- factor(df_to_plot$ident, levels = sort(type.convert(unique(df_to_plot$ident))))
-  
   plotly::plot_ly(
     df_to_plot,
     x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
     color = ~ ident,
-    colors = gg_color_hue(length(levels(df_to_plot$ident))),
+    colors = cols,
     type = "scatter3d",
     mode = "markers",
     marker = list(size = 4)
   )
 }
 
-Dim3DPlot(obj, "UMAP_")
-```
-
-### 2.3 细胞分类树
-
-```{r fig.height=14, fig.width=10}
-library(clustree)
-obj <- Seurat::FindClusters(
-  obj, resolution = seq(0, 1.6, 0.2), verbose = FALSE)
-clustree::clustree(obj, prefix = "integrated_snn_res.")
+Dim3DPlot(obj, "UMAP_", cols = ident_cols)
 ```

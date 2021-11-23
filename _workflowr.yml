@@ -5,4 +5,17 @@
 seed: 20211118
 # The working directory to build the R Markdown files. The path is relative to
 # _workflowr.yml. See ?rmarkdown::render for details.
-knit_root_dir: "."
+#knit_root_dir: "."
+
+rmd_files:
+  - analysis/sample_correlation_analysis.Rmd
+  - analysis/quality_metrics.Rmd
+  - analysis/sample_integration.Rmd
+  - analysis/cell_annotation.Rmd
+  - analysis/integration_comparison.Rmd
+  - analysis/differential_state_analysis_of_1DPI_samples.Rmd
+  - analysis/differential_state_analysis_of_2DPI_samples.Rmd
+  - analysis/differential_state_analysis_of_3DPI_samples.Rmd
+  - analysis/about.Rmd
+  - analysis/index.Rmd
+  - analysis/license.Rmd
