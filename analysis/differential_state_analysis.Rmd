@@ -79,7 +79,7 @@ sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
 
 ```{r cluster-prop-table}
 cluster_stats <- table(sce$cluster_id, sce$sample_id)
-cluster_stats
+cluster_stats %>% as.data.frame.matrix()
 ```
 
 看看各个类群在各自样本中所占的比例：
@@ -126,14 +126,18 @@ p_sample_cells
 所以我们首先将单细胞数据聚合成 pseudo-bulk 数据：
 
 ```{r calc-pseudo-bulk, warning=FALSE}
-pb_list <- list(
-  "counts" = rhapsodykit::calculate_pseudo_bulk(sce, "counts", BPPARAM = BPPARAM),
-  "logcounts" = rhapsodykit::calculate_pseudo_bulk(sce, "logcounts", BPPARAM = BPPARAM)
-  #"cpm" = rhapsodykit::calculate_pseudo_bulk(sce, "cpm")
-  #"vstresiduals" = rhapsodykit::calculate_pseudo_bulk(sce, "vstresiduals")
-)
-
-saveRDS(pb_list, "../output/pb_list.rds")
+pb_list_cache <- "../output/pb_list.rds"
+if (file.exists(pb_list_cache)) {
+  pb_list <- readRDS(pb_list_cache)
+} else {
+  pb_list <- list(
+    "counts" = rhapsodykit::calculate_pseudo_bulk(sce, "counts", BPPARAM = BPPARAM),
+    "logcounts" = rhapsodykit::calculate_pseudo_bulk(sce, "logcounts", BPPARAM = BPPARAM)
+    #"cpm" = rhapsodykit::calculate_pseudo_bulk(sce, "cpm")
+    #"vstresiduals" = rhapsodykit::calculate_pseudo_bulk(sce, "vstresiduals")
+  )
+  saveRDS(pb_list, pb_list_cache)
+}
 ```
 
 变量 `pb` 实际上也是一个 `SingleCellExperiment` 对象，每一个 assay 都是一个 cluster 的 pseudo-bulk 数据。
@@ -141,7 +145,13 @@ saveRDS(pb_list, "../output/pb_list.rds")
 我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性：
 
 ```{r pb-mds-plot}
-pb_mds_df <- muscat::pbMDS(pb_list$logcounts)$data
+pb_mds_df_cache <- "../output/pb_mds_df.rds"
+if (file.exists(pb_mds_df_cache)) {
+  pb_mds_df <- readRDS("../output/pb_mds_df.rds")
+} else {
+  pb_mds_df <- muscat::pbMDS(pb_list$logcounts)$data
+  saveRDS(pb_mds_df, pb_mds_df_cache)
+}
 
 pb_mds_df$time <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
   "X0DPI.MOCK" = "0DPI,1DPI",
@@ -168,8 +178,6 @@ pb_mds_df$treatment <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
   "X3DPI.PNR2" = "PNR2",
   "X3DPI.TR4"  = "TR4"
 ))
-
-saveRDS(pb_mds_df, "../output/pb_mds_df.rds")
 ```
 
 然后我们展示该分布：
@@ -272,38 +280,41 @@ S4Vectors::metadata(sce)$experiment_info
 
 在需要提供的数据中，design 矩阵起着指示器的作用，它用于表明样本属于哪个组。而 `model.matrix` 的统计学含义以及用法可以参考 [Expressing design formula in R](https://genomicsclass.github.io/book/pages/expressing_design_formula.html) 。contrast 矩阵用于表明我们想要比较哪两个组，以 `stim-ctrl` 字符串的形式指定，实验组在 `-` 前，对照组在后。我在 `rhapsodykit` 中提供了一个方便的帮助函数，自动构建 design 和 contrast 矩阵。
 
+**由于 PNR2 vs TR4 在 1DPI ~ 3DPI 的比较中都没有看出太大的价值，所以把它移除掉。**
+
 ```{r run-ds-analysis}
 # run DS analysis
 contrast_names <- c(
   "X1DPI.PNR2-X1DPI.MOCK",
   "X1DPI.TR4-X1DPI.MOCK",
-  #"X1DPI.PNR2-X1DPI.TR4",
 
   "X2DPI.PNR2-X2DPI.MOCK",
   "X2DPI.TR4-X2DPI.MOCK",
-  #"X2DPI.PNR2-X2DPI.TR4",
 
   "X3DPI.PNR2-X3DPI.MOCK",
-  "X3DPI.TR4-X3DPI.MOCK",
-  #"X3DPI.PNR2-X3DPI.TR4"
+  "X3DPI.TR4-X3DPI.MOCK"
 )
 
-ds_res <- list(
-  edgeR = rhapsodykit::pseudobulk_diff_state(
-    sce, pb_list$counts,
-    method = "edgeR",
-    contrasts = contrast_names,
-    BPPARAM = BPPARAM
-  ),
-  DESeq2 = rhapsodykit::pseudobulk_diff_state(
-    sce, pb_list$counts,
-    method = "DESeq2",
-    contrasts = contrast_names,
-    BPPARAM = BPPARAM
+ds_res_cache <- "../output/ds_res.rds"
+if (file.exists(ds_res_cache)) {
+  ds_res <- readRDS(ds_res_cache)
+} else {
+  ds_res <- list(
+    edgeR = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "edgeR",
+      contrasts = contrast_names,
+      BPPARAM = BPPARAM
+    ),
+    DESeq2 = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "DESeq2",
+      contrasts = contrast_names,
+      BPPARAM = BPPARAM
+    )
   )
-)
-
-saveRDS(ds_res, "../output/ds_res.rds")
+  saveRDS(ds_res, ds_res_cache)
+}
 
 str(ds_res$edgeR$table, max.level = 1)
 ```
@@ -356,7 +367,8 @@ markers <- list(
 
 markers$PNR2 %>%
   rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_summary()
+  rhapsodykit::diff_state_summary() %>%
+  as.data.frame.matrix()
 ```
 
 ### 3.2 处理结果
@@ -419,28 +431,39 @@ genecount_df <- ds_res$DESeq2 %>%
 genecount_df$time <- rhapsodykit::key_mapping(genecount_df$contrast, c(
   "X1DPI.PNR2-X1DPI.MOCK" = "1DPI",
   "X1DPI.TR4-X1DPI.MOCK"  = "1DPI",
-  "X1DPI.PNR2-X1DPI.TR4"  = "1DPI",
 
   "X2DPI.PNR2-X2DPI.MOCK" = "2DPI",
   "X2DPI.TR4-X2DPI.MOCK"  = "2DPI",
-  "X2DPI.PNR2-X2DPI.TR4"  = "2DPI",
 
   "X3DPI.PNR2-X3DPI.MOCK" = "3DPI",
-  "X3DPI.TR4-X3DPI.MOCK"  = "3DPI",
-  "X3DPI.PNR2-X3DPI.TR4"  = "3DPI"
+  "X3DPI.TR4-X3DPI.MOCK"  = "3DPI"
 ))
 
 genecount_df$contrast <- factor(genecount_df$contrast, levels = contrast_names)
 
+plot_genecount <- function(df) {
+  df %>%
+    ggplot2::ggplot(ggplot2::aes(cluster_id, fill = contrast)) +
+    ggplot2::geom_bar(
+      position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+    ggplot2::ylab("Number of DS genes") +
+    ggplot2::xlab("Cell Subpopulation") +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    )
+}
+
 genecount_df %>%
-  ggplot2::ggplot(ggplot2::aes(cluster_id, fill = contrast)) +
-  ggplot2::geom_bar(
-    position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
-  ggplot2::facet_wrap(~time, ncol = 1, scales = "free_y") +
+  plot_genecount() +
   ggplot2::scale_fill_manual(values = contrast_cols) +
-  ggplot2::ylab("Number of DS genes") +
-  ggplot2::xlab("Cell Subpopulation") +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+  ggplot2::facet_wrap(~time, ncol = 1) +
+  ggplot2::theme(legend.position = "right")
+
+genecount_df %>%
+  plot_genecount() +
+  ggplot2::scale_fill_manual(values = contrast_cols) +
+  ggplot2::facet_wrap(~time, ncol = 1, scales = "free_y") +
+  ggplot2::theme(legend.position = "right")
 ```
 
 总体来说，edgeR 与 DESeq2 发现的基因数量大体趋势是一致的，只不过两种方法计算出的 p_adj.loc 可能有所差别。从 TR4 与 PNR2 相对于 MOCK 的转录反应来看，小麦胚芽鞘似乎都不知道 *Fusarium. graminearum* 以及进入体内了。
@@ -522,7 +545,7 @@ upset_contrasts <- function(input) {
       purrr::map(x, "gene") %>%
         purrr::compact()
     })
-  
+
   sets_metadata <- sets_list %>%
     purrr::imap(function(contrast, key) {
       cbind(
@@ -542,7 +565,7 @@ upset_contrasts <- function(input) {
   sets_to_plot %>%
     rhapsodykit::from_list_to_upset() %>%
     rhapsodykit::upset_dataframe() %>%
-    rhapsodykit::upset_plot()
+    rhapsodykit::upset_plot(order_by = "degree")
 }
 
 diff_state_subset <- function(input, contrast = NULL, cluster = NULL) {
@@ -562,24 +585,21 @@ ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
   diff_state_subset(contrast = c(
     "X1DPI.PNR2-X1DPI.MOCK",
-    "X1DPI.TR4-X1DPI.MOCK",
-    "X1DPI.PNR2-X1DPI.TR4")) %>%
+    "X1DPI.TR4-X1DPI.MOCK")) %>%
   upset_contrasts()
 
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
   diff_state_subset(contrast = c(
     "X2DPI.PNR2-X2DPI.MOCK",
-    "X2DPI.TR4-X2DPI.MOCK",
-    "X2DPI.PNR2-X2DPI.TR4")) %>%
+    "X2DPI.TR4-X2DPI.MOCK")) %>%
   upset_contrasts()
 
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
   diff_state_subset(contrast = c(
     "X3DPI.PNR2-X3DPI.MOCK",
-    "X3DPI.TR4-X3DPI.MOCK",
-    "X3DPI.PNR2-X3DPI.TR4")) %>%
+    "X3DPI.TR4-X3DPI.MOCK")) %>%
   upset_contrasts()
 ```
 

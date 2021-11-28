@@ -160,7 +160,7 @@ rhapsodykit::barplot_cluster_abundance(obj_merged)
 使用 `scripts/SeuratAnalysis.R` 整合样本。
 
 ```{r}
-obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-NoRef-CCA-An5/Seurat_Object_Combined.rds")
+obj_integrated <- readRDS("../results/IntegratedAnalysis/All-Sample-NoRef-CCA-An5/Seurat_Object_Combined.rds")
 ```
 
 我们将样本拆分成不同天数来看看：
@@ -182,7 +182,7 @@ rhapsodykit::barplot_cluster_abundance(obj_integrated)
 ### 4.3 以 Mock 为参考的 CCA 方法
 
 ```{r}
-obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-MockRef-CCA-An20/Seurat_Object_Combined.rds")
+obj_integrated <- readRDS("../results/IntegratedAnalysis/All-Sample-MockRef-CCA-An20/Seurat_Object_Combined.rds")
 ```
 
 ```{r fig.height=5, fig.width=10}
@@ -200,7 +200,7 @@ TODO: 用 dodge 图来表示。
 ### 4.4 无参的 RPCA 方法
 
 ```{r}
-obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seurat_Object_Combined.rds")
+obj_integrated <- readRDS("../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seurat_Object_Combined.rds")
 ```
 
 ```{r fig.height=5, fig.width=10}
@@ -216,7 +216,7 @@ rhapsodykit::barplot_cluster_abundance(obj_integrated)
 ### 4.5 以 Mock 为参考的 RPCA 方法
 
 ```{r}
-obj_integrated <- readRDS("../../results/IntegratedAnalysis/All-Sample-MockRef-RPCA-An20/Seurat_Object_Combined.rds")
+obj_integrated <- readRDS("../results/IntegratedAnalysis/All-Sample-MockRef-RPCA-An20/Seurat_Object_Combined.rds")
 ```
 
 ```{r fig.height=5, fig.width=10}

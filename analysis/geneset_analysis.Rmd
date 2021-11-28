@@ -10,7 +10,13 @@ library(patchwork)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## 1 差异基因富集分析
+## 1 差异状态基因集的富集分析
+
+首先读取差异分析的结果：
+
+```{r}
+ds_res <- readRDS("../output/ds_res.rds")
+```
 
 ### 1.1 基于 GO 注释的功能分析
 
@@ -35,74 +41,104 @@ go2name <- go_data %>%
 
 #### 1.1.1 对差异状态基因做富集分析
 
-读取差异基因表达分析结果：
-
-```{r read-diff-state-results}
-ds_res <- readRDS("../output/ds_res.rds")
-```
-
+##### PNR2 和 TR4 在 1DPI 诱导基因集的功能分析
 
 要做富集分析我们首先要拿到一个基因列表。
 
 ```{r enrich-barplot, fig.height=7, fig.width=14}
-p1 <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "VCs_5", "gene") %>%
-  rhapsodykit::enrichment_analysis(go_data) %>%
-  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "VCs 5 of 1DPI-TR4 vs. 1DPI-MOCK")
+plot_contrast_enrich_barplot <- function(result, contrast, cluster, title = NULL) {
+  result %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull(contrast, cluster, "gene") %>%
+    rhapsodykit::enrichment_analysis(go_data) %>%
+    rhapsodykit::enrich_barplot(
+      x = "Count", show_category = 20,
+      title = ifelse(is.null(title), contrast, title)
+    )
+}
 
-p2 <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "VCs_5", "gene") %>%
-  rhapsodykit::enrichment_analysis(go_data) %>%
-  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "VCs 5 of 1DPI-PNR2 vs. 1DPI-MOCK")
+p1 <- plot_contrast_enrich_barplot(
+  ds_res$DESeq2,
+  "X1DPI.PNR2-X1DPI.MOCK", "VCs_5",
+  "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
+)
 
-p3 <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "MCs_5", "gene") %>%
-  rhapsodykit::enrichment_analysis(go_data) %>%
-  rhapsodykit::enrich_barplot(x = "Count", show_category = 20, title = "MCs 5 of 1DPI-PNR2 vs. 1DPI-TR4")
+p2 <- plot_contrast_enrich_barplot(
+  ds_res$DESeq2,
+  "X1DPI.TR4-X1DPI.MOCK", "VCs_5",
+  "VCs_5 of 1DPI-TR4 vs. 1DPI-MOCK"
+)
 
-p1 + p2 + p3
+p3 <- plot_contrast_enrich_barplot(
+  ds_res$DESeq2,
+  "X1DPI.PNR2-X1DPI.MOCK", "MCs_5",
+  "MCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
+)
+
+p4 <- plot_contrast_enrich_barplot(
+  ds_res$DESeq2,
+  "X1DPI.TR4-X1DPI.MOCK", "MCs_5",
+  "MCs_5 of 1DPI-TR4 vs. 1DPI-MOCK"
+)
+
+p1 + p2 + p3 + p4
 ```
 
 现在我们可以从基因与 GO 的关系绘图：
 
-```{r cnetplot, fig.height=8, fig.width=12}
-sig_genes <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant()
-genes <- sig_genes %>%
-  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "VCs_5", "gene")
-fc <- sig_genes %>%
-  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "VCs_5", "logFC")
-names(fc) <- genes
+```{r cnetplot, fig.height=6, fig.width=12}
+make_enrich_result <- function(ds, contrast, cluster) {
+  sig_genes <- ds %>%
+    rhapsodykit::diff_state_significant()
+  genes <- sig_genes %>%
+    rhapsodykit::diff_state_pull(contrast, cluster, "gene")
+  fc <- sig_genes %>%
+    rhapsodykit::diff_state_pull(contrast, cluster, "logFC")
+  names(fc) <- genes
 
-enr <- genes %>%
-  clusterProfiler::enricher(TERM2GENE = go2gene, TERM2NAME = go2name)
+  genes %>%
+    clusterProfiler::enricher(TERM2GENE = go2gene, TERM2NAME = go2name)
+}
 
-rhapsodykit::enrich_cnetplot(enr, fold_change = fc, show_category = 20)
+enr1 <- make_enrich_result(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5")
+enr2 <- make_enrich_result(ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "VCs_5")
+
+rhapsodykit::enrich_cnetplot(enr1, fold_change = fc, show_category = 40) +
+  rhapsodykit::enrich_cnetplot(enr2, fold_change = fc, show_category = 40)
 ```
 
 如果我们不将基因显示为 node ，而是将 GO 词条之间的链接定义为重叠基因的数量，也就是说 GO 词条之间重叠基因越多他们在图上的距离也就越近。这个功能叫做 Enrichment Map 。
 
-```{r emapplot, fig.height=7, fig.width=7}
-enr %>%
+```{r emapplot, fig.height=4, fig.width=8}
+p1 <- enr1 %>%
   enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(cex_label_category = 0.6)
+  enrichplot::emapplot(cex_label_category = 0.6, showCategory = 40)
+p2 <- enr2 %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(cex_label_category = 0.6, showCategory = 40)
+
+p1 + p2
 ```
 
 当要展示很多 GO 词条时，网络图就会变得非常复杂，我们可以试试 clusterProfiler 的 Heatmap-like functional classification 功能。不过这个热图似乎没有聚类，也就不是很方便人类阅读和理解了。TODO:
 
-```{r heatmap, fig.height=7, fig.width=10}
-enr %>%
-  clusterProfiler::heatplot(foldChange = fc) +
-  ggplot2::theme(axis.text.x = ggplot2::element_blank())
+```{r heatmap, fig.height=6, fig.width=12}
+p1 <- enr1 %>%
+  clusterProfiler::heatplot(foldChange = fc)
+
+p2 <- enr2 %>%
+  clusterProfiler::heatplot(foldChange = fc)
+
+p1 + p2
 ```
 
 使用 UpSet 图似乎看起来更有意义。
 
-```{r upsetplot}
-enr %>% enrichplot::upsetplot()
+```{r upsetplot, fig.height=6, fig.width=12}
+p1 <- enr1 %>% enrichplot::upsetplot()
+p2 <- enr2 %>% enrichplot::upsetplot()
+
+p1 + p2
 ```
 
 #### 1.1.2 对差异状态基因做 GSEA 分析
@@ -218,3 +254,4 @@ comp_enr %>%
 
 比如 KEGG 或 [Plant Reactome](https://plantreactome.gramene.org/)
 
+## 2 给定基因集的表达异质性分析

@@ -1,0 +1,186 @@
+---
+title: "Differential Abundance"
+author: "Altair Wei"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+```
+
+## 1 差异成分分析
+
+使用 [scDC](https://github.com/SydneyBioX/scDC) 来做单细胞差异成分分析。
+
+### 1.1 数据准备
+
+#### 1.1.1 数据类型
+
+scDC 需要三种数据：表达矩阵、样本名、组名、细胞类型，要计算的是细胞类型和分组之间的交互作用。
+
+```{r}
+str(scDC::sim)
+```
+
+我们可以发现 exprsMat 就是表达矩阵，一共有 500 个基因，260 个细胞。
+
+-   cellTypes 是一个与细胞数量等长的细胞类型标记。
+-   subject 是一个与细胞数量等长的样本名称。
+-   cond 是一个与细胞数量等长的组名。
+
+我们可以发现，后面三者都是典型的 colData ，也就是细胞数据。
+
+那么我们可以这样准备这些数据：
+
+```{r}
+obj <- readRDS("../output/obj_annotated.rds")
+exprsMat <- Seurat::GetAssayData(obj, "data")
+subject <- obj$sample
+cellTypes <- Seurat::Idents(obj)
+cond <- obj$group
+```
+
+#### 1.1.2 表达矩阵
+
+然后检查一下表达矩阵的维度：
+
+```{r}
+dim(exprsMat)
+```
+
+表达矩阵 exprsMat 的要求按照 `scDC_clustering` 的文档来讲是这样的：
+
+> **logcounts expression** matrix with each row represents gene, and each column represents cell
+
+这正好可以是 Seurat 使用 LogNormalization 标准化并整合后的表达矩阵。
+
+#### 1.1.3 细胞数据
+
+检查样本的细胞类型数量：
+
+```{r}
+table(subject, cellTypes)
+```
+
+检查分组的细胞类型数量：
+
+```{r}
+table(cond, cellTypes)
+```
+
+### 1.2 不使用聚类的检查
+
+#### 1.2.1 运行算法
+
+这里需要思考一个问题：为什么 scDC 可以不用聚类？在其文章 (Cao, Y. et al., BMC Bioinformatics, 2019) 中明明是这样说的：
+
+> The next step involved cell-type identification of each bootstrap sample using clustering. Here, we performed PCA dimension reduction followed by k-means clustering (using Pearson correlation as distance metric).
+
+如果不聚类的话，表达矩阵就没有用武之地了。
+
+我们先试试不聚类的效果：
+
+```{r}
+res_scDC_noClust <- scDC::scDC_noClustering(
+  cellTypes, subject,
+  nboot = 500,
+  calCI = TRUE,
+  calCI_method = c("percentile", "BCa", "multinom"),
+  ncores = 6
+)
+
+res_scDC_noClust$results$cond <- cond[match(res_scDC_noClust$results$subject, subject)]
+res_scDC_noClust$info$cond <- cond[match(res_scDC_noClust$info$subject, subject)]
+```
+
+#### 1.2.2 查看运行结果的结构
+
+```{r}
+str(res_scDC_noClust)
+```
+
+输出结果中 `results` 是一个数据框，它的行数为 525\*3=1575，其中 3 代表着 `c("percentile", "BCa", "multinom")` 等三种计算 CI 的方法；而 525 代表着我们一共有 21 个样本和 25 个细胞类型，两者相乘就等于 525 ，这里的含义就是 525 个细胞群。
+
+输出结果中的 `thetahat` 和 `nhat` 是一个 525 个元素的向量，`theta` 应该是指细胞群的比例，`n` 应该是指细胞群的数量。
+
+输出结果中的 `thetastar` 和 `nstar` 是一个矩阵，它有 525 行的细胞群，500 列的 bootstrap 结果。其中 `theta` 是指每个 bootstrap 的细胞群的比例，`n` 是指每个细胞群的细胞数量。
+
+#### 1.2.3 统计显著性
+
+只拟合固定效应的 GLM 模型，主要是 `lme4::glmer` 太耗时了。
+
+```{r message=FALSE}
+res_GLM <- scDC::fitGLM(
+  res_scDC_noClust,
+  res_scDC_noClust$info$cond,
+  pairwise = FALSE,
+  fixed_only = TRUE
+)
+```
+
+查看固定效应的结果：
+
+```{r}
+summary(res_GLM$pool_res_fixed) %>% as.data.frame()
+```
+
+#### 1.2.4 可视化结果
+
+```{r fig.height=6, fig.width=14}
+barplotCI <- function(res, clusters = NULL, samples = NULL){
+  # Calculate
+  df_toPlot <- res$results
+  df_toPlot$median <- apply(res$thetastar, 1, median)
+  df_toPlot$method <- factor(df_toPlot$method, levels = c("BCa", "percentile", "multinom"))
+  n_celltype = length(unique(df_toPlot$cellTypes))
+
+  # Filter contents to plot
+  if (!is.null(clusters))
+    df_toPlot <- dplyr::filter(df_toPlot, cellTypes %in% clusters)
+  if (!is.null(samples))
+    df_toPlot <- dplyr::filter(df_toPlot, subject %in% samples)
+
+  # Plot
+  g_bar <- ggplot2::ggplot(df_toPlot,
+    ggplot2::aes(x = subject, y = median, fill = cond)) +
+    ggplot2::geom_bar(
+      stat = "identity", position = "dodge", alpha = 0.8) +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = conf_low, ymax = conf_high, color = method),
+      width=.3, lwd = 1, position = ggplot2::position_dodge(width = 0.5)) +
+    #ggplot2::scale_fill_brewer(palette = "Set2") +
+    ggplot2::ylab("Proportion") +
+    ggplot2::coord_flip()+
+    ggplot2::facet_wrap(
+      ~cellTypes, ncol = n_celltype, scales = "free_x",
+      labeller = ggplot2::labeller(cellTypes  = ggplot2::label_wrap_gen(width = 10,  multi_line = TRUE))) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90),
+      text = ggplot2::element_text(size = 12)) +
+    NULL
+
+  g_bar
+}
+
+
+barplotCI(
+  res_scDC_noClust,
+  clusters = c("CCs_4", "CCs_5", "MCs_4", "VCs_1", "VCs_2", "VCs_3"),
+)
+```
+
+### 1.3 基于聚类的检查
+
+每个 bootstrap 使用的聚类方法是 k-mean 聚类，不是很好用。
+
+```{r, eval=FALSE}
+res_scDC_clust <- scDC::scDC_clustering(
+  as.matrix(exprsMat), cellTypes, subject,
+  nboot = 500,
+  calCI = TRUE,
+  calCI_method = c("percentile", "BCa", "multinom"),
+  ncores = 6
+)
+```
