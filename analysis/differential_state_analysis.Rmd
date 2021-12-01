@@ -22,11 +22,31 @@ ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj))), palet
 
 ### 2.1 样本细胞降维度图
 
-```{r show-dim-plot, warning=FALSE, echo=FALSE}
-Seurat::DimPlot(obj, reduction = "tsne", group.by = "group") + ggplot2::theme(plot.title = ggplot2::element_blank())
-Seurat::DimPlot(obj, reduction = "tsne", label = TRUE, repel = TRUE, cols = ident_cols)
-Seurat::DimPlot(obj, reduction = "umap", label = TRUE, repel = TRUE, cols = ident_cols)
+#### 以不同属性标记降维图 {.tabset}
+
+```{r show-dim-plot, results = "asis", echo=FALSE, fig.height=5, fig.width=12, warning=FALSE}
+cat("##### cluster \n")
+Seurat::DimPlot(obj, reduction = "tsne", label = TRUE, label.box = TRUE, label.color = "white", repel = TRUE, cols = ident_cols) +
+Seurat::DimPlot(obj, reduction = "umap", label = TRUE, label.box = TRUE, label.color = "white", repel = TRUE, cols = ident_cols) +
+plot_layout(guides = "collect")
+cat("\n\n")
+
+cat("##### group \n")
+patchwork::wrap_plots(
+  Seurat::DimPlot(obj, reduction = "tsne", group.by = "group") + ggplot2::theme(plot.title = ggplot2::element_blank()),
+  Seurat::DimPlot(obj, reduction = "umap", group.by = "group") + ggplot2::theme(plot.title = ggplot2::element_blank())
+) + plot_layout(guides = "collect")
+cat("\n\n")
+
+cat("##### sample \n")
+patchwork::wrap_plots(
+  Seurat::DimPlot(obj, reduction = "tsne", group.by = "sample") + ggplot2::theme(plot.title = ggplot2::element_blank()),
+  Seurat::DimPlot(obj, reduction = "umap", group.by = "sample") + ggplot2::theme(plot.title = ggplot2::element_blank())
+) + plot_layout(guides = "collect")
+cat("\n\n")
 ```
+
+#### 按处理拆分降维图
 
 将所有样本降维图拆解成 “MOCK-AllSample”、“PNR2-AllSample”以及 “TR4-AllSample”：
 
@@ -64,7 +84,6 @@ obj$time <- rhapsodykit::key_mapping(obj$group, c(
 Seurat::DimPlot(obj, reduction = "tsne", group.by = "time", split.by = "treatment_type") +
   ggplot2::theme(plot.title = ggplot2::element_blank())
 ```
-
 
 ### 2.2 准备 {muscat} 要求的输入格式
 
@@ -783,3 +802,201 @@ cols <- circlize::colorRamp2(brks, .hm_cols)
     cluster_row_slices = FALSE, cluster_column_slices = FALSE, 
     use_raster = TRUE, raster_device = "CairoPNG"))
 ```
+
+## 4 时间线差异状态
+
+### 4.1 以 0DPI-MOCK 为共同对照
+
+```{r run-ds-timeline-analysis}
+# run DS analysis
+contrast_names <- c(
+  "X1DPI.MOCK-X0DPI.MOCK",
+  "X2DPI.MOCK-X0DPI.MOCK",
+  "X3DPI.MOCK-X0DPI.MOCK",
+  
+  "X1DPI.PNR2-X0DPI.MOCK",
+  "X2DPI.PNR2-X0DPI.MOCK",
+  "X3DPI.PNR2-X0DPI.MOCK",
+
+  "X1DPI.TR4-X0DPI.MOCK",
+  "X2DPI.TR4-X0DPI.MOCK",
+  "X3DPI.TR4-X0DPI.MOCK"
+)
+
+ds_res_timeline_cache <- "../output/ds_res_timeline.rds"
+if (file.exists(ds_res_timeline_cache)) {
+  ds_res_time <- readRDS(ds_res_timeline_cache)
+} else {
+  ds_res_time <- list(
+    edgeR = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "edgeR",
+      contrasts = contrast_names,
+      BPPARAM = BPPARAM
+    ),
+    DESeq2 = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "DESeq2",
+      contrasts = contrast_names,
+      BPPARAM = BPPARAM
+    )
+  )
+  saveRDS(ds_res_time, ds_res_timeline_cache)
+}
+
+str(ds_res_time$edgeR$table, max.level = 1)
+```
+
+### 4.2 可视化时间线 {.tabset}
+
+```{r results = "asis"}
+genecount_df <- ds_res_time$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_format()
+
+genecount_df$time <- rhapsodykit::key_mapping(genecount_df$contrast, c(
+  "X1DPI.MOCK-X0DPI.MOCK" = "1DPI",
+  "X2DPI.MOCK-X0DPI.MOCK" = "2DPI",
+  "X3DPI.MOCK-X0DPI.MOCK" = "3DPI",
+  
+  "X1DPI.PNR2-X0DPI.MOCK" = "1DPI",
+  "X2DPI.PNR2-X0DPI.MOCK" = "2DPI",
+  "X3DPI.PNR2-X0DPI.MOCK" = "3DPI",
+
+  "X1DPI.TR4-X0DPI.MOCK"  = "1DPI",
+  "X2DPI.TR4-X0DPI.MOCK"  = "2DPI",
+  "X3DPI.TR4-X0DPI.MOCK"  = "3DPI"
+))
+
+genecount_df$treatment <- rhapsodykit::key_mapping(genecount_df$contrast, c(
+  "X1DPI.MOCK-X0DPI.MOCK" = "MOCK",
+  "X2DPI.MOCK-X0DPI.MOCK" = "MOCK",
+  "X3DPI.MOCK-X0DPI.MOCK" = "MOCK",
+  
+  "X1DPI.PNR2-X0DPI.MOCK" = "PNR2",
+  "X2DPI.PNR2-X0DPI.MOCK" = "PNR2",
+  "X3DPI.PNR2-X0DPI.MOCK" = "PNR2",
+
+  "X1DPI.TR4-X0DPI.MOCK"  = "TR4",
+  "X2DPI.TR4-X0DPI.MOCK"  = "TR4",
+  "X3DPI.TR4-X0DPI.MOCK"  = "TR4"
+))
+
+genecount_df$contrast <- factor(genecount_df$contrast, levels = contrast_names)
+
+plot_timeline <- function(df) {
+  df %>%
+    ggplot2::ggplot(ggplot2::aes(time, fill = treatment)) +
+    ggplot2::geom_bar(
+      position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+    ggplot2::ylab("Number of DS genes") +
+    ggplot2::xlab("Cell Subpopulation") +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    )
+}
+
+contrast_cols = Seurat::DiscretePalette(length(ds_res_time$DESeq2$table), palette = "glasbey")
+names(contrast_cols) <- names(ds_res_time$DESeq2$table)
+```
+
+#### fixed_y
+
+```{r fig.height=5, fig.width=7}
+genecount_df %>%
+  plot_timeline() +
+  ggplot2::facet_wrap(~cluster_id) +
+  ggplot2::theme(legend.position = "right")
+```
+
+#### free_y
+
+```{r fig.height=5, fig.width=7}
+genecount_df %>%
+  plot_timeline() +
+  ggplot2::facet_wrap(~cluster_id, scales = "free_y") +
+  ggplot2::theme(legend.position = "right")
+```
+
+### 4.3 时间线之间的比较 {.tabset}
+
+```{r upset-across-contrast-timeline}
+upset_contrasts <- function(input) {
+  sets_list <- input$table %>%
+    purrr::map(function(x) {
+      purrr::map(x, "gene") %>%
+        purrr::compact()
+    })
+
+  sets_metadata <- sets_list %>%
+    purrr::imap(function(contrast, key) {
+      cbind(
+        sets = sprintf("%s [%s]", key, names(contrast)),
+        contrast = key,
+        cluster = names(contrast)
+      )
+    }) %>%
+    do.call(rbind, .) %>%
+    as.data.frame()
+
+  sets_to_plot <- sets_list %>%
+    unlist(recursive = FALSE)
+  
+  names(sets_to_plot) <- sets_metadata$sets
+
+  sets_to_plot %>%
+    rhapsodykit::from_list_to_upset() %>%
+    rhapsodykit::upset_dataframe() %>%
+    rhapsodykit::upset_plot(order_by = "degree")
+}
+
+diff_state_subset <- function(input, contrast = NULL, cluster = NULL) {
+  if (!is.null(contrast))
+    input$table <- input$table[contrast]
+
+  if (!is.null(cluster)) {
+    input$table <- purrr::map(input$table, function(contr) contr[cluster])
+    input$data <- input$data[cluster]
+    input$fit <- input$fit[cluster]
+  }
+
+  input
+}
+```
+
+#### 1DPI
+
+```{r}
+ds_res_time$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  diff_state_subset(contrast = c(
+    "X1DPI.MOCK-X0DPI.MOCK",
+    "X1DPI.PNR2-X0DPI.MOCK",
+    "X1DPI.TR4-X0DPI.MOCK")) %>%
+  upset_contrasts()
+```
+
+#### 2DPI
+
+```{r}
+ds_res_time$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  diff_state_subset(contrast = c(
+    "X2DPI.MOCK-X0DPI.MOCK",
+    "X2DPI.PNR2-X0DPI.MOCK",
+    "X2DPI.TR4-X0DPI.MOCK")) %>%
+  upset_contrasts()
+```
+
+#### 3DPI
+
+```{r}
+ds_res_time$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  diff_state_subset(contrast = c(
+    "X3DPI.MOCK-X0DPI.MOCK",
+    "X3DPI.PNR2-X0DPI.MOCK",
+    "X3DPI.TR4-X0DPI.MOCK")) %>%
+  upset_contrasts()
+```
+
