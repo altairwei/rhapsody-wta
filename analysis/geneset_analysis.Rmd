@@ -141,6 +141,119 @@ p2 <- enr2 %>% enrichplot::upsetplot()
 p1 + p2
 ```
 
+最后做一下生物主题比较：
+
+
+我们可以试试 clusterProfiler 生物主题比较功能：
+
+```{r enrich-compare, fig.height=12, fig.width=5, fig.keep="last"}
+compare_list <- list(
+  "VCs_5.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "VCs_5", "gene"),
+  "VCs_5.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "VCs_5", "gene"),
+  "MCs_5.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "MCs_5", "gene"),
+  "MCs_5.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "MCs_5", "gene")
+)
+
+comp_enr <- clusterProfiler::compareCluster(compare_list, fun = "enricher", TERM2GENE = go2gene, TERM2NAME = go2name)
+
+enrichplot::dotplot(comp_enr, showCategory = 40, by = "count", label_format = 60) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+TODO: 将 dotplot 按照 cluster 来 facet 化，然后 x 轴显示 contrast 就好了。 
+TODO: 将 enrichplot::dotplot 与 ggupset 结合到一起，看看能否提供更方便快捷的理解方式。
+
+参考资料：
+
+-   [Biological theme comparison](http://yulab-smu.top/clusterProfiler-book/chapter11.html)
+-   [biological-theme-comparison](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html#biological-theme-comparison)
+-   Yu, G., Wang, L.-G., Han, Y., & He, Q.-Y. (2012). clusterProfiler: An R Package for Comparing Biological Themes Among Gene Clusters. OMICS: A Journal of Integrative Biology, 16(5), 284--287. <https://doi.org/10.1089/omi.2011.0118>
+
+然后看看 GO 词条之间的关联：
+
+```{r fig.height=7, fig.width=10}
+comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(legend_n = 2)
+```
+
+#### PNR2 和 TR4 在 1DPI 时重叠的基因表达
+
+获取重叠部分的基因：
+
+```{r}
+diff_state_intersections <- function(ds) {
+  sets_list <- ds$table %>%
+    purrr::map(function(x) {
+      purrr::map(x, "gene") %>%
+        purrr::compact()
+    })
+
+  sets_metadata <- sets_list %>%
+    purrr::imap(function(contrast, key) {
+      cbind(
+        sets = sprintf("%s [%s]", key, names(contrast)),
+        contrast = key,
+        cluster = names(contrast)
+      )
+    }) %>%
+    do.call(rbind, .) %>%
+    as.data.frame()
+
+  sets_to_plot <- sets_list %>%
+    unlist(recursive = FALSE)
+  
+  names(sets_to_plot) <- sets_metadata$sets
+
+  bin <- sets_to_plot %>%
+    rhapsodykit::from_list_to_upset()
+
+  list(
+    binary = bin,
+    metadata = sets_metadata
+  )
+}
+
+intersection_query <- function(itsc, contrasts, clusters) {
+  sets_comb <- expand.grid(contrast = contrasts, cluster = clusters)
+  sets <- apply(sets_comb, 1, function(x) {
+    with(itsc$metadata,
+      sets[contrast == x["contrast"] & cluster == x["cluster"]])
+  })
+
+  belongs <- apply(itsc$binary, 1, function(x) {
+    all(x[sets] == 1) && sum(x) == length(sets)
+  })
+
+  names(belongs)[belongs]
+}
+
+itsc <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_subset(
+    contrast = c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK")
+  ) %>%
+  diff_state_intersections()
+
+query_annotation <- function(genes, go_data) {
+  dplyr::filter(go_data, Gene_ID %in% genes)
+}
+
+intersection_query(itsc,
+  c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
+  c("VCs_5")
+)
+```
+
+
 #### 1.1.2 对差异状态基因做 GSEA 分析
 
 基于差异基因表达的富集分析可以找到差异较大的基因，但它发现不了那些虽然差异较小的，但在一组相关基因中以协调的方式得到证明的基因。因此 Gene Set Enrichment Analysis (GSEA) 直接关注这个问题。
@@ -152,28 +265,38 @@ GSEA 将一个基因集内各基因的统计数据聚合起来，因此有可能
 For gene set enrichment analysis, we need a ranked list of genes. Suppose you are importing your own data from a csv file and the file contains two columns, one for gene ID (no duplicated allowed) and another one for fold change, you can prepare your own geneList via the following command:
 
 ```{r gsea-data}
-## 我们不需要依据 FDR 来筛选基因，只需要 logFC 来排序
-gsea_df <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "VCs_5", c("gene", "logFC"))
+make_gsea_result <- function(ds, contrast, cluster) {
+  ## 我们不需要依据 FDR 来筛选基因，只需要 logFC 来排序
+  gsea_df <- ds %>%
+    rhapsodykit::diff_state_pull(contrast, cluster, c("gene", "logFC"))
+  
+  ## feature 1: numeric vector
+  geneList <- gsea_df[,2]
 
-## feature 1: numeric vector
-geneList <- gsea_df[,2]
+  ## feature 2: named vector
+  names(geneList) <- as.character(gsea_df[,1])
 
-## feature 2: named vector
-names(geneList) <- as.character(gsea_df[,1])
+  ## feature 3: decreasing order
+  geneList <- sort(geneList, decreasing = TRUE)
 
-## feature 3: decreasing order
-geneList <- sort(geneList, decreasing = TRUE)
+  list(
+    gsea = clusterProfiler::GSEA(geneList, TERM2GENE = go2gene, TERM2NAME = go2name),
+    fc = geneList
+  )
+  
+}
+
+gsea1 <- make_gsea_result(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5")
+gsea2 <- make_gsea_result(ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "VCs_5")
 ```
 
 问题是从哪里去找通路数据库呢？似乎 [Plant Reactome](https://plantreactome.gramene.org/) 很不错的样子。
 
 似乎可以用 `clusterProfiler::GSEA()` 函数：
 
-```{r gsea-cnetplot}
-gsea <- clusterProfiler::GSEA(geneList, TERM2GENE = go2gene, TERM2NAME = go2name)
-
-rhapsodykit::enrich_cnetplot(gsea, fold_change = geneList, show_category = 20)
+```{r gsea-cnetplot, fig.height=6, fig.width=14}
+rhapsodykit::enrich_cnetplot(gsea1$gsea, fold_change = gsea1$fc, show_category = 20) +
+  rhapsodykit::enrich_cnetplot(gsea2$gsea, fold_change = gsea2$fc, show_category = 20)
 ```
 
 ```{r gsea-emapplot, fig.height=7, fig.width=7}
@@ -205,49 +328,6 @@ gsea %>%
 ```{r gsearank}
 gsea %>%
   enrichplot::gsearank(geneSetID = 3, title = gsea$Description[3])
-```
-
-#### 1.1.3 差异状态基因的生物主题比较
-
-我们可以试试 clusterProfiler 生物主题比较功能：
-
-```{r enrich-compare, fig.height=14, fig.width=8}
-compare_list <- list(
-  "VCs_5.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "VCs_5", "gene"),
-  "VCs_5.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "VCs_5", "gene"),
-  "MCs_5.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "MCs_5", "gene"),
-  "MCs_5.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "MCs_5", "gene")
-)
-
-comp_enr <- clusterProfiler::compareCluster(compare_list, fun = "enricher", TERM2GENE = go2gene, TERM2NAME = go2name)
-
-enrichplot::dotplot(comp_enr, showCategory = 20, by = "count") +
-  #ggplot2::scale_y_discrete(expand = ggplot2::expansion(c(0, 0), c(1, 1))) +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-```
-
-TODO: 将 dotplot 按照 cluster 来 facet 化，然后 x 轴显示 contrast 就好了。 TODO: 将 enrichplot::dotplot 与 ggupset 结合到一起，看看能否提供更方便快捷的理解方式。
-
-参考资料：
-
--   [Biological theme comparison](http://yulab-smu.top/clusterProfiler-book/chapter11.html)
--   [biological-theme-comparison](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html#biological-theme-comparison)
--   Yu, G., Wang, L.-G., Han, Y., & He, Q.-Y. (2012). clusterProfiler: An R Package for Comparing Biological Themes Among Gene Clusters. OMICS: A Journal of Integrative Biology, 16(5), 284--287. <https://doi.org/10.1089/omi.2011.0118>
-
-然后看看 GO 词条之间的关联：
-
-```{r fig.height=7, fig.width=10}
-comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 2)
 ```
 
 ### 1.2 其他注释的功能分析

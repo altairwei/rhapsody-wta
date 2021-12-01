@@ -319,6 +319,8 @@ Seurat::DimPlot(obj,
   ggplot2::theme(legend.position = "right")
 ```
 
+TODO: 参考 [DR colored by cluster ID](https://htmlpreview.github.io/?https://raw.githubusercontent.com/HelenaLC/muscat-comparison/master/LPS/docs/2-annotation.html) 绘制多个图片，方便后续查看。
+
 ### 1.4 保存 Seurat 对象
 
 ```{r}
