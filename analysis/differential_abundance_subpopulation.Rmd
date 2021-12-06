@@ -1,0 +1,706 @@
+---
+title: "Differentially Abundant Cell Subpopulation"
+author: "Altair Wei"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+library(magrittr)
+```
+# 差异丰度的细胞亚群鉴定
+
+## 1 算法探索
+
+这里我们使用 (Zhao, J. et al., Proceedings of the National Academy of Sciences, 2021) 发表的 {DAseq} 来鉴定差异丰度下的细胞亚群。
+
+### 1.1 数据准备
+
+首先加载 Seurat 对象：
+
+```{r read-seurat-obj}
+obj <- readRDS("../output/obj_annotated.rds")
+```
+
+#### 1.1.1 样本标记信息
+
+{DAseq} 似乎只能同时对两种条件做差异丰度分析，所以我们这里先准备好样品和分组信息：
+
+```{r prepare-inputs}
+group_ctrl <- "2DPI-MOCK"
+group_stim <- "2DPI-PNR2"
+
+obj_sub <- subset(obj, subset = group %in% c(group_ctrl, group_stim))
+
+info <- Seurat::FetchData(obj_sub, vars = c("sample", "group"))
+
+sample_ctrl <- unique(info[
+  info$group %in% group_ctrl, "sample"])
+sample_stim <- unique(info[
+  info$group %in% group_stim, "sample"])
+```
+
+#### 1.1.2 降维数据
+
+我们需要 PCA 数据，先看看 {DAseq} 自带的数据长什么样子：
+
+```{r}
+DAseq::X.melanoma %>% str()
+```
+
+我们可以发现 {DAseq} 要求的数据与 Seurat 对象 PCA 中的 `cell.embeddings` 比较像。原文 (Zhao, J. et al., *Proceedings of the National Academy of Sciences*, 2021) 中 Materials and Methods 也讲清楚了输入数据是 PCA 的 embeddings 。
+
+```{r pca-embbedding}
+emb_pca <- Seurat::Embeddings(obj_sub[["pca"]])[, 1:10]
+```
+
+接着准备每个细胞的样本标记：
+
+```{r cell-labels}
+cell_labels <- obj_sub$sample
+```
+
+然后我们需要准备 t-SNE 降维图的二维嵌入：
+
+```{r tsne-embbedding}
+emb_tsne <- Seurat::Embeddings(obj_sub[["tsne"]])
+```
+
+另外也准备一个 UMAP 的二维嵌入数据：
+
+```{r umap-embbedding}
+emb_umap <- Seurat::Embeddings(obj_sub[["umap"]])
+```
+
+### 1.2 选择差异丰度细胞
+
+#### 1.2.1 运行算法
+
+> Step 1: compute a multiscale score measure for each cell of its k-nearest-neighborhood for multiple values of k. Step 2: train a logistic regression classifier based on the multiscale score measure and retain cells that may reside in DA regions.
+
+```{r run-test, cache=TRUE}
+da_cells <- DAseq::getDAcells(
+  X = emb_pca,
+  cell.labels = cell_labels,
+  labels.1 = sample_ctrl,
+  labels.2 = sample_stim,
+  k.vector = seq(50, 500, 50),
+  plot.embedding = emb_tsne
+)
+```
+
+#### 1.2.2 显示差异丰度细胞 {.tabset}
+
+我们先看看通过随机排列算出的 NULL 假设是怎样的：
+
+> DAseq runs a random permutation on the labels to generate the null distribution for DA measure.
+
+```{r}
+da_cells$rand.plot
+```
+
+默认情况下，DA 测量值大于最大或小于最小 permutated DA 测量值的细胞被选为 DA 细胞。而 `DAseq::updateDAcells()` 可以用于更改阈值。
+
+下图中颜色代表的含义：
+
+> Cells in red are in the top (these cells are more abundant in non-responder samples), blue in the bottom (these cells are more abundant in responder samples).
+
+在我们的样本中，红色代表着细胞在 ctrl 中的丰度更高，蓝色代表着在 stim 中的丰度更高。
+
+##### t-SNE
+
+```{r}
+da_cells$pred.plot + ggplot2::coord_fixed()
+```
+
+```{r fig.height=6, fig.width=13}
+p1 <- da_cells$da.cells.plot
+p2 <- Seurat::DimPlot(obj_sub,
+  cells = info$group %in% c(group_ctrl, group_stim),
+  reduction = "tsne", group.by = "group") + ggplot2::theme(plot.title = ggplot2::element_blank())
+
+p1 + p2
+```
+
+##### UMAP
+
+```{r}
+plot_cell_score <- function(obj, embedding) {
+  embedding <- embedding[obj$cell.idx,]
+  DAseq::plotCellScore(X = embedding, score = obj$da.pred) +
+    ggplot2::theme(legend.title = ggplot2::element_blank())
+}
+
+plot_cell_score(da_cells, emb_umap) + ggplot2::coord_fixed()
+```
+
+```{r fig.height=3, fig.width=7}
+plot_da_site <- function(obj, embedding) {
+  embedding <- embedding[obj$cell.idx,]
+  DAseq::plotDAsite(embedding,
+    site.list = list(obj$da.down, obj$da.up),
+    cols = c("blue","red")
+  )
+}
+
+p1 <- plot_da_site(da_cells, emb_umap)
+p2 <- Seurat::DimPlot(obj_sub,
+  cells = info$group %in% c(group_ctrl, group_stim),
+  reduction = "umap", group.by = "group") + ggplot2::theme(plot.title = ggplot2::element_blank())
+
+p1 + p2
+```
+
+### 1.3 对差异丰度细胞聚类
+
+#### 1.3.1 DA 聚类
+
+```{r run-test-da-region, cache=TRUE}
+da_regions <- DAseq::getDAregion(
+  X = emb_pca,
+  da.cells = da_cells,
+  cell.labels = cell_labels,
+  labels.1 = sample_ctrl,
+  labels.2 = sample_stim,
+  resolution = 0.05,
+  plot.embedding = emb_tsne,
+)
+```
+
+差异丰度细胞被划分成了三类：
+
+```{r}
+da_regions$da.region.plot +
+  ggplot2::scale_color_manual(
+    values = c("gray", scales::hue_pal()(length(unique(da_regions$da.region.label)) - 1))
+  ) +
+  ggplot2::coord_fixed()
+```
+
+#### 1.3.2 DA 分数比较
+
+```{r}
+#' @param cell.labels Sample label for all cells.
+#' @param cell.idx Location of cells belong to a given identity.
+#' @param labels.1 label name(s) that represent condition 1
+#' @param labels.2 label name(s) that represent condition 2
+onlyDAscore <- function(cell.labels, cell.idx, labels.1, labels.2){
+  # Remove invalid conditions
+  labels.1 <- labels.1[labels.1 %in% cell.labels]
+  labels.2 <- labels.2[labels.2 %in% cell.labels]
+
+  # Get cell labels belong to one identity
+  idx.label <- cell.labels[cell.idx]
+
+  # This is same way to calculate DA.score as DA subpopulation
+  ratio.1 <- sum(idx.label %in% labels.1) / sum(cell.labels %in% labels.1)
+  ratio.2 <- sum(idx.label %in% labels.2) / sum(cell.labels %in% labels.2)
+  ratio.diff <- (ratio.2 - ratio.1) / (ratio.2 + ratio.1)
+
+  return(ratio.diff)
+}
+
+da_score_cluster <- lapply(
+  levels(Seurat::Idents(obj_sub)),
+  function(x)
+    onlyDAscore(
+      cell.labels = cell_labels, 
+      labels.1 = sample_ctrl, 
+      labels.2 = sample_stim, 
+      cell.idx = which(Seurat::Idents(obj_sub) == x)
+    )
+  ) %>% unlist()
+
+names(da_score_cluster) <- levels(Seurat::Idents(obj_sub))
+```
+
+```{r fig.height=3, fig.width=3}
+n_da <- length(unique(da_regions$da.region.label)) - 1
+
+gg1 <- ggplot2::ggplot(
+    data = data.frame(
+      DA = factor(paste0("DA", c(1:n_da)), levels = rev(paste0("DA", c(1:n_da)))),
+      score = da_regions$DA.stat[,1], x = "1"),
+    mapping = ggplot2::aes(x, y = DA)) +
+  ggplot2::geom_tile(ggplot2::aes(fill = score), col = "white") +
+  ggplot2::geom_text(ggplot2::aes(label = round(score, 2)), size = 2) + 
+  ggplot2::scale_fill_gradientn(colours = c("blue","white","red"), limits = c(-1,1)) +
+  cowplot::theme_cowplot() + 
+  ggplot2::theme(
+    axis.line = ggplot2::element_blank(),
+    axis.ticks = ggplot2::element_blank(),
+    axis.text.x = ggplot2::element_blank(),
+    axis.title = ggplot2::element_blank(),
+    axis.text.y = ggplot2::element_text(size = 7)
+  )
+
+gg2 <- ggplot2::ggplot(
+    data = data.frame(
+      cluster = factor(names(da_score_cluster), levels = rev(names(da_score_cluster))),
+      score = da_score_cluster,
+      x = "1"),
+    mapping = ggplot2::aes(x, y=cluster)) +
+  ggplot2::geom_tile(ggplot2::aes(fill = score), col = "white") +
+  ggplot2::geom_text(ggplot2::aes(label = round(score, 2)), size = 2) + 
+  ggplot2::scale_fill_gradientn(colours = c("blue", "white", "red"), limits = c(-1, 1)) +
+  cowplot::theme_cowplot() + 
+  ggplot2::theme(
+    axis.line = ggplot2::element_blank(),
+    axis.ticks = ggplot2::element_blank(),
+    axis.text.x = ggplot2::element_blank(),
+    axis.title = ggplot2::element_blank(),
+    axis.text.y = ggplot2::element_text(size = 7)
+  )
+
+gg1 + gg2 + patchwork::plot_layout(guides = "collect")
+```
+
+计算 DA 亚群的来源比例：
+
+1. 绘制 DA-score，参考 DAseq 的原文，可以清晰的看出原始 cluster 的倾向。
+2. 绘制 DA 和 cluster 重叠气泡图。横坐标为 cluster ，纵坐标为 DA，气泡大小为 cluster 中有多少比例的细胞属于该 DA 。这样就可以衡量原始 cluster 对 DA subpopulation 的贡献。
+3. 将上面两个图结合起来，~~分别作为 DA 轴（y-axis）和 cluster 轴（x-axis）的注释~~。 气泡图的颜色这样计算，cluster 中属于那一部分 DA subpopulation 细胞 DA meaure 的平均值。然后通过 {cowplot} 后者 {patchwork} 将 DA-score 图拼凑起来。用 aplot ?
+
+```{r fig.height=4, fig.width=8}
+#' @param cell.labels Sample label for all cells.
+#' @param cell.idx Location of cells belong to a given identity.
+identsDAcontribution <- function(cell.idents, da.region.label) {
+  table(da.region.label, cell.idents) %>%
+    apply(2, function(x) {
+      x / sum(x)
+    })
+}
+
+contrib_df <- identsDAcontribution(
+    Seurat::Idents(obj_sub), da_regions$da.region.label) %>%
+  as.data.frame.table()
+
+contrib_df$da.score <- apply(contrib_df, 1, function(x) {
+  onlyDAscore(
+    cell.labels = cell_labels, 
+    labels.1 = sample_ctrl, 
+    labels.2 = sample_stim, 
+    cell.idx = which(
+      x[["cell.idents"]] == Seurat::Idents(obj_sub) &
+      x[["da.region.label"]] == da_regions$da.region.label
+    )
+  )
+})
+
+contrib_df %>%
+  dplyr::filter(Freq != 0) %>%
+  ggplot2::ggplot(ggplot2::aes(cell.idents, da.region.label, size = Freq, color = da.score)) +
+  ggplot2::geom_point() +
+  #ggrepel::geom_text_repel(
+  #  ggplot2::aes(label = round(da.score, 2)), size = 2, color = "black") +
+  ggplot2::scale_y_discrete(labels = function(x) ifelse(x == 0, 0, paste0("DA", x))) +
+  ggplot2::scale_color_gradientn(colours = c("blue", "white", "red"), limits = c(-1, 1)) +
+  ggplot2::scale_size_continuous(labels = scales::percent) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+  ) +
+  NULL
+```
+
+
+### 1.4 获取差异丰度细胞群集的标志基因
+
+在原文中，作者使用了两种运行 DA 亚群差异表达基因的方法：基于 STG 的方法以及基于 {Seurat} 的方法。
+
+#### 1.4.1 准备基因表达数据
+
+但是这里我们不清楚究竟需要什么样的表达数据。看 [DAseq Tutorial](https://klugerlab.github.io/DAseq/articles/tutorial.html) 的代码，感觉有可能是 TPM 值。
+
+#### 1.4.2 基于 {Seurat} 的标志基因鉴定
+
+```{r seurat-markers, cache = TRUE, eval=FALSE}
+obj_sub <- DAseq::addDAslot(obj_sub, da.regions = da_regions, da.slot = "da")
+Seurat_markers <- DAseq::SeuratMarkerFinder(
+  obj_sub, da.slot = "da", assay = "RNA", test.use = "negbinom", only.pos = T
+)
+```
+
+
+#### 1.4.3 基于 STG 的标志基因鉴定
+
+原文中使用的是整合后 Seurat 对象 “RNA” 分析中的 “data” 槽。另外我们可以参考 https://theislab.github.io/scanpy-in-R 设置 Python 运行环境。
+
+```{r stg-markers, cache=TRUE, eval=FALSE, results="hide"}
+STG_markers <- DAseq::STGmarkerFinder(
+  X = obj_sub@assays$RNA@data,
+  da.regions = da_regions, 
+  lambda = 1.5, n.runs = 5, return.model = T, 
+  GPU = 1, python.use = Sys.which("python")
+)
+```
+
+`obj_sub@assays$RNA@data` 这个系数矩阵太大了，无法转换成普通的 matrix 。参考 [Sparse Matrices](https://rstudio.github.io/reticulate/articles/calling_python.html#sparse-matrices-1) 来修改 {DAseq} 相关代码。
+
+
+
+## 2 算法整合后的分析
+
+我们将 DAseq 的几个步骤集中到一个函数里，这样方便做多组比较。
+
+```{r combine-steps, cache=TRUE}
+find_diff_abundant_cells <- function(
+  obj, ctrl, stim, npc = 20
+) {
+  # DAseq only allow pairwise comparison, so we subset Seurat object.
+  obj <- subset(obj, subset = group %in% c(ctrl, stim))
+  info <- Seurat::FetchData(obj, vars = c("sample", "group", "ident"))
+
+  # Extract sample label for each group.
+  sample_ctrl <- unique(info[
+    info$group %in% ctrl, "sample"])
+  sample_stim <- unique(info[
+    info$group %in% stim, "sample"])
+
+  # Input data
+  emb_pca <- Seurat::Embeddings(obj[["pca"]])[, 1:npc]
+
+  # Sample label for every cell
+  cell_labels <- obj$sample
+
+  da_cells <- DAseq::getDAcells(
+    X = emb_pca,
+    cell.labels = cell_labels,
+    labels.1 = sample_ctrl,
+    labels.2 = sample_stim,
+    k.vector = seq(50, 500, 50),
+    do.plot = FALSE
+  )
+
+  da_regions <- DAseq::getDAregion(
+    X = emb_pca,
+    da.cells = da_cells,
+    cell.labels = cell_labels,
+    labels.1 = sample_ctrl,
+    labels.2 = sample_stim,
+    resolution = 0.05,
+    do.plot = FALSE
+  )
+
+  list(
+    embeddings = list(
+      pca = emb_pca,
+      tsne = Seurat::Embeddings(obj[["tsne"]]),
+      umap = Seurat::Embeddings(obj[["umap"]])
+    ),
+    cells = da_cells,
+    regions = da_regions,
+    info = info,
+    args = list(
+      cell.labels = cell_labels,
+      labels.1 = sample_ctrl,
+      labels.2 = sample_stim
+    )
+  )
+
+}
+```
+
+重写 {DAseq} 的几个绘图函数
+
+```{r plot-funs}
+# The prediction values are overlayed on the 2D embedding
+plot_cell_score <- function(obj, reduction) {
+  embedding <- obj$embeddings[[reduction]][obj$cells$cell.idx,]
+  DAseq::plotCellScore(X = embedding, score = obj$cells$da.pred) +
+    ggplot2::theme(legend.title = ggplot2::element_blank())
+}
+
+# Selected DA cells are highlighted in the 2D embedding
+plot_da_site <- function(obj, reduction) {
+  embedding <- obj$embeddings[[reduction]][obj$cells$cell.idx,]
+  DAseq::plotDAsite(embedding,
+    site.list = list(obj$cells$da.down, obj$cells$da.up),
+    cols = c("blue","red")
+  )
+}
+
+# DA subpopulation clustering result is shown in the 2D embedding
+plot_cell_label <- function(obj, reduction) {
+  embedding <- obj$embeddings[[reduction]][obj$cells$cell.idx,]
+  X.da.label <- obj$regions$da.region.label
+  X.da.order <- order(X.da.label, decreasing = F)
+  X.n.da <- length(unique(X.da.label)) - 1
+  DAseq::plotCellLabel(
+    X = embedding[X.da.order,],
+    label = as.factor(X.da.label[X.da.order])
+  ) +
+    ggplot2::scale_color_manual(
+      values = c("gray", scales::hue_pal()(X.n.da))
+    )
+}
+
+plot_da_overlap <- function(obj) {
+  contrib_df <- table(
+      da.region.label = obj$regions$da.region.label,
+      cell.idents = obj$info$ident) %>%
+    apply(2, function(x) x / sum(x)) %>%
+    as.data.frame.table()
+
+  contrib_df$da.score <- apply(contrib_df, 1, function(x) {
+    onlyDAscore(
+      cell.labels = obj$args$cell.labels, 
+      labels.1 = obj$args$labels.1, 
+      labels.2 = obj$args$labels.2, 
+      cell.idx = which(
+        x[["cell.idents"]] == obj$info$ident &
+        x[["da.region.label"]] == obj$regions$da.region.label
+      )
+    )
+  })
+
+  contrib_df %>%
+    dplyr::filter(Freq != 0) %>%
+    ggplot2::ggplot(ggplot2::aes(cell.idents, da.region.label, size = Freq, color = da.score)) +
+    ggplot2::geom_point() +
+    ggplot2::scale_y_discrete(labels = function(x) ifelse(x == 0, 0, paste0("DA", x))) +
+    ggplot2::scale_color_gradientn(colours = c("blue", "white", "red"), limits = c(-1, 1)) +
+    ggplot2::scale_size_continuous(labels = scales::percent) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    ) +
+    NULL
+}
+```
+
+### 2.1 All-PNR2 与 All-TR4 的差异丰度细胞
+
+然后我们分别做所有 PNR2-MOCK 和 TR4-MOCK 的比较，也就是说所有 1/2/3DPI-
+
+```{r run-pnr2-and-tr4, cache=TRUE, dependson=c("combine-steps", "read-seurat-obj")}
+PNR2_da <- find_diff_abundant_cells(obj,
+  stim = paste(1:3, "DPI-PNR2", sep = ""),
+  ctrl = paste(0:3, "DPI-MOCK", sep = "")
+)
+
+TR4_da <- find_diff_abundant_cells(obj,
+  stim = paste(1:3, "DPI-TR4", sep = ""),
+  ctrl = paste(0:3, "DPI-MOCK", sep = "")
+)
+```
+
+#### 可视化 DA 细胞 {.tabset}
+
+```{r}
+str(PNR2_da$info)
+```
+
+##### t-SNE
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_cell_score(PNR2_da, "tsne") +
+    ggplot2::ggtitle("PNR2 vs. MOCK"),
+  plot_cell_score(TR4_da, "tsne") +
+    ggplot2::ggtitle("TR4 vs. MOCK")
+)
+```
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_da_site(PNR2_da, "tsne") +
+    ggplot2::ggtitle("PNR2 vs. MOCK"),
+  plot_da_site(TR4_da, "tsne") +
+    ggplot2::ggtitle("TR4 vs. MOCK")
+)
+```
+
+##### UMAP
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_cell_score(PNR2_da, "umap") +
+    ggplot2::ggtitle("PNR2 vs. MOCK"),
+  plot_cell_score(TR4_da, "umap") +
+    ggplot2::ggtitle("TR4 vs. MOCK")
+)
+```
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_da_site(PNR2_da, "umap") +
+    ggplot2::ggtitle("PNR2 vs. MOCK"),
+  plot_da_site(TR4_da, "umap") +
+    ggplot2::ggtitle("TR4 vs. MOCK")
+)
+```
+
+#### DA 细胞聚类 {.tabset}
+
+在鉴定出所有 PNR2 样本的 DA 亚群后，可以看看 1DPI/2DPI/3DPI 在这些 DA 中是如何变化的。
+
+##### t-SNE
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_cell_label(PNR2_da, "tsne") +
+    ggplot2::ggtitle("PNR2 vs. MOCK"),
+  plot_cell_label(TR4_da, "tsne") +
+    ggplot2::ggtitle("TR4 vs. MOCK")
+)
+```
+
+##### UMAP
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_cell_label(PNR2_da, "umap") +
+    ggplot2::ggtitle("PNR2 vs. MOCK"),
+  plot_cell_label(TR4_da, "umap") +
+    ggplot2::ggtitle("TR4 vs. MOCK")
+)
+```
+
+#### DA 分数
+
+```{r fig.height=8, fig.width=8}
+(plot_da_overlap(PNR2_da) + ggplot2::ggtitle("PNR2 vs. MOCK")) /
+(plot_da_overlap(TR4_da) + ggplot2::ggtitle("TR4 vs. MOCK"))
+```
+
+### 2.2 All-PNR2 与 All-TR4 比较
+
+```{r run-pnr2-vs-tr4, cache=TRUE, dependson=c("combine-steps", "read-seurat-obj")}
+PNR2_vs_TR4_da <- find_diff_abundant_cells(obj,
+  stim = paste(1:3, "DPI-PNR2", sep = ""),
+  ctrl = paste(1:3, "DPI-TR4", sep = "")
+)
+```
+
+#### 可视化 DA 细胞 {.tabset}
+
+##### t-SNE
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_cell_score(PNR2_vs_TR4_da, "tsne") +
+    ggplot2::ggtitle("PNR2 vs. TR4"),
+  plot_da_site(PNR2_vs_TR4_da, "tsne") +
+    ggplot2::ggtitle("PNR2 vs. TR4")
+)
+```
+
+##### UMAP
+
+```{r fig.height=7, fig.width=15}
+patchwork::wrap_plots(
+  plot_cell_score(PNR2_vs_TR4_da, "umap") +
+    ggplot2::ggtitle("PNR2 vs. TR4"),
+  plot_da_site(PNR2_vs_TR4_da, "umap") +
+    ggplot2::ggtitle("PNR2 vs. TR4")
+)
+```
+
+#### DA 细胞聚类 {.tabset}
+
+##### t-SNE
+
+```{r}
+plot_cell_label(PNR2_vs_TR4_da, "tsne") +
+  ggplot2::coord_fixed() +
+  ggplot2::ggtitle("PNR2 vs. TR4")
+```
+
+##### UMAP
+
+```{r}
+plot_cell_label(PNR2_vs_TR4_da, "umap") +
+  ggplot2::coord_fixed()
+  ggplot2::ggtitle("PNR2 vs. TR4")
+```
+
+#### DA 分数
+
+```{r fig.height=4, fig.width=8}
+plot_da_overlap(PNR2_vs_TR4_da) + ggplot2::ggtitle("PNR2 vs. TR4")
+```
+
+### 2.3 1DPI 样本的分析 {.tabset}
+
+```{r 1dpi-sample-data, cache=TRUE, dependson=c("combine-steps", "read-seurat-obj"), warning=FALSE, message=FALSE, results="hide"}
+results_1dpi <- lapply(
+  list(
+    "PNR2 vs. MOCK - 1DPI" = c("1DPI-PNR2", "1DPI-MOCK"),
+    "TR4 vs. MOCK - 1DPI" = c("1DPI-TR4", "1DPI-MOCK")
+  ),
+  function(pair) {
+    find_diff_abundant_cells(
+      obj, stim = pair[1], ctrl = pair[2])
+  }
+)
+```
+
+```{r 1dpi-sample-plot, results="asis", fig.height=7, fig.width=15}
+generate_da_plots <- function(results) {
+  for (reduc in c("tsne", "umap")) {
+    cat("#### ", reduc, "\n")
+    print(patchwork::wrap_plots(
+      plot_cell_score(results[[1]], reduc) +
+        ggplot2::ggtitle(names(results)[[1]]),
+      plot_cell_score(results[[2]], reduc) +
+        ggplot2::ggtitle(names(results)[[2]])
+    ))
+    cat("\n\n")
+    print(patchwork::wrap_plots(
+      plot_da_site(results[[1]], reduc) +
+        ggplot2::ggtitle(names(results)[[1]]),
+      plot_da_site(results[[2]], reduc) +
+        ggplot2::ggtitle(names(results)[[2]])
+    ))
+    cat("\n\n")
+    print(patchwork::wrap_plots(
+      plot_cell_label(results[[1]], reduc) +
+        ggplot2::ggtitle(names(results)[[1]]),
+      plot_cell_label(results[[2]], reduc) +
+        ggplot2::ggtitle(names(results)[[2]])
+    ))
+    cat("\n\n")
+    print(plot_da_overlap(results[[1]]) / plot_da_overlap(results[[2]]))
+    cat("\n\n")
+  }
+}
+
+generate_da_plots(results_1dpi)
+```
+
+### 2.4 2DPI 样本的分析 {.tabset}
+
+```{r 2dpi-sample-data, cache=TRUE, dependson=c("combine-steps", "read-seurat-obj"), warning=FALSE, message=FALSE, results="hide"}
+results_2dpi <- lapply(
+  list(
+    "PNR2 vs. MOCK - 2DPI" = c("2DPI-PNR2", "2DPI-MOCK"),
+    "TR4 vs. MOCK - 2DPI" = c("2DPI-TR4", "2DPI-MOCK")
+  ),
+  function(pair) {
+    find_diff_abundant_cells(
+      obj, stim = pair[1], ctrl = pair[2])
+  }
+)
+```
+
+```{r 2dpi-sample-plot, results="asis", fig.height=7, fig.width=15}
+generate_da_plots(results_2dpi)
+```
+
+### 2.5 3DPI 样本的分析 {.tabset}
+
+```{r 3dpi-sample-data, cache=TRUE, dependson=c("combine-steps", "read-seurat-obj"), warning=FALSE, message=FALSE, results="hide"}
+results_3dpi <- lapply(
+  list(
+    "PNR2 vs. MOCK - 3DPI" = c("3DPI-PNR2", "3DPI-MOCK"),
+    "TR4 vs. MOCK - 3DPI" = c("3DPI-TR4", "3DPI-MOCK")
+  ),
+  function(pair) {
+    find_diff_abundant_cells(
+      obj, stim = pair[1], ctrl = pair[2])
+  }
+)
+```
+
+```{r 3dpi-sample-plot, results="asis", fig.height=7, fig.width=15}
+generate_da_plots(results_3dpi)
+```
