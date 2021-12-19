@@ -11,6 +11,6 @@ editor_options:
 - [Integration](sample_integration.html)
 - [Annotation](cell_annotation.html)
 - Differential Abundance Analysis
-  - [Estimate Cell-Type Proportions Confidence Intervals](differential_abundance.html)
+  - [Estimate Cell-Type Proportions Confidence Intervals](compositional_analysis.html)
   - [Identify Differentially Abundant Subpopulation](differential_abundance_subpopulation.html)
 - [Differential State](differential_state_analysis.html)
