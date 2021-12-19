@@ -325,17 +325,31 @@ Seurat_markers <- DAseq::SeuratMarkerFinder(
 
 原文中使用的是整合后 Seurat 对象 “RNA” 分析中的 “data” 槽。另外我们可以参考 https://theislab.github.io/scanpy-in-R 设置 Python 运行环境。
 
-```{r stg-markers, cache=TRUE, eval=FALSE, results="hide"}
-STG_markers <- DAseq::STGmarkerFinder(
-  X = obj_sub@assays$RNA@data,
-  da.regions = da_regions, 
-  lambda = 1.5, n.runs = 5, return.model = T, 
-  GPU = 1, python.use = Sys.which("python")
+```{r stg-markers, results="hide"}
+STG_markers <- xfun::cache_rds(
+  file = "PNR2_2dpi_da_markers.rds",
+  dir = "../output/",
+  expr = DAseq::STGmarkerFinder(
+    X = obj_sub@assays$RNA@data,
+    da.regions = da_regions, 
+    lambda = 1.5, n.runs = 5, return.model = T, 
+    GPU = 0, python.use = Sys.which("python")
+  )
 )
 ```
 
 `obj_sub@assays$RNA@data` 这个系数矩阵太大了，无法转换成普通的 matrix 。参考 [Sparse Matrices](https://rstudio.github.io/reticulate/articles/calling_python.html#sparse-matrices-1) 来修改 {DAseq} 相关代码。
 
+还有一个问题是 tensorflow 似乎无法检测到 CUDA，想办法解决这个问题。问题出在 [TensorFlow : failed call to cuInit: CUDA_ERROR_NO_DEVICE](https://stackoverflow.com/questions/48658204/tensorflow-failed-call-to-cuinit-cuda-error-no-device) 这里，我们错误的设置了 `GPU = 1` 这个值，应该设置成 `GPU = 0`
+
+```{r}
+str(STG_markers, max.level = 2)
+```
+
+```{r fig.height=3, fig.width=6}
+Seurat::DefaultAssay(obj_sub) <- "RNA"
+Seurat::FeaturePlot(obj_sub, c("TraesCS5A02G017900", "TraesCS4A02G498000"), reduction = "tsne")
+```
 
 
 ## 2 算法整合后的分析
@@ -393,10 +407,25 @@ find_diff_abundant_cells <- function(
     args = list(
       cell.labels = cell_labels,
       labels.1 = sample_ctrl,
-      labels.2 = sample_stim
+      condition.1 = ctrl,
+      labels.2 = sample_stim,
+      condition.2 = stim
     )
   )
 
+}
+```
+
+```{r fun-stg-markers}
+find_da_markers <- function(result, srt) {
+  sub <- subset(srt, subset = group %in% c(
+    result$args$condition.1, result$args$condition.2))
+  DAseq::STGmarkerFinder(
+    X = sub@assays$RNA@data,
+    da.regions = result$regions,
+    lambda = 1.5, n.runs = 5, return.model = T, 
+    GPU = 0, python.use = Sys.which("python")
+  )
 }
 ```
 
@@ -560,6 +589,34 @@ patchwork::wrap_plots(
 ```{r fig.height=8, fig.width=8}
 (plot_da_overlap(PNR2_da) + ggplot2::ggtitle("PNR2 vs. MOCK")) /
 (plot_da_overlap(TR4_da) + ggplot2::ggtitle("TR4 vs. MOCK"))
+```
+
+#### 鉴定 Marker 基因
+
+```{r PNR2_da_markers, results="hide"}
+PNR2_all_da_markers <- xfun::cache_rds(
+  file = "PNR2_all_da_markers.rds",
+  dir = "../output/",
+  expr = {
+    sub <- subset(obj, subset = group %in% c(
+      paste(1:3, "DPI-PNR2", sep = ""),
+      paste(0:3, "DPI-MOCK", sep = "")))
+    DAseq::STGmarkerFinder(
+      X = sub@assays$RNA@data,
+      da.regions = PNR2_da$regions,
+      lambda = 1.5, n.runs = 5, return.model = T, 
+      GPU = 0, python.use = Sys.which("python")
+    )
+  }
+)
+```
+
+```{r TR4_da_markers, results="hide"}
+TR4_all_da_markers <- xfun::cache_rds(
+  file = "TR4_all_da_markers.rds",
+  dir = "../output/",
+  expr = find_da_markers(TR4_da, obj)
+)
 ```
 
 ### 2.2 All-PNR2 与 All-TR4 比较
