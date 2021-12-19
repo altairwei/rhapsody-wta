@@ -1,11 +1,11 @@
 ---
-title: "Differential Abundance"
+title: "Compositional Analysis"
 author: "Altair Wei"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 library(magrittr)
 ```
 
@@ -14,6 +14,12 @@ library(magrittr)
 使用 [scDC](https://github.com/SydneyBioX/scDC) 来做单细胞差异成分分析。
 
 ### 1.1 数据准备
+
+首先加载 Seurat 对象：
+
+```{r}
+obj <- readRDS("../output/obj_annotated.rds")
+```
 
 #### 1.1.1 数据类型
 
@@ -33,8 +39,7 @@ str(scDC::sim)
 
 那么我们可以这样准备这些数据：
 
-```{r}
-obj <- readRDS("../output/obj_annotated.rds")
+```{r data-inputs}
 exprsMat <- Seurat::GetAssayData(obj, "data")
 subject <- obj$sample
 cellTypes <- Seurat::Idents(obj)
@@ -59,13 +64,13 @@ dim(exprsMat)
 
 检查样本的细胞类型数量：
 
-```{r}
+```{r eval=FALSE}
 table(subject, cellTypes)
 ```
 
 检查分组的细胞类型数量：
 
-```{r}
+```{r eval=FALSE}
 table(cond, cellTypes)
 ```
 
@@ -83,23 +88,34 @@ table(cond, cellTypes)
 
 也就是说非聚类的 bootstrap 方法提供的是一个修正了偏差的置信区间，而聚类的 bootstrap 方法提供了细胞类型鉴定的不确定性度量。但是每个 bootstrap 使用的聚类方法是 k-means 聚类，这种聚类方法不适合单细胞数据，而且该实现方法在大数据集上的运行速度也奇慢无比。所以我们这里的目的主要是获取细胞类型比例的置信区间，就不使用聚类了。
 
-```{r}
-res_scDC_noClust <- scDC::scDC_noClustering(
-  cellTypes, subject,
-  nboot = 500,
-  calCI = TRUE,
-  calCI_method = c("percentile", "BCa", "multinom"),
-  ncores = 6
+```{r run-bootstrap}
+ca_res_nonclust <- xfun::cache_rds(
+  file = "ca_res_nonclust.rds",
+  dir = "../output/",
+  expr = local({
+    res <- scDC::scDC_noClustering(
+      cellTypes, subject,
+      nboot = 500,
+      calCI = TRUE,
+      calCI_method = c("percentile", "BCa", "multinom"),
+      ncores = 6
+    )
+
+    res$results$cond <- cond[match(res$results$subject, subject)]
+    res$info$cond <- cond[match(res$info$subject, subject)]
+
+    res
+  })
 )
 
-res_scDC_noClust$results$cond <- cond[match(res_scDC_noClust$results$subject, subject)]
-res_scDC_noClust$info$cond <- cond[match(res_scDC_noClust$info$subject, subject)]
 ```
+
+上面这一步似乎特别消耗内存，有空优化一下。
 
 #### 1.2.2 查看运行结果的结构
 
 ```{r}
-str(res_scDC_noClust)
+str(ca_res_nonclust)
 ```
 
 输出结果中 `results` 是一个数据框，它的行数为 `525*3=1575`，其中 3 代表着 `c("percentile", "BCa", "multinom")` 等三种计算 CI 的方法；而 525 代表着我们一共有 21 个样本和 25 个细胞类型，两者相乘就等于 525 ，这里的含义就是 525 个细胞群。
@@ -113,7 +129,7 @@ str(res_scDC_noClust)
 以 0DPI~3DPI 为横坐标，以 subject 的 median 为个体，以 cellTypes 为分面，以 MOCK/PNR2/TR4 为分组，绘制折线图。
 
 ```{r fig.height=10, fig.width=10}
-plot_cell_population_by_time <- function(res) {
+plot_cell_population_by_time <- function(res, clusters = NULL, ncol = 3) {
   # Use BCa as CI
   df_to_plot <- res$results %>%
     tibble::as_tibble() %>%
@@ -127,7 +143,11 @@ plot_cell_population_by_time <- function(res) {
 
   # `thetastar` stands for cell proportion of bootstrap
   df_to_plot$median <- apply(res$thetastar, 1, median)
-  
+
+  if (!is.null(clusters))
+    df_to_plot <- dplyr::filter(
+      df_to_plot, cellTypes %in% clusters)
+
   ggplot2::ggplot(df_to_plot,
       ggplot2::aes(x = time, y = median, fill = treatment, group = subject)) +
     ggplot2::geom_bar(
@@ -137,20 +157,20 @@ plot_cell_population_by_time <- function(res) {
     ggplot2::geom_linerange(
       ggplot2::aes(ymin = conf_low, ymax = conf_high),
       position = ggplot2::position_dodge2(width = 0.9, preserve = "single")) +
-    ggplot2::facet_wrap(~cellTypes, scales = "free_y", ncol = 3) +
+    ggplot2::facet_wrap(~cellTypes, scales = "free_y", ncol = ncol) +
     ggplot2::theme_bw() +
     NULL
 }
 
-plot_cell_population_by_time(res_scDC_noClust)
+plot_cell_population_by_time(ca_res_nonclust)
 ```
 
 参考 (Cao, Y. et al., BMC Bioinformatics, 2019) 文章中的 Fig. 5 ，绘制 Cell Proportion Bootstrap Distribution 以及 Average Cell Proportion Across Subjects 。尤其是后者，它让我们可以用折线图来表示 Treatment 模式的变化。
 
 Cell Proportion Bootstrap Distribution
 
-```{r fig.height=10, fig.width=10}
-plot_bootstrap_distribution <- function(res) {
+```{r fig.height=10, fig.width=12}
+plot_bootstrap_distribution <- function(res, clusters = NULL, ncol = NULL, nrow = NULL) {
   # Use BCa as CI
   df_to_plot <- res$results %>%
     tibble::as_tibble() %>%
@@ -183,7 +203,12 @@ plot_bootstrap_distribution <- function(res) {
       dplyr::filter(time == "0DPI") %>%
       dplyr::mutate(treatment = "TR4")
   )
-  
+
+  if (!is.null(clusters)) {
+    df_to_plot <- dplyr::filter(df_to_plot, cellTypes %in% clusters)
+    df_to_plot$cellTypes <- factor(df_to_plot$cellTypes, levels = clusters)
+  }
+
   ggplot2::ggplot(df_to_plot,
       ggplot2::aes(x = time, y = prop, color = treatment)) +
     ggplot2::geom_boxplot(
@@ -194,12 +219,12 @@ plot_bootstrap_distribution <- function(res) {
       stat = "summary", fun = median,
       position = ggplot2::position_dodge(width = 0.4)) +
     ggplot2::scale_y_continuous(labels = scales::percent) +
-    ggplot2::facet_wrap(~cellTypes, scales = "free_y") +
+    ggplot2::facet_wrap(~cellTypes, scales = "free_y", ncol = ncol, nrow = nrow) +
     ggplot2::theme_bw() +
     NULL
 }
 
-plot_bootstrap_distribution(res_scDC_noClust)
+plot_bootstrap_distribution(ca_res_nonclust)
 ```
 
 
@@ -207,19 +232,23 @@ plot_bootstrap_distribution(res_scDC_noClust)
 
 只拟合固定效应的 GLM 模型，主要是 `lme4::glmer` 太耗时了。
 
-```{r message=FALSE, warning=FALSE}
-res_GLM <- scDC::fitGLM(
-  res_scDC_noClust,
-  res_scDC_noClust$info$cond,
-  pairwise = FALSE,
-  fixed_only = TRUE
+```{r run-glm, results="hide"}
+ca_res_nonclust_glm <- xfun::cache_rds(
+  file = "ca_res_nonclust_glm.rds",
+  dir = "../output/",
+  expr = scDC::fitGLM(
+    ca_res_nonclust,
+    ca_res_nonclust$info$cond,
+    pairwise = FALSE,
+    fixed_only = TRUE
+  )
 )
 ```
 
 查看固定效应的结果：
 
 ```{r paged.print=TRUE}
-summary(res_GLM$pool_res_fixed)
+summary(ca_res_nonclust_glm$pool_res_fixed) %>% knitr::kable()
 ```
 
 #### 1.2.5 可视化结果
@@ -261,9 +290,8 @@ barplotCI <- function(res, clusters = NULL, samples = NULL){
   g_bar
 }
 
-
 barplotCI(
-  res_scDC_noClust,
+  ca_res_nonclust,
   clusters = c("CCs_4", "CCs_5", "MCs_4", "VCs_1", "VCs_2", "VCs_3"),
 )
 ```
@@ -273,3 +301,131 @@ barplotCI(
 TODO: 参考 [Heatmap of mean marker-exprs. by cluster](https://htmlpreview.github.io/?https://raw.githubusercontent.com/HelenaLC/muscat-comparison/master/LPS/docs/2-annotation.html) 绘制矩阵。
 
 如果将细胞种群变化模式做成热图，然后对该热图聚类，这是否能将相似模式的细胞类型聚在一起？
+
+```{r}
+plot_mds_by_cluster <- function(df, clusters = NULL, nrow = NULL) {
+  if (!is.null(clusters)) {
+    df <- dplyr::filter(df, cluster_id %in% clusters)
+    df$cluster_id <- factor(df$cluster_id, levels = clusters)
+  }
+
+  df %>%
+    ggplot2::ggplot(ggplot2::aes_string(
+      x = "MDS1", y = "MDS2",
+      color = "treatment", size = "time", alpha = "time")) +
+    ggplot2::geom_point() +
+    ggplot2::facet_wrap(~cluster_id, nrow = nrow) +
+    ggplot2::scale_alpha_manual(values = c(
+      "0DPI" = 1, "1DPI" = .8, "2DPI" = .6, "3DPI" = .4)) +
+    ggplot2::scale_size_manual(values = c(
+      "0DPI" = 0.5, "1DPI" = 1.5, "2DPI" = 2.5, "3DPI" = 3.5)) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      axis.text = ggplot2::element_text(color = "black"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(
+        size = 0.2, color = "lightgrey"),
+      legend.position = "right"
+    )
+}
+
+pb_mds_df <- readRDS(Sys.glob("../output/pb_mds_df_*.rds"))
+pb_mds_df$time <- dplyr::recode(pb_mds_df$group_id,
+  "X0DPI.MOCK" = "0DPI",
+  "X1DPI.MOCK" = "1DPI",
+  "X1DPI.PNR2" = "1DPI",
+  "X1DPI.TR4"  = "1DPI",
+  "X2DPI.MOCK" = "2DPI",
+  "X2DPI.PNR2" = "2DPI",
+  "X2DPI.TR4"  = "2DPI",
+  "X3DPI.MOCK" = "3DPI",
+  "X3DPI.PNR2" = "3DPI",
+  "X3DPI.TR4"  = "3DPI"
+)
+
+pb_mds_df$treatment <- dplyr::recode(pb_mds_df$group_id,
+  "X0DPI.MOCK" = "MOCK",
+  "X1DPI.MOCK" = "MOCK",
+  "X1DPI.PNR2" = "PNR2",
+  "X1DPI.TR4"  = "TR4",
+  "X2DPI.MOCK" = "MOCK",
+  "X2DPI.PNR2" = "PNR2",
+  "X2DPI.TR4"  = "TR4",
+  "X3DPI.MOCK" = "MOCK",
+  "X3DPI.PNR2" = "PNR2",
+  "X3DPI.TR4"  = "TR4"
+)
+```
+
+
+#### Fungi-induced depletion
+
+```{r fig.height=6, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("MCs_1", "ECs_3", "MCs_2", "VCs_1"), nrow = 4) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("MCs_1", "ECs_3", "MCs_2", "VCs_1"), nrow = 4)
+```
+
+#### Fungi-induced expansion
+
+```{r fig.height=4.5, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("MCs_4", "CCs_6", "VCs_5"), nrow = 3) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("MCs_4", "CCs_6", "VCs_5"), nrow = 3)
+```
+
+#### Fungi-induced transient depletion
+
+```{r fig.height=3.5, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("CCs_7", "ECs_1"), nrow = 2) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("CCs_7", "ECs_1"), nrow = 2)
+```
+
+#### PH-1 induced expansion
+
+```{r fig.height=4.5, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("VCs_2", "VCs_3", "VCs_5"), nrow = 3) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("VCs_2", "VCs_3", "VCs_5"), nrow = 3)
+```
+
+#### PH-1 induced depletion
+
+```{r fig.height=4.5, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("CCs_2", "CCs_5", "VCs_6"), nrow = 3) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("CCs_2", "CCs_5", "VCs_6"), nrow = 3)
+```
+
+#### TR4 induced expansion
+
+```{r fig.height=8, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("ECs_2", "CCs_5", "VCs_2", "VCs_3", "VCs_5"), nrow = 5) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("ECs_2", "CCs_5", "VCs_2", "VCs_3", "VCs_5"), nrow = 5)
+```
+
+#### TR4 induced depletion
+
+```{r fig.height=4.5, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("MCs_2", "Un_1", "VCs_6"), nrow = 3) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("MCs_2", "Un_1", "VCs_6"), nrow = 3)
+```
+
+#### Unified changed
+
+```{r fig.height=10, fig.width=6}
+plot_bootstrap_distribution(ca_res_nonclust,
+  clusters = c("CCs_1", "CCs_4", "MCs_3", "Un_2", "MCs_5", "VCs_4"), nrow = 6) +
+plot_mds_by_cluster(pb_mds_df,
+  clusters = c("CCs_1", "CCs_4", "MCs_3", "Un_2", "MCs_5", "VCs_4"), nrow = 6)
+```
