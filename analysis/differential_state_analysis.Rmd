@@ -48,7 +48,7 @@ cat("\n\n")
 
 #### 按处理拆分降维图
 
-将所有样本降维图拆解成 “MOCK-AllSample”、“PNR2-AllSample”以及 “TR4-AllSample”：
+将所有样本降维图拆解成 "MOCK-AllSample"、"PNR2-AllSample"以及 "TR4-AllSample"：
 
 ```{r dim-plot-by-treatment, fig.height=5, fig.width=14}
 obj$treatment_type <- rhapsodykit::key_mapping(obj$group, c(
@@ -145,18 +145,18 @@ p_sample_cells
 所以我们首先将单细胞数据聚合成 pseudo-bulk 数据：
 
 ```{r calc-pseudo-bulk, warning=FALSE}
-pb_list_cache <- "../output/pb_list.rds"
-if (file.exists(pb_list_cache)) {
-  pb_list <- readRDS(pb_list_cache)
-} else {
-  pb_list <- list(
-    "counts" = rhapsodykit::calculate_pseudo_bulk(sce, "counts", BPPARAM = BPPARAM),
-    "logcounts" = rhapsodykit::calculate_pseudo_bulk(sce, "logcounts", BPPARAM = BPPARAM)
-    #"cpm" = rhapsodykit::calculate_pseudo_bulk(sce, "cpm")
-    #"vstresiduals" = rhapsodykit::calculate_pseudo_bulk(sce, "vstresiduals")
-  )
-  saveRDS(pb_list, pb_list_cache)
-}
+pb_list <- xfun::cache_rds(
+  file = "pb_list.rds",
+  dir = "../output/",
+  expr = {
+    list(
+      "counts" = rhapsodykit::calculate_pseudo_bulk(sce, "counts", BPPARAM = BPPARAM),
+      "logcounts" = rhapsodykit::calculate_pseudo_bulk(sce, "logcounts", BPPARAM = BPPARAM)
+      #"cpm" = rhapsodykit::calculate_pseudo_bulk(sce, "cpm")
+      #"vstresiduals" = rhapsodykit::calculate_pseudo_bulk(sce, "vstresiduals")
+    )
+  }
+)
 ```
 
 变量 `pb` 实际上也是一个 `SingleCellExperiment` 对象，每一个 assay 都是一个 cluster 的 pseudo-bulk 数据。
@@ -164,39 +164,38 @@ if (file.exists(pb_list_cache)) {
 我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性：
 
 ```{r pb-mds-plot}
-pb_mds_df_cache <- "../output/pb_mds_df.rds"
-if (file.exists(pb_mds_df_cache)) {
-  pb_mds_df <- readRDS("../output/pb_mds_df.rds")
-} else {
-  pb_mds_df <- muscat::pbMDS(pb_list$logcounts)$data
-  saveRDS(pb_mds_df, pb_mds_df_cache)
-}
-
-pb_mds_df$time <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
-  "X0DPI.MOCK" = "0DPI,1DPI",
-  "X1DPI.MOCK" = "0DPI,1DPI",
-  "X1DPI.PNR2" = "0DPI,1DPI",
-  "X1DPI.TR4"  = "0DPI,1DPI",
-  "X2DPI.MOCK" = "2DPI",
-  "X2DPI.PNR2" = "2DPI",
-  "X2DPI.TR4"  = "2DPI",
-  "X3DPI.MOCK" = "3DPI",
-  "X3DPI.PNR2" = "3DPI",
-  "X3DPI.TR4"  = "3DPI"
-))
-
-pb_mds_df$treatment <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
-  "X0DPI.MOCK" = "MOCK",
-  "X1DPI.MOCK" = "MOCK",
-  "X1DPI.PNR2" = "PNR2",
-  "X1DPI.TR4"  = "TR4",
-  "X2DPI.MOCK" = "MOCK",
-  "X2DPI.PNR2" = "PNR2",
-  "X2DPI.TR4"  = "TR4",
-  "X3DPI.MOCK" = "MOCK",
-  "X3DPI.PNR2" = "PNR2",
-  "X3DPI.TR4"  = "TR4"
-))
+pb_mds_df <- xfun::cache_rds(
+  file = "pb_mds_df.rds",
+  dir = "../output/",
+  expr = local({
+    data <- muscat::pbMDS(pb_list$logcounts)$data
+    data$time <- rhapsodykit::key_mapping(data$group_id, c(
+      "X0DPI.MOCK" = "0DPI,1DPI",
+      "X1DPI.MOCK" = "0DPI,1DPI",
+      "X1DPI.PNR2" = "0DPI,1DPI",
+      "X1DPI.TR4"  = "0DPI,1DPI",
+      "X2DPI.MOCK" = "2DPI",
+      "X2DPI.PNR2" = "2DPI",
+      "X2DPI.TR4"  = "2DPI",
+      "X3DPI.MOCK" = "3DPI",
+      "X3DPI.PNR2" = "3DPI",
+      "X3DPI.TR4"  = "3DPI"
+    ))
+    data$treatment <- rhapsodykit::key_mapping(data$group_id, c(
+      "X0DPI.MOCK" = "MOCK",
+      "X1DPI.MOCK" = "MOCK",
+      "X1DPI.PNR2" = "PNR2",
+      "X1DPI.TR4"  = "TR4",
+      "X2DPI.MOCK" = "MOCK",
+      "X2DPI.PNR2" = "PNR2",
+      "X2DPI.TR4"  = "TR4",
+      "X3DPI.MOCK" = "MOCK",
+      "X3DPI.PNR2" = "PNR2",
+      "X3DPI.TR4"  = "TR4"
+    ))
+    data
+  })
+)
 ```
 
 然后我们展示该分布：
@@ -240,24 +239,61 @@ pb_mds_df %>%
 我们以细胞群集为分面来看看：
 
 ```{r mds-plot-by-cluster, fig.height=10, fig.width=10}
-pb_mds_df %>%
-  ggplot2::ggplot(ggplot2::aes_string(x = "MDS1", y = "MDS2", color = "time", shape = "treatment")) +
-  ggplot2::geom_point(size = 2, alpha = 1) +
-  ggplot2::facet_wrap(~cluster_id) +
-  ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
-  ggplot2::guides(
-    color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +
-  ggplot2::theme_bw() +
-  ggplot2::theme(
-    #aspect.ratio = 1,
-    axis.text = ggplot2::element_text(color = "black"),
-    panel.grid.minor = ggplot2::element_blank(),
-    panel.grid.major = ggplot2::element_line(size = 0.2, color = "lightgrey"),
-    legend.position = "bottom",
-    legend.direction = "horizontal"
-  )
-```
+pb_mds_df$time <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
+  "X0DPI.MOCK" = "0DPI",
+  "X1DPI.MOCK" = "1DPI",
+  "X1DPI.PNR2" = "1DPI",
+  "X1DPI.TR4"  = "1DPI",
+  "X2DPI.MOCK" = "2DPI",
+  "X2DPI.PNR2" = "2DPI",
+  "X2DPI.TR4"  = "2DPI",
+  "X3DPI.MOCK" = "3DPI",
+  "X3DPI.PNR2" = "3DPI",
+  "X3DPI.TR4"  = "3DPI"
+))
 
+pb_mds_df$treatment <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
+  "X0DPI.MOCK" = "MOCK",
+  "X1DPI.MOCK" = "MOCK",
+  "X1DPI.PNR2" = "PNR2",
+  "X1DPI.TR4"  = "TR4",
+  "X2DPI.MOCK" = "MOCK",
+  "X2DPI.PNR2" = "PNR2",
+  "X2DPI.TR4"  = "TR4",
+  "X3DPI.MOCK" = "MOCK",
+  "X3DPI.PNR2" = "PNR2",
+  "X3DPI.TR4"  = "TR4"
+))
+
+plot_mds_by_cluster <- function(df, clusters = NULL) {
+  if (!is.null(clusters))
+    df <- dplyr::filter(df, cluster_id %in% clusters)
+  
+  df %>%
+    ggplot2::ggplot(ggplot2::aes_string(
+      x = "MDS1", y = "MDS2",
+      color = "treatment", size = "time", alpha = "time")) +
+    ggplot2::geom_point() +
+    ggplot2::facet_wrap(~cluster_id) +
+    ggplot2::scale_alpha_manual(values = c(
+      "0DPI" = 1, "1DPI" = .8, "2DPI" = .6, "3DPI" = .4)) +
+    ggplot2::scale_size_manual(values = c(
+      "0DPI" = 1, "1DPI" = 2, "2DPI" = 3, "3DPI" = 4)) +
+    ggplot2::guides(
+      color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      axis.text = ggplot2::element_text(color = "black"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(
+        size = 0.2, color = "lightgrey"),
+      legend.position = "bottom",
+      legend.direction = "horizontal"
+    )
+}
+
+plot_mds_by_cluster(pb_mds_df)
+```
 
 #### 3.1.2 样品水平的分析: 基于聚合的方法
 
@@ -299,7 +335,7 @@ S4Vectors::metadata(sce)$experiment_info
 
 在需要提供的数据中，design 矩阵起着指示器的作用，它用于表明样本属于哪个组。而 `model.matrix` 的统计学含义以及用法可以参考 [Expressing design formula in R](https://genomicsclass.github.io/book/pages/expressing_design_formula.html) 。contrast 矩阵用于表明我们想要比较哪两个组，以 `stim-ctrl` 字符串的形式指定，实验组在 `-` 前，对照组在后。我在 `rhapsodykit` 中提供了一个方便的帮助函数，自动构建 design 和 contrast 矩阵。
 
-**由于 PNR2 vs TR4 在 1DPI ~ 3DPI 的比较中都没有看出太大的价值，所以把它移除掉。**
+**由于 PNR2 vs TR4 在 1DPI \~ 3DPI 的比较中都没有看出太大的价值，所以把它移除掉。**
 
 ```{r run-ds-analysis}
 # run DS analysis
@@ -314,26 +350,26 @@ contrast_names <- c(
   "X3DPI.TR4-X3DPI.MOCK"
 )
 
-ds_res_cache <- "../output/ds_res.rds"
-if (file.exists(ds_res_cache)) {
-  ds_res <- readRDS(ds_res_cache)
-} else {
-  ds_res <- list(
-    edgeR = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "edgeR",
-      contrasts = contrast_names,
-      BPPARAM = BPPARAM
-    ),
-    DESeq2 = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "DESeq2",
-      contrasts = contrast_names,
-      BPPARAM = BPPARAM
+ds_res <- xfun::cache_rds(
+  file = "ds_res.rds",
+  dir = "../output/",
+  expr = {
+    list(
+      edgeR = rhapsodykit::pseudobulk_diff_state(
+        sce, pb_list$counts,
+        method = "edgeR",
+        contrasts = contrast_names,
+        BPPARAM = BPPARAM
+      ),
+      DESeq2 = rhapsodykit::pseudobulk_diff_state(
+        sce, pb_list$counts,
+        method = "DESeq2",
+        contrasts = contrast_names,
+        BPPARAM = BPPARAM
+      )
     )
-  )
-  saveRDS(ds_res, ds_res_cache)
-}
+  }
+)
 
 str(ds_res$edgeR$table, max.level = 1)
 ```
@@ -633,7 +669,6 @@ ds_res$DESeq2 %>%
   upset_contrasts()
 ```
 
-
 #### 3.3.4 表达量在降维图上的投影
 
 既然知道了差异基因，那么我们可以尝试将表达量投影到降维散点图中。
@@ -823,26 +858,26 @@ contrast_names <- c(
   "X3DPI.TR4-X0DPI.MOCK"
 )
 
-ds_res_timeline_cache <- "../output/ds_res_timeline.rds"
-if (file.exists(ds_res_timeline_cache)) {
-  ds_res_time <- readRDS(ds_res_timeline_cache)
-} else {
-  ds_res_time <- list(
-    edgeR = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "edgeR",
-      contrasts = contrast_names,
-      BPPARAM = BPPARAM
-    ),
-    DESeq2 = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "DESeq2",
-      contrasts = contrast_names,
-      BPPARAM = BPPARAM
+ds_res_time <- xfun::cache_rds(
+  file = "ds_res_timeline.rds",
+  dir = "../output/",
+  expr = {
+    list(
+      edgeR = rhapsodykit::pseudobulk_diff_state(
+        sce, pb_list$counts,
+        method = "edgeR",
+        contrasts = contrast_names,
+        BPPARAM = BPPARAM
+      ),
+      DESeq2 = rhapsodykit::pseudobulk_diff_state(
+        sce, pb_list$counts,
+        method = "DESeq2",
+        contrasts = contrast_names,
+        BPPARAM = BPPARAM
+      )
     )
-  )
-  saveRDS(ds_res_time, ds_res_timeline_cache)
-}
+  }
+)
 
 str(ds_res_time$edgeR$table, max.level = 1)
 ```
@@ -999,4 +1034,3 @@ ds_res_time$DESeq2 %>%
     "X3DPI.TR4-X0DPI.MOCK")) %>%
   upset_contrasts()
 ```
-
