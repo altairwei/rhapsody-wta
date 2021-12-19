@@ -1,0 +1,433 @@
+---
+title: "Trajectory Inference"
+author: "Altair Wei"
+date: "2021/12/7"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+```
+
+## 1 选择轨迹推断方法
+
+### 1 数据准备
+
+> As input, dynwrap requires **raw counts** and **normalised (log2) expression data**. Cells with low expression, doublets and other “bad” cells should already be filtered from this matrix. Features (i.e. genes) may already be filtered, but this is not required. Some methods internally include a feature filtering step, while others can handle a lot of features just fine. 
+>
+> Internally, dynwrap works with a sparse matrix (dgCMatrix) which reduces the memory footprint.
+
+加载 Suerat 对象：
+
+```{r}
+obj <- readRDS("../output/obj_annotated.rds")
+```
+
+准备 dyno 需要的数据。但 {dynverse} 没有考虑到多样本批次效应修正的问题。 
+
+> We previously demonstrated the application of clustering methods to the batch-corrected data, but the same principles apply for other analyses like trajectory reconstruction. In general, cell-based analyses are safe to apply on corrected data; indeed, the whole purpose of the correction is to place all cells in the same coordinate space. However, the same cannot be easily said for gene-based procedures like DE analyses or marker gene detection. An arbitrary correction algorithm is not obliged to preserve relative differences in per-gene expression when attempting to align multiple batches. For example, cosine normalization in fastMNN() shrinks the magnitude of the expression values so that the computed log-fold changes have no obvious interpretation.
+> —— http://bioconductor.org/books/3.14/OSCA.multisample/using-corrected-values.html
+
+```{r eval=FALSE}
+library(Matrix)
+dataset <- dynwrap::wrap_expression(
+  expression = t(obj[["RNA"]]@data),
+  counts = t(obj[["RNA"]]@counts)
+)
+```
+
+添加额外信息：
+
+```{r eval=FALSE}
+dataset <- dynwrap::add_grouping(
+  dataset,
+  Seurat::Idents(obj)
+)
+```
+
+添加降维信息：
+
+```{r eval=FALSE}
+dataset <- dynwrap::add_dimred(
+  dataset,
+  Seurat::Embeddings(obj[["umap"]])
+)
+```
+
+### 2 使用 dynguidelines
+
+```{r eval=FALSE}
+dynguidelines::guidelines_shiny(dataset = dataset)
+```
+
+```{r}
+guidelines <- dynguidelines::guidelines(dataset,
+  answers = dynguidelines::answer_questions(
+    multiple_disconnected = FALSE,
+    expect_topology = TRUE,
+    expected_topology = "multifurcation",
+    n_cells = 94564,
+    n_features = 112509,
+    memory = "60GB", 
+    prior_information = c(
+      "start_id", "end_id", "end_n", "start_n", "leaves_n",
+      "groups_id", "groups_n", "timecourse_discrete",
+      "features_id", "dimred"
+    ),
+    docker = FALSE
+  )
+)
+```
+
+我们这里不使用 {dyno} 来运行轨迹推断的原因主要是它没有考虑到批次效应修正的情况。因此我们使用 {dynguidelines} 判断适合的方法后，自己从头运行这些方法。
+
+我们将使用 Slingshot、PAGA tree、PAGA 以及 Monocle 3
+
+## 2 使用 {TSCAN} 推断轨迹
+
+首先参考 
+
+* http://bioconductor.org/books/3.14/OSCA.advanced/trajectory-analysis.html
+* http://bioconductor.org/books/3.14/OSCA.multisample/merged-hsc.html
+* https://bioconductor.github.io/BiocWorkshops/analysis-of-single-cell-rna-seq-data-dimensionality-reduction-clustering-and-lineage-inference.html
+
+> It is worth noting that “pseudotime” is a rather unfortunate term as it may not have much to do with real-life time. For example, one can imagine a continuum of stress states where cells move in either direction (or not) over time but the pseudotime simply describes the transition from one end of the continuum to the other. In trajectories describing time-dependent processes like differentiation, a cell’s pseudotime value may be used as a proxy for its relative age, but only if directionality can be inferred. —— http://bioconductor.org/books/3.14/OSCA.advanced/trajectory-analysis.html
+
+{TSCAN} 的优缺点：
+
+> The TSCAN approach derives several advantages from **using clusters** to form the MST. The most obvious is that of computational speed as calculations are performed over clusters rather than cells. The relative coarseness of clusters protects against the per-cell noise that would otherwise reduce the stability of the MST. The interpretation of the MST is also straightforward as it uses the same clusters as the rest of the analysis, allowing us to recycle previous knowledge about the biological annotations assigned to each cluster.
+>
+> However, the reliance on clustering is a double-edged sword. If the clusters are not sufficiently granular, it is possible for TSCAN to overlook variation that occurs inside a single cluster. The MST is obliged to pass through each cluster exactly once, which can lead to excessively circuitous paths in overclustered datasets as well as the formation of irrelevant paths between distinct cell subpopulations if the outgroup threshold is too high. The MST also fails to handle more complex events such as “bubbles” (i.e., a bifurcation and then a merging) or cycles.
+
+### 1 数据准备
+
+首先我们需要将 Seurat 对象转换 SingleCellExperiment 对象：
+
+```{r}
+sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = FALSE)
+```
+
+不过这里的 logcounts 数据可能不是 integrated 后的。
+
+### 2 推断轨迹
+
+#### 2.1 计算 MST
+
+预先计算：
+
+```{r cache=TRUE}
+by.cluster <- scater::aggregateAcrossCells(sce, ids = sce$cluster_id)
+centroids <- SingleCellExperiment::reducedDim(by.cluster, "PCA")
+```
+
+获得 MST ：
+
+```{r}
+mst <- TSCAN::createClusterMST(centroids, clusters = NULL)
+```
+
+绘制：
+
+```{r}
+plot(mst)
+```
+
+
+#### 2.2 绘制轨迹 {.tabset}
+
+作为参考，我们可以在 t-SNE/UMAP 图中的 centroids 之间画出轨迹线条。这使我们能够识别有趣的集群，如分叉处或端点处的集群。值得注意的是，MST 是由 PC 空间中的距离产生的。
+
+```{r results="asis"}
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj))), palette = NULL)
+
+plot_trajectory_on_reduc <- function(
+  sce, line.data,
+  reduction = "TSNE",
+  color_by = "cluster_id",
+  cols = NULL
+) {
+  suppressMessages({
+    p <- scater::plotReducedDim(sce,
+        reduction, colour_by = color_by, point_size = 0.5) +
+      ggplot2::geom_line(
+        data = line.data,
+        mapping = ggplot2::aes_string(
+          x = ifelse(reduction == "TSNE", "tSNE_1", "UMAP_1"),
+          y = ifelse(reduction == "TSNE", "tSNE_2", "UMAP_2"),
+          group = "edge")
+      ) +
+      ggplot2::coord_fixed()
+
+    if (length(color_by) == 1 && color_by == "cluster_id") {
+      p <- p + ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2)))
+      if (!is.null(cols))
+        p <- p + ggplot2::scale_colour_manual(values = cols)
+    }
+
+    p
+  })
+}
+
+for (reduc in c("TSNE", "UMAP")) {
+  cat("##### ", reduc, "\n")
+
+  line.data <- TSCAN::reportEdges(by.cluster, mst = mst, clusters = NULL, use.dimred = reduc)
+
+  p <- plot_trajectory_on_reduc(sce, line.data, reduc, cols = ident_cols)
+
+  print(p)
+
+  cat("\n\n")
+}
+```
+
+
+#### 2.3 排列细胞
+
+将细胞投影到 MST 上以排列细胞，然后计算 pseudotime 值。
+
+```{r}
+map.tscan <- TSCAN::mapCellsToEdges(sce, mst = mst, use.dimred = "PCA", clusters = sce$cluster_id)
+```
+
+选择起始点。
+
+```{r}
+tscan.pseudo <- TSCAN::orderCells(map.tscan, mst, start = "CCs_7")
+head(tscan.pseudo)
+```
+
+计算 pseudotime
+
+```{r}
+common.pseudo <- TrajectoryUtils::averagePseudotime(tscan.pseudo) 
+```
+
+> Here, multiple sets of pseudotimes are reported for a branched trajectory. Each column contains one pseudotime ordering and corresponds to one path from the root node to one of the terminal nodes - the name of the terminal node that defines this path is recorded in the column names of `tscan.pseudo`.
+
+#### 2.4 绘制拟时序 {.tabset}
+
+```{r results="asis"}
+for (reduc in c("TSNE", "UMAP")) {
+  cat("##### ", reduc, "\n")
+
+  line.data <- TSCAN::reportEdges(by.cluster, mst = mst, clusters = NULL, use.dimred = reduc)
+
+  p <- plot_trajectory_on_reduc(sce, line.data, reduction = reduc, color_by = I(common.pseudo))
+
+  print(p)
+
+  cat("\n\n")
+}
+```
+
+### 3 调整优化轨迹
+
+#### 3.1 引入 outgroup
+
+##### 计算轨迹
+
+通过引入 “outgroup” 来调整轨迹：
+
+> The MST can be constructed with an “outgroup” to avoid connecting unrelated populations in the dataset.
+
+由于我们使用了 `outgroup` 所以无法设置 start 。
+
+```{r}
+pseudo.og <- TSCAN::quickPseudotime(sce,
+  clusters = sce$cluster_id, use.dimred = "PCA", outgroup=TRUE)
+set.seed(10101)
+plot(pseudo.og$mst)
+```
+
+##### 绘制拟时序 {.tabset}
+
+```{r}
+og.pseudo <- TrajectoryUtils::averagePseudotime(pseudo.og$ordering)
+```
+
+###### t-SNE
+
+```{r fig.height=6, fig.width=12}
+plot_trajectory_on_reduc(sce, pseudo.og$connected$TSNE, reduction = "TSNE", cols = ident_cols) +
+plot_trajectory_on_reduc(sce, pseudo.og$connected$TSNE, reduction = "TSNE", color_by = I(og.pseudo), cols = ident_cols)
+```
+
+###### UMAP
+
+```{r fig.height=6, fig.width=12}
+plot_trajectory_on_reduc(sce, pseudo.og$connected$UMAP, reduction = "UMAP", cols = ident_cols) +
+plot_trajectory_on_reduc(sce, pseudo.og$connected$UMAP, reduction = "UMAP", color_by = I(og.pseudo), cols = ident_cols)
+```
+
+#### 3.2 使用 MNN 距离
+
+> Another option is to construct the MST based on distances between mutual nearest neighbor (MNN) pairs between clusters. This exploits the fact that MNN pairs occur at the boundaries of two clusters, with short distances between paired cells meaning that the clusters are “touching”. In this mode, the MST focuses on the connectivity between clusters, which can be different from the shortest distance between centroids. Consider, for example, a pair of elongated clusters that are immediately adjacent to each other. A large distance between their centroids precludes the formation of the obvious edge with the default MST construction; in contrast, the MNN distance is very low and encourages the MST to create a connection between the two clusters.
+
+##### 计算轨迹 {.tabset}
+
+```{r cache=TRUE, results="hide"}
+pseudo.mnn <- TSCAN::quickPseudotime(sce,
+  clusters = sce$cluster_id,
+  use.dimred = "PCA",
+  dist.method = "mnn",
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
+pseudo.mnn.og <- TSCAN::quickPseudotime(sce,
+  clusters = sce$cluster_id,
+  use.dimred = "PCA",
+  dist.method = "mnn",
+  outgroup = TRUE,
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
+```
+
+###### outgroup=FALSE
+
+```{r}
+plot(pseudo.mnn$mst)
+```
+
+###### outgroup=TRUE
+
+```{r}
+plot(pseudo.mnn.og$mst)
+```
+
+##### 绘制拟时序 {.tabset}
+
+```{r}
+mnn.pseudo <- TrajectoryUtils::averagePseudotime(pseudo.mnn$ordering)
+```
+
+###### t-SNE
+
+```{r fig.height=6, fig.width=12}
+plot_trajectory_on_reduc(sce, pseudo.mnn$connected$TSNE, reduction = "TSNE", cols = ident_cols) +
+plot_trajectory_on_reduc(sce, pseudo.mnn$connected$TSNE, reduction = "TSNE", color_by = I(mnn.pseudo), cols = ident_cols)
+```
+
+###### UMAP
+
+```{r fig.height=6, fig.width=12}
+plot_trajectory_on_reduc(sce, pseudo.mnn$connected$UMAP, reduction = "UMAP", cols = ident_cols) +
+plot_trajectory_on_reduc(sce, pseudo.mnn$connected$UMAP, reduction = "UMAP", color_by = I(mnn.pseudo), cols = ident_cols)
+```
+
+##### 绘制 outgroup 拟时序 {.tabset}
+
+```{r}
+mnn.pseudo.og <- TrajectoryUtils::averagePseudotime(pseudo.mnn.og$ordering)
+```
+
+###### t-SNE
+
+```{r fig.height=6, fig.width=12}
+plot_trajectory_on_reduc(sce, pseudo.mnn.og$connected$TSNE, reduction = "TSNE", cols = ident_cols) +
+plot_trajectory_on_reduc(sce, pseudo.mnn.og$connected$TSNE, reduction = "TSNE", color_by = I(mnn.pseudo.og), cols = ident_cols)
+```
+
+###### UMAP
+
+```{r fig.height=6, fig.width=12}
+plot_trajectory_on_reduc(sce, pseudo.mnn.og$connected$UMAP, reduction = "UMAP", cols = ident_cols) +
+plot_trajectory_on_reduc(sce, pseudo.mnn.og$connected$UMAP, reduction = "UMAP", color_by = I(mnn.pseudo.og), cols = ident_cols)
+```
+
+## 3 使用 {slingshot} 推断轨迹
+
+### 3.1 计算轨迹
+
+如果不提供 cluster 参数的话 {slingshot} 假设所有细胞都属于同一条轨迹。为了发现更复杂的轨迹，我们可以提供细胞群集的标签：
+
+> To accommodate more complex events like bifurcations, we use our previously computed cluster assignments to build a rough sketch for the global structure in the form of a MST across the cluster centroids. Each path through the MST from a designated root node is treated as a lineage that contains cells from the associated clusters. Principal curves are then simultaneously fitted to all lineages with some averaging across curves to encourage consistency in shared clusters across lineages. This process yields a matrix of pseudotimes where each column corresponds to a lineage and contains the pseudotimes of all cells assigned to that lineage.
+
+我们可以通过 `approx_points` 减少运行时间：
+
+> For larger datasets, we can speed up the algorithm by approximating each principal curve with a fixed number of points. By default, slingshot() uses one point per cell to define the curve, which is unnecessarily precise when the number of cells is large. Applying an approximation with approx_points= reduces computational work without any major loss of precision in the pseudotime estimates.
+
+另外，{slingshot} 要求的最重要的两个输入数据是低维嵌入和细胞标签。低维嵌入是批次效应修正后才获得的，所以 {slingshot} 是不需要考虑数据整合的问题。
+
+```{r}
+sce.sling <- xfun::cache_rds(
+  file = "ti_slingshot.rds",
+  dir = "../output/",
+  clean = FALSE,
+  expr = local({
+    t_start = Sys.time()
+    sling <- slingshot::slingshot(sce,
+      clusterLabels = sce$cluster_id,
+      reducedDim = "PCA", omega = TRUE,
+      approx_points = 100)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    sling
+  })
+)
+```
+
+```{r}
+pseudo.paths <- slingshot::slingPseudotime(sce.sling)
+head(pseudo.paths)
+```
+
+另外，我们查阅 {slingshot} 的文档可以发现，`clusterLabels` 要求我们提供每个细胞的身份标识。
+
+> As noted above, if no clustering results are provided, it is assumed that all cells are part of the same cluster and a single curve will be constructed.
+
+这个函数 `slingshot::slingshot` 的返回值依然是一个 `SingleCellExperiment` 对象，只不过整合了轨迹推断的结果。
+
+> The output is a `SingleCellExperiment` object with slingshot results incorporated. All of the results are stored in a `PseudotimeOrdering` object, which is added to the colData of the original object and can be accessed via `colData(sce)$slingshot`.
+
+### 3.2 绘制轨迹
+
+```{r}
+plot_curve_on_reduc <- function(sce, curve_data, reduction = "", color_by) {
+  p <- scater::plotReducedDim(sce,
+    reduction, colour_by = color_by, point_size = 0.5) +
+    ggplot2::coord_fixed()
+  
+  if (is.data.frame(curve_data))
+    curve_list <- list(curve_data)
+  else if (is.list(curve_data) && all(sapply(curve_data, is.data.frame)))
+    curve_list <- curve_data
+  else
+    curve_list <- list()
+
+  for (curve in curve_list)
+    p <- p + ggplot2::geom_path(
+      data = curve,
+      ggplot2::aes_string(
+        x = ifelse(reduction == "TSNE", "tSNE_1", "UMAP_1"),
+        y = ifelse(reduction == "TSNE", "tSNE_2", "UMAP_2")
+      ),
+      size = 1.2)
+
+  p
+}
+
+# Taking the rowMeans just gives us a single pseudo-time for all cells. Cells
+# in segments that are shared across paths have similar pseudo-time values in 
+# all paths anyway, so taking the rowMeans is not particularly controversial.
+shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
+
+# Need to loop over the paths and add each one separately.
+embedded <- slingshot::embedCurves(sce.sling, "TSNE")
+embedded <- slingshot::slingCurves(embedded)
+embedded_list <- lapply(embedded, function(path) data.frame(path$s[path$ord,]))
+
+plot_curve_on_reduc(sce.sling, embedded_list, reduction = "TSNE", color_by = I(shared.pseudo))
+```
+
+### 3.3 筛选细胞世系
+
+```{r}
+curve.assignments <- slingshot::slingBranchID(sce.sling)
+table(curve.assignments) %>% sort(decreasing = TRUE)
+```
+
+```{r}
+scater::plotTSNE(sce.sling, colour_by = "slingPseudotime_3") +
+  ggplot2::coord_fixed()
+```
+
+
