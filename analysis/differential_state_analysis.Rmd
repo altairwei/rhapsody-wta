@@ -371,6 +371,81 @@ ds_res <- xfun::cache_rds(
   }
 )
 
+ds_1dpi <- xfun::cache_rds(
+  file = "ds_1dpi.rds",
+  dir = "../output/",
+  expr = list(
+    edgeR = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "edgeR",
+      contrasts = c(
+        "X1DPI.PNR2-X1DPI.MOCK",
+        "X1DPI.TR4-X1DPI.MOCK"
+      ),
+      BPPARAM = BPPARAM
+    ),
+    DESeq2 = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "DESeq2",
+      contrasts = c(
+        "X1DPI.PNR2-X1DPI.MOCK",
+        "X1DPI.TR4-X1DPI.MOCK"
+      ),
+      BPPARAM = BPPARAM
+    )
+  )
+)
+
+ds_2dpi <- xfun::cache_rds(
+  file = "ds_2dpi.rds",
+  dir = "../output/",
+  expr = list(
+    edgeR = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "edgeR",
+      contrasts = c(
+        "X2DPI.PNR2-X2DPI.MOCK",
+        "X2DPI.TR4-X2DPI.MOCK"
+      ),
+      BPPARAM = BPPARAM
+    ),
+    DESeq2 = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "DESeq2",
+      contrasts = c(
+        "X2DPI.PNR2-X2DPI.MOCK",
+        "X2DPI.TR4-X2DPI.MOCK"
+      ),
+      BPPARAM = BPPARAM
+    )
+  )
+)
+
+ds_3dpi <- xfun::cache_rds(
+  file = "ds_3dpi.rds",
+  dir = "../output/",
+  expr = list(
+    edgeR = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "edgeR",
+      contrasts = c(
+        "X3DPI.PNR2-X3DPI.MOCK",
+        "X3DPI.TR4-X3DPI.MOCK"
+      ),
+      BPPARAM = BPPARAM
+    ),
+    DESeq2 = rhapsodykit::pseudobulk_diff_state(
+      sce, pb_list$counts,
+      method = "DESeq2",
+      contrasts = c(
+        "X3DPI.PNR2-X3DPI.MOCK",
+        "X3DPI.TR4-X3DPI.MOCK"
+      ),
+      BPPARAM = BPPARAM
+    )
+  )
+)
+
 str(ds_res$edgeR$table, max.level = 1)
 ```
 
@@ -859,7 +934,7 @@ contrast_names <- c(
 )
 
 ds_res_time <- xfun::cache_rds(
-  file = "ds_res_timeline.rds",
+  file = "ds_timeline.rds",
   dir = "../output/",
   expr = {
     list(
