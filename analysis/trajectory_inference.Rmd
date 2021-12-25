@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+library(magrittr)
 knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 ```
 
@@ -426,7 +427,7 @@ table(curve.assignments) %>% sort(decreasing = TRUE)
 ```
 
 ```{r}
-scater::plotTSNE(sce.sling, colour_by = "slingPseudotime_3") +
+scater::plotTSNE(sce.sling, colour_by = "slingPseudotime_4") +
   ggplot2::coord_fixed()
 ```
 

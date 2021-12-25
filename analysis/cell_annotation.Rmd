@@ -310,13 +310,15 @@ Seurat::DimPlot(obj,
     reduction = "tsne",
     label = TRUE, repel = TRUE,
     cols = ident_cols) +
-  ggplot2::theme(legend.position = "right")
+  ggplot2::theme(legend.position = "right") +
+  ggplot2::coord_fixed()
 
 Seurat::DimPlot(obj,
     reduction = "umap",
     label = TRUE, repel = TRUE,
     cols = ident_cols) +
-  ggplot2::theme(legend.position = "right")
+  ggplot2::theme(legend.position = "right") +
+   ggplot2::coord_fixed()
 ```
 
 TODO: 参考 [DR colored by cluster ID](https://htmlpreview.github.io/?https://raw.githubusercontent.com/HelenaLC/muscat-comparison/master/LPS/docs/2-annotation.html) 绘制多个图片，方便后续查看。
