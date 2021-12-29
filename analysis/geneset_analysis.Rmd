@@ -15,14 +15,16 @@ knitr::opts_chunk$set(echo = TRUE)
 首先读取差异分析的结果：
 
 ```{r}
-ds_res <- readRDS("../output/ds_res.rds")
+ds_res <- readRDS(Sys.glob("../output/ds_res_*.rds"))
 ```
 
 ### 1.1 基于 GO 注释的功能分析
 
+#### 1.1.1 加载注释数据
+
 首先我们要拿到小麦 GO 注释数据：
 
-```{r read-go-data}
+```{r read-go-data, eval=FALSE}
 # Get GO Data
 # quote="" argument is neccessary for reading the complete table,
 # because it disables quoting.
@@ -39,134 +41,209 @@ go2name <- go_data %>%
   dplyr::select(GO_ID, GO_Name)
 ```
 
-#### 1.1.1 对差异状态基因做富集分析
+不过我们现在已经构建出了[小麦的 OrgDb](https://github.com/altairwei/org.Taestivum.iwgsc.db) ，试用一下：
 
-##### PNR2 和 TR4 在 1DPI 诱导基因集的功能分析
+```{r results="hide"}
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+```
+
+数据库里拥有的数据类型：
+
+```{r}
+keytypes(orgdb)
+```
+
+我们来看看一共有多少个基因：
+
+```{r}
+length(keys(orgdb, keytype = "GID"))
+```
+
+这与 Ensemble Plants 上的数量一致。
+
+#### 1.1.2 对差异状态基因做富集分析
+
+关于富集分析的背景选择，我们可以考虑将 scRNA-Seq 能检测到的基因作为背景，而不使用全基因组。不过这里也可以考虑用某个 cluster 在 DS 分析时检测到的基因作为背景，因为不同的细胞类型会表达的基因是有很大的差别的。
 
 要做富集分析我们首先要拿到一个基因列表。
 
-```{r enrich-barplot, fig.height=7, fig.width=14}
-plot_contrast_enrich_barplot <- function(result, contrast, cluster, title = NULL) {
-  result %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull(contrast, cluster, "gene") %>%
-    rhapsodykit::enrichment_analysis(go_data) %>%
-    rhapsodykit::enrich_barplot(
-      x = "Count", show_category = 20,
-      title = ifelse(is.null(title), contrast, title)
-    )
-}
+##### ORA 工具函数
 
-p1 <- plot_contrast_enrich_barplot(
-  ds_res$DESeq2,
-  "X1DPI.PNR2-X1DPI.MOCK", "VCs_5",
-  "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
-)
+```{r}
+performDSEnrichORA <- function(
+  ds, contrasts, cluster,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
 
-p2 <- plot_contrast_enrich_barplot(
-  ds_res$DESeq2,
-  "X1DPI.TR4-X1DPI.MOCK", "VCs_5",
-  "VCs_5 of 1DPI-TR4 vs. 1DPI-MOCK"
-)
+  # We use all detected genes in DS analysis of given cluster as background
+  background <- rhapsodykit::diff_state_pull(
+    ds, contrasts, cluster, "gene")
 
-p3 <- plot_contrast_enrich_barplot(
-  ds_res$DESeq2,
-  "X1DPI.PNR2-X1DPI.MOCK", "MCs_5",
-  "MCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
-)
-
-p4 <- plot_contrast_enrich_barplot(
-  ds_res$DESeq2,
-  "X1DPI.TR4-X1DPI.MOCK", "MCs_5",
-  "MCs_5 of 1DPI-TR4 vs. 1DPI-MOCK"
-)
-
-p1 + p2 + p3 + p4
-```
-
-现在我们可以从基因与 GO 的关系绘图：
-
-```{r cnetplot, fig.height=6, fig.width=12}
-make_enrich_result <- function(ds, contrast, cluster) {
   sig_genes <- ds %>%
     rhapsodykit::diff_state_significant()
   genes <- sig_genes %>%
-    rhapsodykit::diff_state_pull(contrast, cluster, "gene")
+    rhapsodykit::diff_state_pull(contrasts, cluster, "gene")
   fc <- sig_genes %>%
-    rhapsodykit::diff_state_pull(contrast, cluster, "logFC")
+    rhapsodykit::diff_state_pull(contrasts, cluster, "logFC")
   names(fc) <- genes
 
-  genes %>%
-    clusterProfiler::enricher(TERM2GENE = go2gene, TERM2NAME = go2name)
+  enr <- clusterProfiler::enrichGO(
+      genes,
+      org.Taestivum.iwgsc.db,
+      keyType = "GID",
+      ont = ont,
+      universe = background
+    )
+
+  if (simplify && ont != "ALL")
+    enr <- clusterProfiler::simplify(enr, cutoff = 0.5)
+
+  list(
+    enr = enr,
+    fc = fc
+  )
 }
 
-enr1 <- make_enrich_result(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5")
-enr2 <- make_enrich_result(ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "VCs_5")
+performDSCompareORA <- function(
+  ds, contrasts, clusters,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
 
-rhapsodykit::enrich_cnetplot(enr1, fold_change = fc, show_category = 40) +
-  rhapsodykit::enrich_cnetplot(enr2, fold_change = fc, show_category = 40)
+  if (is.null(names(contrasts)))
+    names(contrasts) <- contrasts
+  if (is.null(names(clusters)))
+    names(clusters) <- clusters
+
+  background <- purrr::imap(clusters, function(clr, clr_name) {
+      purrr::imap(contrasts, function(con, con_name) {
+        ds %>% rhapsodykit::diff_state_pull(con, clr, "gene")
+      })
+    }) %>%
+    unlist() %>%
+    unique()
+
+  compare_list <- purrr::imap(clusters, function(clr, clr_name) {
+      purrr::imap(contrasts, function(con, con_name) {
+        df <- ds %>%
+          rhapsodykit::diff_state_significant() %>%
+          rhapsodykit::diff_state_pull(con, clr, c("gene", "logFC"))
+        df$gene
+      })
+    }) %>%
+    unlist(recursive = FALSE)
+
+  comp_enr <- clusterProfiler::compareCluster(
+      compare_list,
+      fun = "enrichGO",
+      OrgDb = org.Taestivum.iwgsc.db,
+      keyType = "GID",
+      ont = ont,
+      universe = background
+    )
+
+  if (simplify && ont != "ALL")
+    comp_enr <- clusterProfiler::simplify(comp_enr, cutoff = 0.5)
+
+  comp_enr
+}
 ```
 
-如果我们不将基因显示为 node ，而是将 GO 词条之间的链接定义为重叠基因的数量，也就是说 GO 词条之间重叠基因越多他们在图上的距离也就越近。这个功能叫做 Enrichment Map 。
+##### 嵌字条形图
 
-```{r emapplot, fig.height=4, fig.width=8}
-p1 <- enr1 %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(cex_label_category = 0.6, showCategory = 40)
-p2 <- enr2 %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(cex_label_category = 0.6, showCategory = 40)
+```{r enrich-barplot, fig.height=5, fig.width=10}
+enr1 <- performDSEnrichORA(
+  ds_res$DESeq2,
+  "X1DPI.PNR2-X1DPI.MOCK", "VCs_5",
+  ont = "BP"
+)
+
+enr2 <- performDSEnrichORA(
+  ds_res$DESeq2,
+  "X1DPI.PNR2-X1DPI.MOCK", "VCs_5",
+  ont = "MF"
+)
+
+p1 <- enr1$enr %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
+  )
+
+p2 <-  enr2$enr %>% 
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
+  )
 
 p1 + p2
 ```
+
+##### GO 父子关系图
+
+```{r fig.height=7, fig.width=10}
+clusterProfiler::goplot(enr1$enr)
+```
+
+##### 基因与 GO 词条的关系图
+
+现在我们可以从基因与 GO 的关系绘图：
+
+```{r cnetplot, fig.height=8, fig.width=16}
+enr1 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "BP")
+enr2 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "MF")
+
+rhapsodykit::enrich_cnetplot(enr1$enr, fold_change = enr1$fc, show_category = 30) +
+rhapsodykit::enrich_cnetplot(enr2$enr, fold_change = enr2$fc, show_category = 30)
+```
+
+##### GO 词条关系图
+
+如果我们不将基因显示为 node ，而是将 GO 词条之间的链接定义为重叠基因的数量，也就是说 GO 词条之间重叠基因越多他们在图上的距离也就越近。这个功能叫做 Enrichment Map 。
+
+```{r emapplot, fig.height=6, fig.width=12}
+p1 <- enr1$enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(cex_label_category = 0.6, showCategory = 20)
+p2 <- enr2$enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(cex_label_category = 0.6, showCategory = 20)
+
+p1 + p2
+```
+
+##### 富集热图
 
 当要展示很多 GO 词条时，网络图就会变得非常复杂，我们可以试试 clusterProfiler 的 Heatmap-like functional classification 功能。不过这个热图似乎没有聚类，也就不是很方便人类阅读和理解了。TODO:
 
 ```{r heatmap, fig.height=6, fig.width=12}
-p1 <- enr1 %>%
-  clusterProfiler::heatplot(foldChange = fc)
+p1 <- enr1$enr %>%
+  clusterProfiler::heatplot(foldChange = enr1$fc)
 
-p2 <- enr2 %>%
-  clusterProfiler::heatplot(foldChange = fc)
+p2 <- enr2$enr %>%
+  clusterProfiler::heatplot(foldChange = enr1$fc)
 
 p1 + p2
 ```
+
+##### 集合交集图
 
 使用 UpSet 图似乎看起来更有意义。
 
 ```{r upsetplot, fig.height=6, fig.width=12}
-p1 <- enr1 %>% enrichplot::upsetplot()
-p2 <- enr2 %>% enrichplot::upsetplot()
+p1 <- enr1$enr %>% enrichplot::upsetplot()
+p2 <- enr2$enr %>% enrichplot::upsetplot()
 
 p1 + p2
 ```
 
-最后做一下生物主题比较：
-
+##### 生物主题比较
 
 我们可以试试 clusterProfiler 生物主题比较功能：
-
-```{r enrich-compare, fig.height=12, fig.width=5, fig.keep="last"}
-compare_list <- list(
-  "VCs_5.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "VCs_5", "gene"),
-  "VCs_5.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "VCs_5", "gene"),
-  "MCs_5.1DPI.PNR2.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", "MCs_5", "gene"),
-  "MCs_5.1DPI.TR4.MOCK" = ds_res$DESeq2 %>%
-    rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", "MCs_5", "gene")
-)
-
-comp_enr <- clusterProfiler::compareCluster(compare_list, fun = "enricher", TERM2GENE = go2gene, TERM2NAME = go2name)
-
-enrichplot::dotplot(comp_enr, showCategory = 40, by = "count", label_format = 60) +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-```
 
 TODO: 将 dotplot 按照 cluster 来 facet 化，然后 x 轴显示 contrast 就好了。 
 TODO: 将 enrichplot::dotplot 与 ggupset 结合到一起，看看能否提供更方便快捷的理解方式。
@@ -177,7 +254,25 @@ TODO: 将 enrichplot::dotplot 与 ggupset 结合到一起，看看能否提供�
 -   [biological-theme-comparison](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html#biological-theme-comparison)
 -   Yu, G., Wang, L.-G., Han, Y., & He, Q.-Y. (2012). clusterProfiler: An R Package for Comparing Biological Themes Among Gene Clusters. OMICS: A Journal of Integrative Biology, 16(5), 284--287. <https://doi.org/10.1089/omi.2011.0118>
 
-然后看看 GO 词条之间的关联：
+然后看看 GO 词条之间的关联。
+
+VCs_5 和 MCs_5 的生物主题比较：
+
+```{r fig.height=10, fig.width=8, fig.keep="last"}
+comp_enr <- performDSCompareORA(ds_res$DESeq2,
+  contrasts = c(
+    "PNR2 vs. MOCK - 1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
+    "TR4 vs. MOCK - 1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_5" = "VCs_5",
+    "MCs_5" = "MCs_5"
+  )
+)
+
+enrichplot::dotplot(comp_enr, showCategory = 40, by = "count", label_format = 60) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
 
 ```{r fig.height=7, fig.width=10}
 comp_enr %>%
@@ -185,7 +280,378 @@ comp_enr %>%
   enrichplot::emapplot(legend_n = 2)
 ```
 
-#### PNR2 和 TR4 在 1DPI 时重叠的基因表达
+```{r fig.height=7, fig.width=10}
+comp_enr %>% enrichplot::cnetplot(showCategory = 30, node_label = "category")
+```
+
+#### 1.1.3 对差异状态基因做 GSEA 分析
+
+##### GSEA 工具函数
+
+GSEA 不能过滤出显著的 DEGs ，我们直接计算出所有基因的 Log Fold Change 就行了 了。如果筛选差异基因的话，你看的只是差异基因在哪些通路上，这有可能是一种终末端的效应。如果一条通路上所有基因都上调 20% ，它们都不是差异基因，但这条通路激活效应就非常强了，比通路中一两个差异基因上调几十倍造成的效应都强。GSEA 的理念就是不去筛选差异基因，只看这条通路上的基因是不是一致上调和一致下调。
+
+基于差异基因表达的富集分析可以找到差异较大的基因，但它发现不了那些虽然差异较小的，但在一组相关基因中以协调的方式得到证明的基因。因此 Gene Set Enrichment Analysis (GSEA) 直接关注这个问题。
+
+GSEA 将一个基因集内各基因的统计数据聚合起来，因此有可能检测到一个预定义的基因集中所有基因以小而协调的方式变化的情况。因为许多相关的表型差异很可能是由一组基因中微小但一致的变化表现出来的。
+
+基因是根据其表型进行排名的。给定一个预先的基因集 S (例如，共享相同 DO 类别的基因) ，GSEA 的目标是确定 S 的成员是随机分布在整个排序好的基因列表 (L)，还是主要存在于顶部或底部。.
+
+For gene set enrichment analysis, we need a ranked list of genes. Suppose you are importing your own data from a csv file and the file contains two columns, one for gene ID (no duplicated allowed) and another one for fold change, you can prepare your own geneList via the following command:
+
+```{r gsea-data, results="hide"}
+performDSEnrichGSEA <- function(
+  ds, contrasts, clusters,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
+
+  ## 我们不需要依据 FDR 来筛选基因，只需要 logFC 来排序
+  gsea_df <- ds %>%
+    rhapsodykit::diff_state_pull(contrasts, clusters, c("gene", "logFC"))
+
+  ## feature 1: numeric vector
+  geneList <- gsea_df[, 2]
+
+  ## feature 2: named vector
+  names(geneList) <- as.character(gsea_df[, 1])
+
+  ## feature 3: decreasing order
+  geneList <- sort(geneList, decreasing = TRUE)
+
+  gsea <- clusterProfiler::gseGO(
+    geneList,
+    ont = ont,
+    OrgDb = org.Taestivum.iwgsc.db,
+    keyType = "GID"
+  )
+
+  if (simplify && ont != "ALL")
+    gsea <- clusterProfiler::simplify(gsea)
+  
+  list(
+    gsea = gsea,
+    fc = geneList
+  )
+  
+}
+
+performDSCompareGSEA <- function(
+  ds, contrasts, clusters,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
+
+  if (is.null(names(contrasts)))
+    names(contrasts) <- contrasts
+  if (is.null(names(clusters)))
+    names(clusters) <- clusters
+
+  background <- purrr::imap(clusters, function(clr, clr_name) {
+      purrr::imap(contrasts, function(con, con_name) {
+        ds %>% rhapsodykit::diff_state_pull(con, clr, "gene")
+      })
+    }) %>%
+    unlist() %>%
+    unique()
+
+  compare_list <- purrr::imap(clusters, function(clr, clr_name) {
+      purrr::imap(contrasts, function(con, con_name) {
+        df <- ds %>%
+          rhapsodykit::diff_state_pull(con, clr, c("gene", "logFC"))
+        geneList <- df[, 2]
+        names(geneList) <- as.character(df[, 1])
+        geneList <- sort(geneList, decreasing = TRUE)
+        geneList
+      })
+    }) %>%
+    unlist(recursive = FALSE)
+  
+  comp_enr <- clusterProfiler::compareCluster(
+      compare_list,
+      OrgDb = org.Taestivum.iwgsc.db,
+      fun = "gseGO",
+      keyType = "GID",
+      ont = ont
+    )
+
+  if (simplify && ont != "ALL")
+    comp_enr <- clusterProfiler::simplify(comp_enr, cutoff = 0.5)
+
+  comp_enr
+}
+```
+
+```{r results="hide"}
+gsea1 <- performDSEnrichGSEA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "BP")
+gsea2 <- performDSEnrichGSEA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "MF")
+```
+
+问题是从哪里去找通路数据库呢？似乎 [Plant Reactome](https://plantreactome.gramene.org/) 很不错的样子。
+
+似乎可以用 `clusterProfiler::GSEA()` 函数：
+
+##### 基因-词条关系图
+
+```{r gsea-cnetplot, fig.height=6, fig.width=14}
+brookite::enrich_cnetplot(gsea1$gsea, fold_change = gsea1$fc, show_category = 20) +
+brookite::enrich_cnetplot(gsea2$gsea, fold_change = gsea2$fc, show_category = 20)
+```
+
+##### 词条之间关系图
+
+```{r gsea-emapplot, fig.height=7, fig.width=7}
+gsea1$gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(cex_label_category = 0.6)
+```
+
+##### 集合交集图
+
+```{r gsea-upset, fig.height=7, fig.width=10}
+gsea1$gsea %>%
+  enrichplot::upsetplot()
+```
+
+##### 山丘图
+
+```{r gsea-ridgetplot, fig.height=7, fig.width=14}
+gsea1$gsea %>%
+  enrichplot::ridgeplot()
+```
+
+##### GSEA 分数
+
+```{r gsea-gseaplot}
+gsea1$gsea %>%
+  enrichplot::gseaplot(geneSetID = 3, title = gsea1$gsea$Description[3])
+```
+
+```{r gseaplot2, fig.height=7, fig.width=14}
+gsea1$gsea %>%
+  enrichplot::gseaplot2(geneSetID = 1:5)
+```
+
+```{r gsearank}
+gsea1$gsea %>%
+  enrichplot::gsearank(geneSetID = 3, title = gsea1$gsea$Description[3])
+```
+
+##### 生物主题比较
+
+最新 devel 版的 {clusterProfiler} 和 {enrichplot} 支持 GSEA 版本的 `compareCluster` 了！
+
+```{r fig.height=15, fig.width=10, fig.keep="last"}
+comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
+  contrasts = c(
+    "PNR2 vs. MOCK - 1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
+    "TR4 vs. MOCK - 1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_5" = "VCs_5",
+    "MCs_5" = "MCs_5"
+  ),
+  simplify = TRUE
+)
+
+enrichplot::dotplot(comp_enr, showCategory = 40, label_format = 80) +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+```{r fig.height=7, fig.width=10}
+comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(legend_n = 2, cex_line = 0.4)
+```
+
+```{r fig.height=10, fig.width=14}
+comp_enr %>% enrichplot::cnetplot(
+  showCategory = 20, cex_line = 0.2, cex_category = 3,
+  node_label = "category"
+  )
+```
+
+### 1.2 其他注释的功能分析
+
+比如 KEGG 或 [Plant Reactome](https://plantreactome.gramene.org/)
+
+## 2 侵染早期（1DPI）差异状态基因的富集分析
+
+### DA 分析中特别的亚群 VCs_3 和 Un_1
+
+加载 1DPI 的 DA 亚群标志基因：
+
+```{r}
+da_1dpi_marker <- readRDS(Sys.glob("../output/da_marker_1dpi_*.rds"))
+```
+
+```{r}
+make_DA_enrich <- function(da, contrast, subpopulation,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
+  df <- da[[contrast]]$da.markers[[subpopulation]]
+
+  enr <- df %>%
+    dplyr::filter(p_value < 0.01) %>%
+    dplyr::pull(gene) %>%
+    clusterProfiler::enrichGO(
+      orgdb, keyType = "GID",
+      ont = ont
+    )
+
+  if (simplify && ont != "ALL")
+  enr <- clusterProfiler::simplify(enr, cutoff = 0.5)
+
+  enr
+}
+
+make_DA_compare <- function(da, sets,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  stopifnot(is.list(sets) && !is.null(names(sets)) && length(sets) > 1)
+
+  compare_list <- sets %>%
+    lapply(function(set) {
+      da[[ set[[1]] ]]$da.markers[[ set[[2]] ]] %>%
+        dplyr::filter(p_value < 0.01) %>%
+        dplyr::pull(gene)
+    })
+
+  comp_enr <- clusterProfiler::compareCluster(
+    compare_list, fun = "enrichGO",
+    OrgDb = orgdb, keyType = "GID",
+    ont = ont)
+
+  if (simplify && ont != "ALL")
+    comp_enr <- clusterProfiler::simplify(comp_enr, cutoff = 0.5)
+
+  comp_enr
+}
+
+PNR2_da2 <- da_1dpi_marker[["PNR2 vs. MOCK - 1DPI"]]$da.markers[[2]]
+head(PNR2_da2)
+```
+
+#### PNR2 诱导的应激态亚群
+
+由于 DA 亚群标志基因的 P value 都非常小，所以我们没法直接推断出背景。
+
+```{r fig.height=6, fig.width=12}
+p1 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 1, ont = "BP") %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "PNR2 induced DA1"
+  )
+
+p2 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 2, ont = "BP") %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "PNR2 induced DA2"
+  )
+
+p1 + p2
+```
+
+#### TR4 诱导的应激态亚群
+
+```{r fig.height=6, fig.width=18}
+p1 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 1, ont = "BP") %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "TR4 induced DA1"
+  )
+
+p2 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 3, ont = "BP") %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "TR4 induced DA3"
+  )
+
+p3 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 4, ont = "BP") %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "TR4 induced DA4"
+  )
+
+p1 + p2 + p3
+```
+
+做一下主题比较：
+
+```{r fig.height=10, fig.width=7, fig.keep="last"}
+comp_enr <- make_DA_compare(da_1dpi_marker,
+  list(
+    "TR4 induced DA1" = list("TR4 vs. MOCK - 1DPI", 1),
+    "TR4 induced DA3" = list("TR4 vs. MOCK - 1DPI", 3),
+    "TR4 induced DA4" = list("TR4 vs. MOCK - 1DPI", 4)
+  )
+)
+
+enrichplot::dotplot(comp_enr, showCategory = 20, by = "count", label_format = 60) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+```{r fig.height=7, fig.width=10}
+comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(legend_n = 2)
+```
+
+
+#### PNR2 与 TR4 特征相反的亚群
+
+##### ORA 分析
+
+直接比较 PNR2 和 TR4 两个相反的亚群：
+
+```{r fig.height=6, fig.width=12}
+p1 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 2, ont = "BP") %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "PNR2 induced DA2"
+  )
+
+p2 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 6, ont = "BP") %>%
+  rhapsodykit::enrich_barplot(
+    x = "Count", show_category = 20,
+    title = "TR4 induced DA6"
+  )
+
+p1 + p2
+```
+
+这两个基因集做一下生物主题比较：
+
+```{r fig.height=7, fig.width=6, fig.keep="last"}
+comp_enr <- make_DA_compare(da_1dpi_marker,
+  list(
+    "PNR2 induced DA2" = list("PNR2 vs. MOCK - 1DPI", 2),
+    "TR4 induced DA6" = list("TR4 vs. MOCK - 1DPI", 6)
+  )
+)
+
+enrichplot::dotplot(comp_enr, showCategory = 20, by = "count", label_format = 60) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+```{r fig.height=7, fig.width=10}
+comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::emapplot(legend_n = 2)
+```
+
+##### GSEA 分析
+
+好像 DA 亚群的特征基因做不了 GSEA 分析，因为这些 marker 都是筛选过的。
+
+### DS 分析中显著的 MCs_5 和 VCs_5 细胞群集
+
+#### ORA 分析
 
 获取重叠部分的基因：
 
@@ -253,85 +719,58 @@ intersection_query(itsc,
 )
 ```
 
+对这几十个基因做一下简单的富集：
 
-#### 1.1.2 对差异状态基因做 GSEA 分析
+```{r}
+intersection_query(itsc,
+  c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
+  c("VCs_5")
+)
+```
 
-基于差异基因表达的富集分析可以找到差异较大的基因，但它发现不了那些虽然差异较小的，但在一组相关基因中以协调的方式得到证明的基因。因此 Gene Set Enrichment Analysis (GSEA) 直接关注这个问题。
+简单拉取一下注释，然后输出一张表格：
 
-GSEA 将一个基因集内各基因的统计数据聚合起来，因此有可能检测到一个预定义的基因集中所有基因以小而协调的方式变化的情况。因为许多相关的表型差异很可能是由一组基因中微小但一致的变化表现出来的。
+```{r}
+mart_info <- list(
+  host = "https://plants.ensembl.org",
+  mart = "plants_mart",
+  dataset = "taestivum_eg_gene"
+)
 
-基因是根据其表型进行排名的。给定一个预先的基因集 S (例如，共享相同 DO 类别的基因) ，GSEA 的目标是确定 S 的成员是随机分布在整个排序好的基因列表 (L)，还是主要存在于顶部或底部。.
+intersection_query(itsc,
+  c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
+  c("VCs_5")
+) %>%
+  brookite::pull_annotation(mart_info)
+```
 
-For gene set enrichment analysis, we need a ranked list of genes. Suppose you are importing your own data from a csv file and the file contains two columns, one for gene ID (no duplicated allowed) and another one for fold change, you can prepare your own geneList via the following command:
+VCs_5 和 MCs_5 的生物主题比较：
 
-```{r gsea-data}
-make_gsea_result <- function(ds, contrast, cluster) {
-  ## 我们不需要依据 FDR 来筛选基因，只需要 logFC 来排序
-  gsea_df <- ds %>%
-    rhapsodykit::diff_state_pull(contrast, cluster, c("gene", "logFC"))
-  
-  ## feature 1: numeric vector
-  geneList <- gsea_df[,2]
-
-  ## feature 2: named vector
-  names(geneList) <- as.character(gsea_df[,1])
-
-  ## feature 3: decreasing order
-  geneList <- sort(geneList, decreasing = TRUE)
-
-  list(
-    gsea = clusterProfiler::GSEA(geneList, TERM2GENE = go2gene, TERM2NAME = go2name),
-    fc = geneList
+```{r enrich-compare, fig.height=12, fig.width=8, fig.keep="last"}
+comp_enr <- performDSCompareORA(ds_res$DESeq2,
+  contrasts = c(
+    "PNR2 vs. MOCK - 1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
+    "TR4 vs. MOCK - 1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_5" = "VCs_5",
+    "MCs_5" = "MCs_5"
   )
-  
-}
+)
 
-gsea1 <- make_gsea_result(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5")
-gsea2 <- make_gsea_result(ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK", "VCs_5")
+enrichplot::dotplot(comp_enr, showCategory = 40, by = "count", label_format = 60) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 ```
 
-问题是从哪里去找通路数据库呢？似乎 [Plant Reactome](https://plantreactome.gramene.org/) 很不错的样子。
-
-似乎可以用 `clusterProfiler::GSEA()` 函数：
-
-```{r gsea-cnetplot, fig.height=6, fig.width=14}
-rhapsodykit::enrich_cnetplot(gsea1$gsea, fold_change = gsea1$fc, show_category = 20) +
-  rhapsodykit::enrich_cnetplot(gsea2$gsea, fold_change = gsea2$fc, show_category = 20)
-```
-
-```{r gsea-emapplot, fig.height=7, fig.width=7}
-gsea %>%
+```{r fig.height=7, fig.width=10}
+comp_enr %>%
   enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(cex_label_category = 0.6)
+  enrichplot::emapplot(legend_n = 2)
 ```
 
-```{r gsea-upset, fig.height=7, fig.width=10}
-gsea %>%
-  enrichplot::upsetplot()
-```
+#### GSEA 分析
 
-```{r gsea-ridgetplot, fig.height=7, fig.width=14}
-gsea %>%
-  enrichplot::ridgeplot()
-```
 
-```{r gsea-gseaplot}
-gsea %>%
-  enrichplot::gseaplot(geneSetID = 3, title = gsea$Description[3])
-```
 
-```{r gseaplot2, fig.height=7, fig.width=14}
-gsea %>%
-  enrichplot::gseaplot2(geneSetID = 1:5)
-```
 
-```{r gsearank}
-gsea %>%
-  enrichplot::gsearank(geneSetID = 3, title = gsea$Description[3])
-```
-
-### 1.2 其他注释的功能分析
-
-比如 KEGG 或 [Plant Reactome](https://plantreactome.gramene.org/)
-
-## 2 给定基因集的表达异质性分析
+## 3 给定基因集的表达异质性分析
