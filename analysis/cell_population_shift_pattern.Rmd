@@ -135,6 +135,44 @@ plot_bootstrap_distribution <- function(
   p
 }
 
+plot_mds <- function(
+  df, clusters = NULL, cols = NULL
+) {
+  if (!is.null(clusters)) {
+    df <- dplyr::filter(df, cluster_id %in% clusters)
+    df$cluster_id <- factor(df$cluster_id, levels = clusters)
+  }
+
+  p <- df %>%
+    ggplot2::ggplot(ggplot2::aes_string(
+      x = "MDS1", y = "MDS2",
+      shape = "treatment",
+      color = "cluster_id",
+      size = "time")) +
+    ggplot2::geom_point() +
+    ggplot2::scale_shape_manual(values = c(
+      "MOCK" = 15,
+      "PNR2" = 8,
+      "TR4"  = 10
+    )) +
+    ggplot2::scale_size_manual(values = c(
+      "0DPI" = 0.5, "1DPI" = 1.5, "2DPI" = 2.5, "3DPI" = 3.5)) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      axis.text = ggplot2::element_text(color = "black"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(
+        size = 0.2, color = "lightgrey"),
+      legend.position = "right"
+    )
+
+  if (!is.null(cols)) {
+    p <- p + ggplot2::scale_color_manual(values = cols)
+  }
+  
+  p
+}
+
 plot_mds_by_cluster <- function(
   df, clusters = NULL,
   facet_by = "cluster_id", nrow = NULL, ncol = NULL
@@ -242,9 +280,16 @@ plot_cell_score <- function(
 
 ## 2 细胞群体变化模式
 
+```{r include=FALSE}
+knitr::opts_template$set(fig_size_1 = list(
+  fig.height=5,
+  fig.width=13
+))
+```
+
 ### Fungi induced changes
 
-```{r fig.height=4, fig.width=12}
+```{r opts.label="fig_size_1"}
 clusters = c(
   "MCs_4", "CCs_6", "VCs_5",
   "MCs_1", "ECs_3", "MCs_2", "VCs_1",
@@ -263,10 +308,14 @@ p2 <- plot_cell_score(da_All_TR4, "umap",
   ggplot2::coord_fixed() +
   ggplot2::ggtitle("TR4 vs. MOCK")
 
-p3 <- plot_mds_by_cluster(pb_mds_df,
-  clusters = clusters,
-  facet_by = NULL, nrow = 4, ncol = 1
-) + ggplot2::coord_fixed()
+p3 <- plot_mds(pb_mds_df,
+    clusters = clusters,
+    cols = structure(
+      ident_cols[match(clusters, levels(pb_mds_df$cluster_id))],
+      names = clusters)
+  ) +
+  ggplot2::guides(col = ggplot2::guide_legend(nrow = 5)) +
+  ggplot2::coord_fixed()
 
 p1 + p2 + p3
 ```
@@ -307,7 +356,7 @@ patchwork::wrap_plots(
 
 ### *Fg* induced changes
 
-```{r fig.height=4, fig.width=12}
+```{r opts.label="fig_size_1"}
 clusters = c(
   "VCs_2", "VCs_3", "VCs_5",
   "Un_1", "GCs",
@@ -326,10 +375,14 @@ p2 <- plot_cell_score(da_All_TR4, "umap",
   ggplot2::coord_fixed() +
   ggplot2::ggtitle("TR4 vs. MOCK")
 
-p3 <- plot_mds_by_cluster(pb_mds_df,
-  clusters = clusters,
-  facet_by = NULL, nrow = 4, ncol = 1
-) + ggplot2::coord_fixed()
+p3 <- plot_mds(pb_mds_df,
+    clusters = clusters,
+    cols = structure(
+      ident_cols[match(clusters, levels(pb_mds_df$cluster_id))],
+      names = clusters)
+  ) +
+  ggplot2::guides(col = ggplot2::guide_legend(nrow = 5)) +
+  ggplot2::coord_fixed()
 
 p1 + p2 + p3
 ```
@@ -367,7 +420,7 @@ patchwork::wrap_plots(
 
 ### *Foc* induced changes
 
-```{r fig.height=4, fig.width=12}
+```{r opts.label="fig_size_1"}
 clusters = c(
   "ECs_2", "CCs_5", "VCs_2", "CCs_8",
   "VCs_3", "CCs_3", "VCs_5",
@@ -387,10 +440,14 @@ p2 <- plot_cell_score(da_All_TR4, "umap",
   ggplot2::coord_fixed() +
   ggplot2::ggtitle("TR4 vs. MOCK")
 
-p3 <- plot_mds_by_cluster(pb_mds_df,
-  clusters = clusters,
-  facet_by = NULL, nrow = 4, ncol = 1
-) + ggplot2::coord_fixed()
+p3 <- plot_mds(pb_mds_df,
+    clusters = clusters,
+    cols = structure(
+      ident_cols[match(clusters, levels(pb_mds_df$cluster_id))],
+      names = clusters)
+  ) +
+  ggplot2::guides(col = ggplot2::guide_legend(nrow = 5)) +
+  ggplot2::coord_fixed()
 
 p1 + p2 + p3
 ```
@@ -428,7 +485,7 @@ patchwork::wrap_plots(
 
 ### Unified changed
 
-```{r fig.height=4, fig.width=12}
+```{r opts.label="fig_size_1"}
 clusters = c(
   "CCs_1", "CCs_4", "MCs_3",
   "Un_2", "MCs_5", "VCs_4"
@@ -446,10 +503,14 @@ p2 <- plot_cell_score(da_All_TR4, "umap",
   ggplot2::coord_fixed() +
   ggplot2::ggtitle("TR4 vs. MOCK")
 
-p3 <- plot_mds_by_cluster(pb_mds_df,
-  clusters = clusters,
-  facet_by = NULL, nrow = 4, ncol = 1
-) + ggplot2::coord_fixed()
+p3 <- plot_mds(pb_mds_df,
+    clusters = clusters,
+    cols = structure(
+      ident_cols[match(clusters, levels(pb_mds_df$cluster_id))],
+      names = clusters)
+  ) +
+  ggplot2::guides(col = ggplot2::guide_legend(nrow = 3)) +
+  ggplot2::coord_fixed()
 
 p1 + p2 + p3
 ```

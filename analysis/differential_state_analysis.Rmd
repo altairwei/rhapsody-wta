@@ -200,7 +200,7 @@ pb_mds_df <- xfun::cache_rds(
 
 然后我们展示该分布：
 
-```{r mds-plot-by-time, fig.height=5, fig.width=10}
+```{r mds-plot-by-time, fig.height=7, fig.width=10}
 group_colors <- c(
   "X0DPI.MOCK" = "#3DD8FF",
   "X1DPI.MOCK" = "#75B0BF",
@@ -217,9 +217,13 @@ group_colors <- c(
 )
 
 pb_mds_df %>%
-  ggplot2::ggplot(ggplot2::aes_string(x = "MDS1", y = "MDS2", color = "treatment", shape = "treatment")) +
+  ggplot2::ggplot(ggplot2::aes_string(
+    x = "MDS1", y = "MDS2",
+    color = "cluster_id", shape = "treatment")
+  ) +
   ggplot2::geom_point(size = 2, alpha = 1) +
   ggplot2::facet_wrap(~time, nrow = 1) +
+  ggplot2::scale_color_manual(values = ident_cols) +
   ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
   ggplot2::guides(
     color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +

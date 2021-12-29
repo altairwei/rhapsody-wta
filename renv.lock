@@ -18,6 +18,12 @@
       "Source": "Bioconductor",
       "Hash": "ae553c2779c85946f1452919cc3e71e3"
     },
+    "AnnotationForge": {
+      "Package": "AnnotationForge",
+      "Version": "1.34.1",
+      "Source": "Bioconductor",
+      "Hash": "b80bdbcce9228c78c97d04a5ac97f551"
+    },
     "BH": {
       "Package": "BH",
       "Version": "1.75.0-0",
@@ -662,8 +668,8 @@
       "RemoteRepo": "brookite",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "2a9a3cb5bf5218657547e273d8320e796a7b8772",
-      "Hash": "b59ab655a007f1ee924372ac0dd29f26"
+      "RemoteSha": "9c52fc325690f8dd78e45da035c7bf584a97e806",
+      "Hash": "be8644a12c1dcedbc531bcc8eae204c6"
     },
     "broom": {
       "Package": "broom",
@@ -772,9 +778,15 @@
     },
     "clusterProfiler": {
       "Package": "clusterProfiler",
-      "Version": "4.2.0",
-      "Source": "Bioconductor",
-      "Hash": "6f99a9209aaac5d483868e6ebbb4bf96"
+      "Version": "4.3.1",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "clusterProfiler",
+      "RemoteUsername": "altairwei",
+      "RemoteRef": "simplify-gsea-compare",
+      "RemoteSha": "c133ca92d45c6997a8eb9522b42ab35c52a1d5e1",
+      "Hash": "e969cdc4a33dfbb517f97ed2f71c991b"
     },
     "clustree": {
       "Package": "clustree",
@@ -993,9 +1005,16 @@
     },
     "enrichplot": {
       "Package": "enrichplot",
-      "Version": "1.14.1",
-      "Source": "Bioconductor",
-      "Hash": "0795ea7dc0ddd00551c7f37d10250a7a"
+      "Version": "1.15.1.993",
+      "Source": "GitHub",
+      "Remotes": "YuLab-SMU/tidydr",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "enrichplot",
+      "RemoteUsername": "YuLab-SMU",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "879e8d9b62fa3ba18d50fac8b5cc715b7c4f4e65",
+      "Hash": "944d604917b0e2631d93b57814e8cf07"
     },
     "evaluate": {
       "Package": "evaluate",
@@ -1780,6 +1799,14 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "2490600671344e847c37a7f75ee458c0"
+    },
+    "org.Taestivum.iwgsc.db": {
+      "Package": "org.Taestivum.iwgsc.db",
+      "Version": "0.0.2",
+      "Source": "URL",
+      "RemoteType": "url",
+      "RemoteUrl": "https://github.com/altairwei/org.Taestivum.iwgsc.db/releases/download/v0.0.2/org.Taestivum.iwgsc.db_0.0.2.tar.gz",
+      "Hash": "9370638374d3f969558a6ea4855badb8"
     },
     "pROC": {
       "Package": "pROC",
