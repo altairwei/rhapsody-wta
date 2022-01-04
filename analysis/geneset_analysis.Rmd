@@ -127,18 +127,28 @@ performDSCompareORA <- function(
     unlist() %>%
     unique()
 
-  compare_list <- purrr::imap(clusters, function(clr, clr_name) {
+  compare_df <- purrr::imap(clusters, function(clr, clr_name) {
       purrr::imap(contrasts, function(con, con_name) {
         df <- ds %>%
           rhapsodykit::diff_state_significant() %>%
           rhapsodykit::diff_state_pull(con, clr, c("gene", "logFC"))
         df$gene
+        data.frame(
+          gene = df$gene,
+          contrast = con_name,
+          cluster = clr_name
+        )
       })
     }) %>%
-    unlist(recursive = FALSE)
+    unlist(recursive = FALSE) %>%
+    dplyr::bind_rows()
+
+  compare_df$cluster <- factor(compare_df$cluster, levels = names(clusters))
+  compare_df$contrast <- factor(compare_df$contrast, levels = names(contrasts))
 
   comp_enr <- clusterProfiler::compareCluster(
-      compare_list,
+      gene ~ cluster + contrast,
+      data = compare_df,
       fun = "enrichGO",
       OrgDb = org.Taestivum.iwgsc.db,
       keyType = "GID",
@@ -169,13 +179,13 @@ enr2 <- performDSEnrichORA(
 )
 
 p1 <- enr1$enr %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
   )
 
 p2 <-  enr2$enr %>% 
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
   )
@@ -186,7 +196,17 @@ p1 + p2
 ##### GO 父子关系图
 
 ```{r fig.height=7, fig.width=10}
-clusterProfiler::goplot(enr1$enr)
+clusterProfiler::goplot(enr1$enr, showCategory = 40)
+```
+
+```{r fig.height=7, fig.width=10}
+enr <- performDSEnrichORA(
+  ds_res$DESeq2,
+  "X1DPI.PNR2-X1DPI.MOCK", "MCs_5",
+  ont = "BP"
+)
+
+enrichplot::goplot(enr$enr, showCategory = 60)
 ```
 
 ##### 基因与 GO 词条的关系图
@@ -197,8 +217,8 @@ clusterProfiler::goplot(enr1$enr)
 enr1 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "BP")
 enr2 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "MF")
 
-rhapsodykit::enrich_cnetplot(enr1$enr, fold_change = enr1$fc, show_category = 30) +
-rhapsodykit::enrich_cnetplot(enr2$enr, fold_change = enr2$fc, show_category = 30)
+brookite::enrich_cnetplot(enr1$enr, fold_change = enr1$fc, show_category = 30) +
+brookite::enrich_cnetplot(enr2$enr, fold_change = enr2$fc, show_category = 30)
 ```
 
 ##### GO 词条关系图
@@ -214,6 +234,14 @@ p2 <- enr2$enr %>%
   enrichplot::emapplot(cex_label_category = 0.6, showCategory = 20)
 
 p1 + p2
+```
+
+##### 语义相似性进化树
+
+```{r fig.height=6, fig.width=12}
+enr1$enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(splot=TRUE, nWords = 1, nCluster = 4)
 ```
 
 ##### 富集热图
@@ -258,11 +286,11 @@ TODO: 将 enrichplot::dotplot 与 ggupset 结合到一起，看看能否提供�
 
 VCs_5 和 MCs_5 的生物主题比较：
 
-```{r fig.height=10, fig.width=8, fig.keep="last"}
+```{r 1dpi-ora-compare-cluster, dev="png", fig.height=12, fig.width=8, fig.keep="last"}
 comp_enr <- performDSCompareORA(ds_res$DESeq2,
   contrasts = c(
-    "PNR2 vs. MOCK - 1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
-    "TR4 vs. MOCK - 1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
+    "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
   clusters = c(
     "VCs_5" = "VCs_5",
@@ -270,18 +298,34 @@ comp_enr <- performDSCompareORA(ds_res$DESeq2,
   )
 )
 
-enrichplot::dotplot(comp_enr, showCategory = 40, by = "count", label_format = 60) +
+comp_enr@compareClusterResult$cluster <- factor(comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5"))
+enrichplot::dotplot(
+    comp_enr, x = "contrast",
+    showCategory = 40, by = "count", label_format = 60) +
+  ggplot2::facet_grid(~cluster) +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 ```
 
 ```{r fig.height=7, fig.width=10}
 comp_enr %>%
   enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 2)
+  enrichplot::emapplot(legend_n = 3)
 ```
 
 ```{r fig.height=7, fig.width=10}
 comp_enr %>% enrichplot::cnetplot(showCategory = 30, node_label = "category")
+```
+
+```{r fig.height=8, fig.width=12}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 2, offset_tiplab = 1.8,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 5.5))
+p
 ```
 
 #### 1.1.3 对差异状态基因做 GSEA 分析
@@ -333,7 +377,7 @@ performDSEnrichGSEA <- function(
     gsea = gsea,
     fc = geneList
   )
-  
+
 }
 
 performDSCompareGSEA <- function(
@@ -348,28 +392,30 @@ performDSCompareGSEA <- function(
   if (is.null(names(clusters)))
     names(clusters) <- clusters
 
-  background <- purrr::imap(clusters, function(clr, clr_name) {
-      purrr::imap(contrasts, function(con, con_name) {
-        ds %>% rhapsodykit::diff_state_pull(con, clr, "gene")
-      })
-    }) %>%
-    unlist() %>%
-    unique()
-
-  compare_list <- purrr::imap(clusters, function(clr, clr_name) {
+  compare_df <- purrr::imap(clusters, function(clr, clr_name) {
       purrr::imap(contrasts, function(con, con_name) {
         df <- ds %>%
           rhapsodykit::diff_state_pull(con, clr, c("gene", "logFC"))
         geneList <- df[, 2]
         names(geneList) <- as.character(df[, 1])
         geneList <- sort(geneList, decreasing = TRUE)
-        geneList
+        data.frame(
+          gene = names(geneList),
+          fc = geneList,
+          cluster = clr_name,
+          contrast = con_name
+        )
       })
     }) %>%
-    unlist(recursive = FALSE)
-  
+    unlist(recursive = FALSE) %>%
+    dplyr::bind_rows()
+
+  compare_df$cluster <- factor(compare_df$cluster, levels = names(clusters))
+  compare_df$contrast <- factor(compare_df$contrast, levels = names(contrasts))
+
   comp_enr <- clusterProfiler::compareCluster(
-      compare_list,
+      gene | fc ~ cluster + contrast,
+      data = compare_df,
       OrgDb = org.Taestivum.iwgsc.db,
       fun = "gseGO",
       keyType = "GID",
@@ -442,11 +488,11 @@ gsea1$gsea %>%
 
 最新 devel 版的 {clusterProfiler} 和 {enrichplot} 支持 GSEA 版本的 `compareCluster` 了！
 
-```{r fig.height=15, fig.width=10, fig.keep="last"}
+```{r 1dpi-gsea-compare-cluster, dev="png", fig.height=15, fig.width=10, fig.keep="last"}
 comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
   contrasts = c(
-    "PNR2 vs. MOCK - 1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
-    "TR4 vs. MOCK - 1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
+    "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
   clusters = c(
     "VCs_5" = "VCs_5",
@@ -455,7 +501,9 @@ comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
   simplify = TRUE
 )
 
-enrichplot::dotplot(comp_enr, showCategory = 40, label_format = 80) +
+comp_enr@compareClusterResult$cluster <- factor(comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5"))
+enrichplot::dotplot(comp_enr, x = "contrast", showCategory = 40, label_format = 80) +
+  ggplot2::facet_grid(~cluster) +
   ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 ```
@@ -463,14 +511,26 @@ enrichplot::dotplot(comp_enr, showCategory = 40, label_format = 80) +
 ```{r fig.height=7, fig.width=10}
 comp_enr %>%
   enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 2, cex_line = 0.4)
+  enrichplot::emapplot(legend_n = 3, cex_line = 0.4)
 ```
 
 ```{r fig.height=10, fig.width=14}
 comp_enr %>% enrichplot::cnetplot(
-  showCategory = 20, cex_line = 0.2, cex_category = 3,
-  node_label = "category"
+    showCategory = 20, cex_line = 0.2, cex_category = 3,
+    node_label = "category"
   )
+```
+
+```{r fig.height=10, fig.width=16}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 1.4, offset_tiplab = 1.8,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 20, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0)))
+p
 ```
 
 ### 1.2 其他注释的功能分析
@@ -543,13 +603,13 @@ head(PNR2_da2)
 
 ```{r fig.height=6, fig.width=12}
 p1 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 1, ont = "BP") %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "PNR2 induced DA1"
   )
 
 p2 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 2, ont = "BP") %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "PNR2 induced DA2"
   )
@@ -561,19 +621,19 @@ p1 + p2
 
 ```{r fig.height=6, fig.width=18}
 p1 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 1, ont = "BP") %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "TR4 induced DA1"
   )
 
 p2 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 3, ont = "BP") %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "TR4 induced DA3"
   )
 
 p3 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 4, ont = "BP") %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "TR4 induced DA4"
   )
@@ -583,7 +643,7 @@ p1 + p2 + p3
 
 做一下主题比较：
 
-```{r fig.height=10, fig.width=7, fig.keep="last"}
+```{r fig.height=12, fig.width=7, fig.keep="last"}
 comp_enr <- make_DA_compare(da_1dpi_marker,
   list(
     "TR4 induced DA1" = list("TR4 vs. MOCK - 1DPI", 1),
@@ -599,7 +659,7 @@ enrichplot::dotplot(comp_enr, showCategory = 20, by = "count", label_format = 60
 ```{r fig.height=7, fig.width=10}
 comp_enr %>%
   enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 2)
+  enrichplot::emapplot(legend_n = 3)
 ```
 
 
@@ -611,13 +671,13 @@ comp_enr %>%
 
 ```{r fig.height=6, fig.width=12}
 p1 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 2, ont = "BP") %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "PNR2 induced DA2"
   )
 
 p2 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 6, ont = "BP") %>%
-  rhapsodykit::enrich_barplot(
+  brookite::enrich_barplot(
     x = "Count", show_category = 20,
     title = "TR4 induced DA6"
   )
@@ -642,7 +702,7 @@ enrichplot::dotplot(comp_enr, showCategory = 20, by = "count", label_format = 60
 ```{r fig.height=7, fig.width=10}
 comp_enr %>%
   enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 2)
+  enrichplot::emapplot(legend_n = 3)
 ```
 
 ##### GSEA 分析
@@ -746,11 +806,27 @@ intersection_query(itsc,
 
 VCs_5 和 MCs_5 的生物主题比较：
 
-```{r enrich-compare, fig.height=12, fig.width=8, fig.keep="last"}
-comp_enr <- performDSCompareORA(ds_res$DESeq2,
+![A nice plot.](`r knitr::fig_chunk('1dpi-ora-compare-cluster', 'png', 1)`)
+
+#### GSEA 分析
+
+前面已经做过了，这里就不复制代码了，直接引用图片就行了。
+
+![A nice plot.](`r knitr::fig_chunk('1dpi-gsea-compare-cluster', 'png', 1)`)
+
+## 3 侵染中期（2DPI）差异状态基因的富集分析
+
+```{r}
+ds_2dpi <- readRDS(Sys.glob("../output/ds_2dpi_*.rds"))
+```
+
+### ORA
+
+```{r 2dpi-ora-compare-cluster, dev="png", fig.height=12, fig.width=8, fig.keep="last"}
+comp_enr <- performDSCompareORA(ds_2dpi$DESeq2,
   contrasts = c(
-    "PNR2 vs. MOCK - 1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
-    "TR4 vs. MOCK - 1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+    "PNR2_2DPI" = "X2DPI.PNR2-X2DPI.MOCK",
+    "TR4_2DPI" = "X2DPI.TR4-X2DPI.MOCK"
   ),
   clusters = c(
     "VCs_5" = "VCs_5",
@@ -758,19 +834,132 @@ comp_enr <- performDSCompareORA(ds_res$DESeq2,
   )
 )
 
-enrichplot::dotplot(comp_enr, showCategory = 40, by = "count", label_format = 60) +
+comp_enr@compareClusterResult$cluster <- factor(comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5"))
+enrichplot::dotplot(
+    comp_enr, x = "contrast",
+    showCategory = 40, by = "count", label_format = 60) +
+  ggplot2::facet_grid(~cluster) +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 ```
 
-```{r fig.height=7, fig.width=10}
-comp_enr %>%
+```{r fig.height=8, fig.width=12}
+p <- comp_enr %>%
   enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 2)
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 9,
+    offset = 2.3, offset_tiplab = 1.8,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 5.5))
+p
 ```
 
-#### GSEA 分析
+### GSEA
 
+```{r 2dpi-gsea-compare-cluster, dev="png", fig.height=15, fig.width=10, fig.keep="last"}
+comp_enr <- performDSCompareGSEA(ds_2dpi$DESeq2,
+  contrasts = c(
+    "PNR2_2DPI" = "X2DPI.PNR2-X2DPI.MOCK",
+    "TR4_2DPI" = "X2DPI.TR4-X2DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_5" = "VCs_5",
+    "MCs_5" = "MCs_5"
+  ),
+  simplify = TRUE
+)
 
+comp_enr@compareClusterResult$cluster <- factor(comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5"))
+enrichplot::dotplot(comp_enr, x = "contrast", showCategory = 40, label_format = 80) +
+  ggplot2::facet_grid(~cluster) +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
 
+```{r fig.height=10, fig.width=16}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 10,
+    offset = 2, offset_tiplab = 1.8,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 20, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0)))
+p
+```
+
+## 4 侵染后期（3DPI）差异状态基因
+
+```{r}
+ds_3dpi <- readRDS(Sys.glob("../output/ds_3dpi_*.rds"))
+```
+
+### ORA
+
+```{r 3dpi-ora-compare-cluster, dev="png", fig.height=12, fig.width=8, fig.keep="last"}
+comp_enr <- performDSCompareORA(ds_3dpi$DESeq2,
+  contrasts = c(
+    "PNR2_3DPI" = "X3DPI.PNR2-X3DPI.MOCK",
+    "TR4_3DPI" = "X3DPI.TR4-X3DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_5" = "VCs_5",
+    "MCs_5" = "MCs_5"
+  )
+)
+
+comp_enr@compareClusterResult$cluster <- factor(comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5"))
+enrichplot::dotplot(
+    comp_enr, x = "contrast",
+    showCategory = 40, by = "count", label_format = 60) +
+  ggplot2::facet_grid(~cluster) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+```{r fig.height=8, fig.width=12}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 7,
+    offset = 2, offset_tiplab = 1.8,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 5.5))
+p
+```
+
+### GSEA
+
+```{r 3dpi-gsea-compare-cluster, dev="png", fig.height=15, fig.width=10, fig.keep="last"}
+comp_enr <- performDSCompareGSEA(ds_3dpi$DESeq2,
+  contrasts = c(
+    "PNR2_3DPI" = "X3DPI.PNR2-X3DPI.MOCK",
+    "TR4_3DPI" = "X3DPI.TR4-X3DPI.MOCK"
+  ),
+  clusters = c(
+    "VCs_5" = "VCs_5",
+    "MCs_5" = "MCs_5"
+  ),
+  simplify = TRUE
+)
+
+comp_enr@compareClusterResult$cluster <- factor(comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5"))
+enrichplot::dotplot(comp_enr, x = "contrast", showCategory = 40, label_format = 80) +
+  ggplot2::facet_grid(~cluster) +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+```{r fig.height=10, fig.width=16}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 11,
+    offset = 2, offset_tiplab = 1.8,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 20, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(7, 0)))
+p
+```
 
 ## 3 给定基因集的表达异质性分析
