@@ -20,9 +20,9 @@
     },
     "AnnotationForge": {
       "Package": "AnnotationForge",
-      "Version": "1.34.1",
+      "Version": "1.36.0",
       "Source": "Bioconductor",
-      "Hash": "b80bdbcce9228c78c97d04a5ac97f551"
+      "Hash": "643d14ff4bd51ce92a0687a3bd14d76e"
     },
     "BH": {
       "Package": "BH",
@@ -169,6 +169,20 @@
       "Repository": "CRAN",
       "Hash": "b56998fff55e4a4b4860ad6e8c67e0f9"
     },
+    "Formula": {
+      "Package": "Formula",
+      "Version": "1.2-4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "cc8c8c4d61346cde1ca60030ff9c241f"
+    },
+    "GA": {
+      "Package": "GA",
+      "Version": "3.2.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "ecd9bc588bf4d8bfb87a239d0b96251b"
+    },
     "GO.db": {
       "Package": "GO.db",
       "Version": "3.14.0",
@@ -212,6 +226,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "c3f7b221e60c28f5f3533d74c6fef024"
+    },
+    "Hmisc": {
+      "Package": "Hmisc",
+      "Version": "4.6-0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "642812f46e5fb638c01150f2a2b5db44"
     },
     "IRanges": {
       "Package": "IRanges",
@@ -414,8 +435,8 @@
       "Package": "SeuratDisk",
       "Version": "0.0.0.9019",
       "Source": "GitHub",
-      "Remotes": "satijalab/seurat-data",
       "RemoteType": "github",
+      "Remotes": "satijalab/seurat-data",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "seurat-disk",
       "RemoteUsername": "mojaveazure",
@@ -522,6 +543,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "332ef4d40f477c72eb61ceea55067cfa"
+    },
+    "amap": {
+      "Package": "amap",
+      "Version": "0.8-18",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "e70ca145347446128fa5817f6f0ca5cb"
     },
     "annotate": {
       "Package": "annotate",
@@ -784,9 +812,21 @@
       "RemoteHost": "api.github.com",
       "RemoteRepo": "clusterProfiler",
       "RemoteUsername": "altairwei",
-      "RemoteRef": "simplify-gsea-compare",
-      "RemoteSha": "c133ca92d45c6997a8eb9522b42ab35c52a1d5e1",
-      "Hash": "e969cdc4a33dfbb517f97ed2f71c991b"
+      "RemoteRef": "altairwei",
+      "RemoteSha": "9368b88f035609d4943bd1296c19aed305b384c8",
+      "Hash": "03dec195cca4d9ef32451f6071fe194b"
+    },
+    "clusteval": {
+      "Package": "clusteval",
+      "Version": "0.2.1",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteUsername": "ramhiser",
+      "RemoteRepo": "clusteval",
+      "RemoteRef": "master",
+      "RemoteSha": "09eae82610a13122d6bfd46480fc4a76eb3c752a",
+      "Hash": "2d6b4058401286123f6f99545e27f2bb"
     },
     "clustree": {
       "Package": "clustree",
@@ -893,6 +933,13 @@
       "Repository": "CRAN",
       "Hash": "65a3d4e2a1619bb85ae0fb64628da972"
     },
+    "dendextend": {
+      "Package": "dendextend",
+      "Version": "1.15.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "02dfbb2e6e66bbdc8eb245106366ccbf"
+    },
     "desc": {
       "Package": "desc",
       "Version": "1.4.0",
@@ -928,6 +975,13 @@
       "Repository": "CRAN",
       "Hash": "2dc413572eb42475179bfe0afabd2adf"
     },
+    "doSNOW": {
+      "Package": "doSNOW",
+      "Version": "1.0.19",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "d37ea40b304eec255022065947092af6"
+    },
     "downloader": {
       "Package": "downloader",
       "Version": "0.4",
@@ -949,12 +1003,26 @@
       "Repository": "CRAN",
       "Hash": "3ce2af5ead3b01c518fd453c7fe5a51a"
     },
+    "dyndimred": {
+      "Package": "dyndimred",
+      "Version": "1.0.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "84836aba1255f877136dfd84dbf898fe"
+    },
+    "dynfeature": {
+      "Package": "dynfeature",
+      "Version": "1.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "0cbcbdf8046e1d2a9d860d00c7ab71c9"
+    },
     "dynguidelines": {
       "Package": "dynguidelines",
       "Version": "1.0.1",
       "Source": "GitHub",
-      "Remotes": "dynverse/dynutils, dynverse/dynwrap",
       "RemoteType": "github",
+      "Remotes": "dynverse/dynutils, dynverse/dynwrap",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "dynguidelines",
       "RemoteUsername": "dynverse",
@@ -962,12 +1030,37 @@
       "RemoteSha": "57f2da74b28eb7a88a16de11e4c3290e6af9b950",
       "Hash": "17383195e9508b52d887738cd7a73e55"
     },
+    "dynmethods": {
+      "Package": "dynmethods",
+      "Version": "1.0.5",
+      "Source": "GitHub",
+      "Remotes": "dynverse/dynutils@master, dynverse/dynwrap@master",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "dynmethods",
+      "RemoteUsername": "dynverse",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "53c6d1d486887692e513cc8537c9caf9ca107160",
+      "Hash": "e41e501a2e349a20e58815cdc6fa3ad6"
+    },
     "dynparam": {
       "Package": "dynparam",
       "Version": "1.0.2",
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "1097da2a437cfc4a3780b1d871a88bd3"
+    },
+    "dynplot": {
+      "Package": "dynplot",
+      "Version": "1.1.2",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "dynplot",
+      "RemoteUsername": "dynverse",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "d64b25cd58ec9f3c801e5842c90c8ff25e1512ba",
+      "Hash": "80e1b4bc9b9deaaa85ec092112ed887b"
     },
     "dynutils": {
       "Package": "dynutils",
@@ -1005,16 +1098,16 @@
     },
     "enrichplot": {
       "Package": "enrichplot",
-      "Version": "1.15.1.993",
+      "Version": "1.15.2",
       "Source": "GitHub",
       "Remotes": "YuLab-SMU/tidydr",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "enrichplot",
-      "RemoteUsername": "YuLab-SMU",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "879e8d9b62fa3ba18d50fac8b5cc715b7c4f4e65",
-      "Hash": "944d604917b0e2631d93b57814e8cf07"
+      "RemoteUsername": "altairwei",
+      "RemoteRef": "fix-treeplot-compareCluster-x-axis-label",
+      "RemoteSha": "1d9a69c1d2462c1380c4497575666213e2d567f5",
+      "Hash": "2a9110f94deee9399b5abed3910d39f8"
     },
     "evaluate": {
       "Package": "evaluate",
@@ -1105,6 +1198,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "e32cfc0973caba11b65b1fa691b4d8c9"
+    },
+    "foreign": {
+      "Package": "foreign",
+      "Version": "0.8-81",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "74628ea7a3be5ee8a7b5bb0a8e84882e"
     },
     "formatR": {
       "Package": "formatR",
@@ -1405,6 +1505,13 @@
       "Repository": "CRAN",
       "Hash": "5b8a2dd0fdbe2ab4f6081e6c7be6dfca"
     },
+    "htmlTable": {
+      "Package": "htmlTable",
+      "Version": "2.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "2b63c1a566e750cf194e6fe72ba24591"
+    },
     "htmltools": {
       "Package": "htmltools",
       "Version": "0.5.2",
@@ -1482,6 +1589,13 @@
       "Repository": "CRAN",
       "Hash": "64778782a89480e9a644f69aad9a2877"
     },
+    "jpeg": {
+      "Package": "jpeg",
+      "Version": "0.1-9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "441ee36360a57b363f4fa3df0c364630"
+    },
     "jquerylib": {
       "Package": "jquerylib",
       "Version": "0.1.4",
@@ -1538,6 +1652,13 @@
       "Repository": "CRAN",
       "Hash": "b64cdbb2b340437c4ee047a1f4c4377b"
     },
+    "latticeExtra": {
+      "Package": "latticeExtra",
+      "Version": "0.6-29",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "590829599d6182cf7461787af34666ee"
+    },
     "lava": {
       "Package": "lava",
       "Version": "1.6.10",
@@ -1578,6 +1699,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "0bde42ee282efb18c7c4e63822f5b4f7"
+    },
+    "lmds": {
+      "Package": "lmds",
+      "Version": "0.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "411e2a28ab33f5d0f3bb2252cf465fb2"
     },
     "lme4": {
       "Package": "lme4",
@@ -2017,6 +2145,13 @@
       "Source": "Bioconductor",
       "Hash": "a701708b518dc3b7d68be91493275ef0"
     },
+    "ranger": {
+      "Package": "ranger",
+      "Version": "0.13.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "420a2d7a05923e33bbdf5b67eaebbfe5"
+    },
     "rappdirs": {
       "Package": "rappdirs",
       "Version": "0.3.3",
@@ -2037,6 +2172,20 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "8f25ebe2ec38b1f2aef3b0d2ef76f6c4"
+    },
+    "reactR": {
+      "Package": "reactR",
+      "Version": "0.4.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "75389c8091eb14ee21c6bc87a88b3809"
+    },
+    "reactable": {
+      "Package": "reactable",
+      "Version": "0.2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "ac1afe50d1c77470a72971a07fd146b1"
     },
     "readr": {
       "Package": "readr",
@@ -2091,8 +2240,8 @@
       "Package": "rhapsodykit",
       "Version": "0.0.0.9012",
       "Source": "GitHub",
-      "Remotes": "mojaveazure/seurat-disk",
       "RemoteType": "github",
+      "Remotes": "mojaveazure/seurat-disk",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "rhapsodykit",
       "RemoteUsername": "altairwei",
@@ -2197,18 +2346,19 @@
       "Source": "GitHub",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
+      "RemoteUsername": "SydneyBioX",
       "RemoteRepo": "scClustBench",
-      "RemoteUsername": "taiyunkim",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "a254e553e102c33b7f59b23c1f994e7730d933f7",
-      "Hash": "545684ad40dc3e5e34dc43cbe2b5eb6b"
+      "RemoteRef": "master",
+      "RemoteSha": "f04813b4c3adc88c7398d3453585b541f2cdf195",
+      "Remotes": "ramhiser/clusteval",
+      "Hash": "c250879402149124f00b46580d54c2d8"
     },
     "scDC": {
       "Package": "scDC",
       "Version": "0.1.0",
       "Source": "GitHub",
-      "Remotes": "SydneyBioX/scClustBench",
       "RemoteType": "github",
+      "Remotes": "SydneyBioX/scClustBench",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "scDC",
       "RemoteUsername": "altairwei",
