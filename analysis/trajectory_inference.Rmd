@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(magrittr)
+library(Matrix)
+library(SingleCellExperiment)
 knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 ```
 
@@ -21,7 +23,21 @@ knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 加载 Suerat 对象：
 
 ```{r}
-obj <- readRDS("../output/obj_annotated.rds")
+obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+```
+
+首先我们需要将 Seurat 对象转换 SingleCellExperiment 对象：
+
+```{r}
+sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = FALSE)
+```
+
+不过这里的 logcounts 数据可能不是 integrated 后的。
+
+这里测试用给，所以只查看表皮细胞：
+
+```{r}
+sce_ep <- sce[, sce$cluster_id %in% c("ECs_1", "ECs_2", "ECs_3")]
 ```
 
 准备 dyno 需要的数据。但 {dynverse} 没有考虑到多样本批次效应修正的问题。 
@@ -29,30 +45,38 @@ obj <- readRDS("../output/obj_annotated.rds")
 > We previously demonstrated the application of clustering methods to the batch-corrected data, but the same principles apply for other analyses like trajectory reconstruction. In general, cell-based analyses are safe to apply on corrected data; indeed, the whole purpose of the correction is to place all cells in the same coordinate space. However, the same cannot be easily said for gene-based procedures like DE analyses or marker gene detection. An arbitrary correction algorithm is not obliged to preserve relative differences in per-gene expression when attempting to align multiple batches. For example, cosine normalization in fastMNN() shrinks the magnitude of the expression values so that the computed log-fold changes have no obvious interpretation.
 > —— http://bioconductor.org/books/3.14/OSCA.multisample/using-corrected-values.html
 
-```{r eval=FALSE}
-library(Matrix)
+```{r}
 dataset <- dynwrap::wrap_expression(
-  expression = t(obj[["RNA"]]@data),
-  counts = t(obj[["RNA"]]@counts)
+  expression = t(assay(sce_ep, "logcounts")),
+  counts = t(assay(sce_ep, "counts"))
 )
 ```
 
 添加额外信息：
 
-```{r eval=FALSE}
+```{r}
 dataset <- dynwrap::add_grouping(
   dataset,
-  Seurat::Idents(obj)
+  sce_ep$cluster_id
 )
 ```
 
 添加降维信息：
 
-```{r eval=FALSE}
+```{r}
 dataset <- dynwrap::add_dimred(
   dataset,
-  Seurat::Embeddings(obj[["umap"]])
+  reducedDim(sce_ep, "PCA")
 )
+
+dataset <- dynwrap::add_dimred(
+  dataset,
+  reducedDim(sce_ep, "UMAP")
+)
+```
+
+```{r}
+scater::plotUMAP(sce_ep)
 ```
 
 ### 2 使用 dynguidelines
@@ -84,6 +108,40 @@ guidelines <- dynguidelines::guidelines(dataset,
 
 我们将使用 Slingshot、PAGA tree、PAGA 以及 Monocle 3
 
+### 3 测试 dyno 的功能
+
+```{r}
+model <- xfun::cache_rds(
+  file = "ti_dyno_ep_model_slingshot.rds",
+  dir = "../output/",
+  clean = FALSE,
+  hash = list(dataset),
+  expr = local({
+    t_start = Sys.time()
+    model <- dynwrap::infer_trajectory(dataset, dynmethods::ti_slingshot())
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    model
+  })
+)
+```
+
+可视化：
+
+```{r}
+head(dynwrap::get_dimred(model), 5)
+```
+
+```{r}
+dynplot::plot_dimred(model)
+```
+
+```{r}
+dimred <- dyndimred::dimred_umap(dataset$expression)
+dynplot::plot_dimred(model, dimred = dimred)
+```
+
 ## 2 使用 {TSCAN} 推断轨迹
 
 首先参考 
@@ -101,14 +159,6 @@ guidelines <- dynguidelines::guidelines(dataset,
 > However, the reliance on clustering is a double-edged sword. If the clusters are not sufficiently granular, it is possible for TSCAN to overlook variation that occurs inside a single cluster. The MST is obliged to pass through each cluster exactly once, which can lead to excessively circuitous paths in overclustered datasets as well as the formation of irrelevant paths between distinct cell subpopulations if the outgroup threshold is too high. The MST also fails to handle more complex events such as “bubbles” (i.e., a bifurcation and then a merging) or cycles.
 
 ### 1 数据准备
-
-首先我们需要将 Seurat 对象转换 SingleCellExperiment 对象：
-
-```{r}
-sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = FALSE)
-```
-
-不过这里的 logcounts 数据可能不是 integrated 后的。
 
 ### 2 推断轨迹
 
@@ -427,8 +477,48 @@ table(curve.assignments) %>% sort(decreasing = TRUE)
 ```
 
 ```{r}
-scater::plotTSNE(sce.sling, colour_by = "slingPseudotime_4") +
+scater::plotUMAP(sce.sling, colour_by = "slingPseudotime_4") +
   ggplot2::coord_fixed()
 ```
 
+TODO: 以 facet 的形式画出所有世系.
+
+### 3.4 表皮细胞的轨迹
+
+获取 Seurat 的子集：
+
+```{r}
+sce_ep <- sce[, sce$cluster_id %in% c("ECs_1", "ECs_2", "ECs_3")]
+```
+
+运行 slingshot
+
+```{r}
+sce.ep.sling <- xfun::cache_rds(
+  file = "ti_ep_slingshot.rds",
+  dir = "../output/",
+  clean = FALSE,
+  expr = local({
+    t_start = Sys.time()
+    sling <- slingshot::slingshot(sce_ep,
+      clusterLabels = sce_ep$cluster_id,
+      reducedDim = "PCA", omega = FALSE)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    sling
+  })
+)
+```
+
+```{r}
+pseudo.paths <- slingshot::slingPseudotime(sce.ep.sling)
+shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
+
+embedded <- slingshot::embedCurves(sce.ep.sling, "UMAP")
+embedded <- slingshot::slingCurves(embedded)
+embedded_list <- lapply(embedded, function(path) data.frame(path$s[path$ord,]))
+
+plot_curve_on_reduc(sce.ep.sling, embedded_list, reduction = "UMAP", color_by = I(shared.pseudo))
+```
 
