@@ -19,7 +19,7 @@ library(magrittr)
 首先加载 Seurat 对象：
 
 ```{r read-seurat-obj}
-obj <- readRDS("../output/obj_annotated.rds")
+obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj))), palette = NULL)
 ```
 
@@ -612,18 +612,18 @@ str(PNR2_da$info)
 
 ##### t-SNE
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
-  plot_cell_score(PNR2_da, "tsne", label = TRUE, label_cols = ident_cols, label_legend = FALSE) +
+  plot_cell_score(PNR2_da, "tsne") +
     ggplot2::coord_fixed() +
     ggplot2::ggtitle("PNR2 vs. MOCK"),
-  plot_cell_score(TR4_da, "tsne", label = TRUE, label_cols = ident_cols, label_legend = FALSE) +
+  plot_cell_score(TR4_da, "tsne") +
     ggplot2::coord_fixed() +
     ggplot2::ggtitle("TR4 vs. MOCK")
 )
 ```
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
   plot_da_site(PNR2_da, "tsne") +
     ggplot2::coord_fixed() +
@@ -636,22 +636,24 @@ patchwork::wrap_plots(
 
 ##### UMAP
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
-  plot_cell_score(PNR2_da, "umap", label = TRUE, label_cols = ident_cols, label_legend = FALSE) +
+  plot_cell_score(PNR2_da, "umap") +
     ggplot2::coord_fixed() +
     ggplot2::ggtitle("PNR2 vs. MOCK"),
-  plot_cell_score(TR4_da, "umap", label = TRUE, label_cols = ident_cols, label_legend = FALSE) +
+  plot_cell_score(TR4_da, "umap") +
     ggplot2::coord_fixed() +
     ggplot2::ggtitle("TR4 vs. MOCK")
 )
 ```
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
   plot_da_site(PNR2_da, "umap") +
+    ggplot2::coord_fixed() +
     ggplot2::ggtitle("PNR2 vs. MOCK"),
   plot_da_site(TR4_da, "umap") +
+    ggplot2::coord_fixed() +
     ggplot2::ggtitle("TR4 vs. MOCK")
 )
 ```
@@ -662,7 +664,7 @@ patchwork::wrap_plots(
 
 ##### t-SNE
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
   plot_cell_label(PNR2_da, "tsne") +
     ggplot2::coord_fixed() +
@@ -675,7 +677,7 @@ patchwork::wrap_plots(
 
 ##### UMAP
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
   plot_cell_label(PNR2_da, "umap") +
     ggplot2::coord_fixed() +
@@ -738,7 +740,7 @@ PNR2_vs_TR4_da <- xfun::cache_rds(
 
 ##### t-SNE
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
   plot_cell_score(PNR2_vs_TR4_da, "tsne") +
     ggplot2::coord_fixed() +
@@ -751,7 +753,7 @@ patchwork::wrap_plots(
 
 ##### UMAP
 
-```{r fig.height=7, fig.width=15}
+```{r fig.height=7, fig.width=15, echo=FALSE}
 patchwork::wrap_plots(
   plot_cell_score(PNR2_vs_TR4_da, "umap") +
     ggplot2::coord_fixed() +
@@ -870,6 +872,26 @@ generate_da_plots(results_1dpi)
 
 ```{r fig.height=6, fig.width=8, results="asis"}
 generate_overlap(results_1dpi) + patchwork::plot_layout(heights = c(1, 3), guides = "collect")
+```
+
+#### Markers
+
+```{r}
+pnr2_da2 <- da_1dpi_marker[["PNR2 vs. MOCK - 1DPI"]]$da.markers[[2]]
+
+pnr2_da2 %>% reactable::reactable(
+  columns = list(
+    .rownames = reactable::colDef(
+      show = FALSE
+    )
+  )
+)
+```
+
+```{r fig.height=12, fig.width=26}
+Seurat::DefaultAssay(obj) <- "RNA"
+Seurat::FeaturePlot(obj, features = head(pnr2_da2$gene, 10), ncol = 5) +
+  ggplot2::coord_fixed()
 ```
 
 ### 2.4 2DPI 样本的分析 {.tabset}
