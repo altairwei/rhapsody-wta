@@ -1,9 +1,15 @@
-准备：
+---
+title: "Sample Correlation Analysis"
+output: html_document
+---
 
-```{r}
+```{r, setup, include=FALSE}
 library(magrittr)
+library(patchwork)
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 ```
 
+## 样本相关行分析
 
 首先准备两个主要的函数：
 
@@ -100,7 +106,7 @@ samples <- c(
   "3DPI-TR4-2"
 )
 
-data_folders <- paste0("../results/", samples)
+data_folders <- paste0("../results/RawOutput/", samples)
 
 perform_sample_correlation_analysis <- function(
   data_folders,
@@ -148,14 +154,14 @@ perform_sample_correlation_analysis <- function(
 
 我们先用 pearson + LogNormalize 看一下：
 
-```{r fig.height=12, fig.width=14, message=FALSE, warning=FALSE}
+```{r cache=TRUE, fig.height=12, fig.width=14, message=FALSE, warning=FALSE}
 perform_sample_correlation_analysis(
   data_folders, "LogNormalize", "avg", "pearson", group_rule = "\\dDPI")
 ```
 
 用 pearson + SCTransform:
 
-```{r fig.height=12, fig.width=14, message=FALSE, warning=FALSE}
+```{r cache=TRUE, fig.height=12, fig.width=14, message=FALSE, warning=FALSE}
 perform_sample_correlation_analysis(
   data_folders, "SCTransform", "avg", "pearson", group_rule = "\\dDPI", verbose = FALSE)
 ```
@@ -163,7 +169,7 @@ perform_sample_correlation_analysis(
 
 用 spearman + LogNormalize:
 
-```{r fig.height=12, fig.width=14, warning=FALSE, message=FALSE}
+```{r cache=TRUE, fig.height=12, fig.width=14, warning=FALSE, message=FALSE}
 perform_sample_correlation_analysis(
   data_folders, "LogNormalize", "avg", "spearman", group_rule = "\\dDPI")
 ```
@@ -171,8 +177,206 @@ perform_sample_correlation_analysis(
 
 我们用 spearman + SCTransform 看一下：
 
-```{r fig.height=12, fig.width=14, warning=FALSE, message=FALSE}
+```{r cache=TRUE, fig.height=12, fig.width=14, warning=FALSE, message=FALSE}
 perform_sample_correlation_analysis(
   data_folders, "SCTransform", "avg", "spearman", group_rule = "\\dDPI", verbose = FALSE)
+```
+
+## 样本数据集比较
+
+### 样本整合后
+
+#### 加载数据
+
+```{r}
+obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+```
+
+#### Get cell embeddings of PCA
+
+```{r}
+npc <- 10
+
+expr_data <- Seurat::Embeddings(obj[["pca"]])[, 1:npc]
+
+head(expr_data)
+```
+
+分割成不同样本的数据：
+
+```{r}
+mat_split <- function(x, f) {
+  stopifnot(nrow(x) == length(f))
+  lapply(split(x, f), matrix, ncol = ncol(x))
+}
+
+expr_list <- mat_split(expr_data, obj$sample)
+
+str(expr_list)
+```
+
+矩阵的 “行” 应该是细胞，“列” 应该是 PCA 的不同轴。
+
+这里我们需要去除完全重叠的点。
+
+```{r}
+expr_list <- lapply(expr_list, function(x) {
+  x[!duplicated(x, MARGIN = 1),]
+})
+```
+
+
+#### Calculate self-PDLR reference
+
+```{r}
+min_cells <- min(sapply(expr_list, nrow))
+
+Xref <- xfun::cache_rds(
+  file = "sc_xref.rds",
+  dir = "../output/",
+  hash = list(npc, min_cells),
+  expr = DensityMorph::reference_distribution(npc, min_cells*100, min_cells)
+)
+```
+
+It seems like `Xref` will determine the layout of final latent space.
+
+#### Subsampling
+
+```{r}
+expr_list_down <- lapply(expr_list, function(x) {
+  idx <- sample(1:nrow(x), min_cells, replace = FALSE)
+  x[idx,]
+})
+
+str(expr_list_down)
+```
+
+#### Calculate latent space
+
+```{r}
+LS <- DensityMorph::latent_space(expr_list_down, Xref)
+```
+
+```{r}
+sample_info <- stringr::str_match(names(expr_list_down), "^(.*)-(.*)-(.*)$")
+
+data_to_plot <- LS$latent_space[, 1:2]
+data_to_plot$Sample <- sample_info[, 1]
+data_to_plot$Time <- sample_info[, 2]
+data_to_plot$Treatment <- sample_info[, 3]
+
+ggplot2::ggplot(data_to_plot, ggplot2::aes(
+    x = A1, y = A2,
+    fill = Treatment, color = Treatment, group = Treatment,
+    shape = Time, label = Sample
+  )) +
+  ggplot2::geom_point(size = 3) +
+  #ggrepel::geom_text_repel(color = "black") +
+  ggplot2::scale_shape_manual(values = c(
+    "0DPI" = 21, "1DPI" = 22, "2DPI" = 23, "3DPI" = 24
+  )) +
+  ggplot2::xlab("LSC1") +
+  ggplot2::ylab("LSC2") +
+  NULL
+```
+
+#### Dim Reduction Plot
+
+```{r fig.height=4, fig.width=9}
+p1 <- Seurat::DimPlot(obj, reduction = "tsne", group.by = "group") +
+  ggplot2::theme(plot.title = ggplot2::element_blank())
+
+p2 <- Seurat::DimPlot(obj, reduction = "pca", group.by = "group") +
+  ggplot2::theme(plot.title = ggplot2::element_blank())
+
+p1 + p2 + patchwork::plot_layout(guides = "collect")
+```
+
+### 样本整合前
+
+#### Load Seurat Object
+
+```{r}
+obj_merged <- readRDS("../results/IntegratedAnalysis/All-Sample-Merge/Seurat_Object_Merged.rds")
+```
+
+#### Get cell embeddings of PCA
+
+```{r}
+expr_data <- Seurat::Embeddings(obj_merged[["pca"]])[, 1:npc]
+
+mat_split <- function(x, f) {
+  stopifnot(nrow(x) == length(f))
+  lapply(split(x, f), matrix, ncol = ncol(x))
+}
+
+expr_list <- mat_split(expr_data, obj_merged$sample)
+
+str(expr_list)
+```
+
+Remove duplicated cells:
+
+```{r}
+expr_list <- lapply(expr_list, function(x) {
+  x[!duplicated(x, MARGIN = 1),]
+})
+```
+
+#### Calculate self-PDLR reference
+
+`npc` and `min_cells` is same to integrated datasets, so we just use pre-calculated `Xref` above.
+
+#### Subsampling
+
+```{r}
+expr_list_down <- lapply(expr_list, function(x) {
+  idx <- sample(1:nrow(x), min_cells, replace = FALSE)
+  x[idx,]
+})
+
+str(expr_list_down)
+```
+
+#### Calculate latent space
+
+```{r}
+LS <- DensityMorph::latent_space(expr_list_down, Xref)
+```
+
+```{r}
+sample_info <- stringr::str_match(names(expr_list_down), "^(.*)-(.*)-(.*)$")
+
+data_to_plot <- LS$latent_space[, 1:2]
+data_to_plot$Sample <- sample_info[, 1]
+data_to_plot$Time <- sample_info[, 2]
+data_to_plot$Treatment <- sample_info[, 3]
+
+ggplot2::ggplot(data_to_plot, ggplot2::aes(
+    x = A1, y = A2,
+    fill = Treatment, color = Treatment,
+    shape = Time, label = Sample
+  )) +
+  ggplot2::geom_point(size = 3) +
+  #ggrepel::geom_text_repel(color = "black") +
+  ggplot2::scale_shape_manual(values = c(
+    "0DPI" = 21, "1DPI" = 22, "2DPI" = 23, "3DPI" = 24
+  )) +
+  ggplot2::xlab("LSC1") +
+  ggplot2::ylab("LSC2") +
+  NULL
+```
+
+#### Dim Reduction Plot
+
+```{r fig.height=4, fig.width=9}
+p1 <- Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "group") +
+  ggplot2::theme(plot.title = ggplot2::element_blank())
+
+p2 <- Seurat::DimPlot(obj_merged, reduction = "pca", group.by = "group") +
+  ggplot2::theme(plot.title = ggplot2::element_blank())
+
+p1 + p2 + patchwork::plot_layout(guides = "collect")
 ```
 
