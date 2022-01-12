@@ -1,0 +1,186 @@
+---
+title: "Midterm Report"
+author: "Altair Wei"
+date: "2022/1/9"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(magrittr)
+loadNamespace("clusterProfiler")
+source("../scripts/UtilityFunctions.R")
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+```
+
+```{r load-data, results='hide'}
+obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+Seurat::DefaultAssay(obj) <- "RNA"
+
+ds_res <- readRDS(Sys.glob("../output/ds_res_*.rds"))
+
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+library(GO.db)
+```
+
+## Single-Cell RNA Sequencing Depicts Cell Subpopulation Shifts of Coleoptile upon Fungi Invading
+
+```{r}
+Seurat::DimPlot(obj, reduction = "umap", cols = Seurat::DiscretePalette(25)) +
+  ggplot2::coord_fixed()
+```
+
+## Pathogen Induced Stress States of Cell Population Define the Heterogeneity of Plant Defence Responses
+
+## Covert Penetration Helps *F. graminearum* Evade Host Recognition
+
+### Comparison between VCs_5 and MCs_5
+
+```{r cache=TRUE}
+comp_enr <- performDSCompareORA(ds_res$DESeq2,
+  contrasts = c(
+    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
+    "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+  ),
+  clusters = c("VCs_5", "MCs_5")
+)
+```
+
+```{r fig.height=8, fig.width=12}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 2, offset_tiplab = 1.8,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 5.5)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+```{r}
+select(GO.db,
+  keys = c(
+    "immune response",
+    "defense response to fungus",
+    "biological process involved in interspecies interaction between organisms",
+    "immune system process",
+    "response to biotic stimulus"
+  ),
+  keytype = "TERM",
+  columns = c("GOID", "TERM", "DEFINITION", "ONTOLOGY")
+) %>%
+  reactable::reactable(columns = list(
+    "TERM" = reactable::colDef(minWidth = 150),
+    "GOID" = reactable::colDef(maxWidth = 120),
+    "DEFINITION" = reactable::colDef(minWidth = 200),
+    "ONTOLOGY" = reactable::colDef(maxWidth = 80)
+  ))
+```
+
+```{r}
+comp_enr[["GO:0006955"]]
+```
+
+```{r fig.height=6, fig.width=12}
+Seurat::FeaturePlot(obj, features = comp_enr[["GO:0006955"]]$MCs_5.TR4_1DPI$`GO:0006955`, ncol = 4) +
+  ggplot2::coord_fixed()
+```
+
+## Candidate genes for *in situ* hybridization
+
+### Un_1
+
+```{r}
+cluster_markers <- readRDS(Sys.glob("../output/int_cluster_markers_*.rds"))
+```
+
+```{r}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "Un_1")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+marker_genes <- cluster_markers_df %>%
+  dplyr::pull(gene) %>%
+  head(10)
+
+brookite::pull_annotation(marker_genes, mart_info = list(
+  mart = "plants_mart",
+  dataset = "taestivum_eg_gene",
+  host = "https://plants.ensembl.org"
+)) %>% reactable::reactable()
+```
+
+```{r fig.height=12, fig.width=26}
+Seurat::FeaturePlot(obj, features = marker_genes, ncol = 5) +
+  ggplot2::coord_fixed()
+```
+
+```{r eval=FALSE}
+brookite::pull_annotation(
+  c(
+    "TraesCS2A02G424800",
+    "TraesCS2B02G444500",
+    "TraesCS2A02G424861"
+  ),
+  mart_info = list(
+    mart = "plants_mart",
+    dataset = "taestivum_eg_gene",
+    host = "https://plants.ensembl.org"
+  )
+)
+```
+
+WAK 相关基因：
+
+```{r fig.height=4, fig.width=12}
+Seurat::FeaturePlot(obj, features = c(
+  "TraesCS2D02G442100",
+  "TraesCS2B02G464100",
+  "TraesCS2A02G071800"
+), ncol = 3) +
+  ggplot2::coord_fixed()
+```
+
+```{r}
+ca_res_nonclust <- readRDS(Sys.glob("../output/ca_res_nonclust_*.rds"))
+
+# Use BCa as CI
+df_to_plot <- ca_res_nonclust$results %>%
+  tibble::as_tibble() %>%
+  dplyr::filter(method == "BCa") %>%
+  dplyr::mutate(
+    time = sapply(strsplit(cond, split = "-"), "[", 1),
+    rep = sapply(strsplit(as.character(subject), split = "-"),
+      function(x) paste(x[2:3], collapse = "-")),
+    treatment = sapply(strsplit(cond, split = "-"), "[", 2)
+  )
+
+prop_df <- ca_res_nonclust$thetastar %>%
+  as.data.frame()
+
+colnames(prop_df) <- paste("BS_", seq_len(ncol(ca_res_nonclust$thetastar)), sep = "")
+
+df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
+  tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
+
+df_to_plot <- dplyr::group_by(df_to_plot, cellTypes, treatment, time) %>%
+  dplyr::summarise(prop = median(prop))
+
+htmltools::browsable(
+  htmltools::tagList(
+    htmltools::tags$button(
+      "Download as CSV",
+      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "prop_table", "prop_table")
+    ),
+    reactable::reactable(
+      df_to_plot,
+      defaultPageSize = 5,
+      elementId = "prop_table"
+    )
+  )
+)
+```
+
