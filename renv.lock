@@ -148,6 +148,18 @@
       "Source": "Bioconductor",
       "Hash": "9ae660d2827845adeaa2fbdc3e6ad468"
     },
+    "DensityMorph": {
+      "Package": "DensityMorph",
+      "Version": "0.1.0",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "DensityMorph",
+      "RemoteUsername": "altairwei",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "35cd826f10f0d0c6b4a1d1017663d895b87dba96",
+      "Hash": "a5316324ecd2524d8dc297e2b0844efb"
+    },
     "DescTools": {
       "Package": "DescTools",
       "Version": "0.99.44",
@@ -536,6 +548,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "4f57884290cc75ab22f4af9e9d4ca862"
+    },
+    "ade4": {
+      "Package": "ade4",
+      "Version": "1.7-18",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c492e20c0e3e8bbb05ce6f57be525897"
     },
     "akima": {
       "Package": "akima",
@@ -1098,7 +1117,7 @@
     },
     "enrichplot": {
       "Package": "enrichplot",
-      "Version": "1.15.2",
+      "Version": "1.15.2.900",
       "Source": "GitHub",
       "Remotes": "YuLab-SMU/tidydr",
       "RemoteType": "github",
@@ -1106,8 +1125,8 @@
       "RemoteRepo": "enrichplot",
       "RemoteUsername": "altairwei",
       "RemoteRef": "fix-treeplot-compareCluster-x-axis-label",
-      "RemoteSha": "1d9a69c1d2462c1380c4497575666213e2d567f5",
-      "Hash": "2a9110f94deee9399b5abed3910d39f8"
+      "RemoteSha": "1f8f7ae8e2080b1e8b4c8c8067fb5dad76bca2e8",
+      "Hash": "997746895d06eef9f1f10660f5798176"
     },
     "evaluate": {
       "Package": "evaluate",
@@ -1978,6 +1997,13 @@
       "Repository": "CRAN",
       "Hash": "60200b6aa32314ac457d3efbb5ccbd98"
     },
+    "pixmap": {
+      "Package": "pixmap",
+      "Version": "0.4-12",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "ff0e0b97265ced0db4d13d0005334d78"
+    },
     "pkgbuild": {
       "Package": "pkgbuild",
       "Version": "1.2.0",
@@ -2019,6 +2045,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "2ebe8c2ec200da649738b0fc35a9b1a1"
+    },
+    "pls": {
+      "Package": "pls",
+      "Version": "2.8-0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "9db5fc070563763ab596a32e453946d7"
     },
     "plyr": {
       "Package": "plyr",
@@ -2182,10 +2215,15 @@
     },
     "reactable": {
       "Package": "reactable",
-      "Version": "0.2.3",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ac1afe50d1c77470a72971a07fd146b1"
+      "Version": "0.2.3.9000",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "reactable",
+      "RemoteUsername": "glin",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "04a3124b1eac0938415878c56806081d4e8ba3b4",
+      "Hash": "7c1423288b2896ab3aa8484ddb047997"
     },
     "readr": {
       "Package": "readr",
@@ -2675,6 +2713,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "50470c7ed0cc8099cbc17b38f0ef621f"
+    },
+    "transport": {
+      "Package": "transport",
+      "Version": "0.12-2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "df93eb933fc43d76c1413a93fdb4cc47"
     },
     "treeio": {
       "Package": "treeio",
