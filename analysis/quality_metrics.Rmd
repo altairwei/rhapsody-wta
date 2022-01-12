@@ -1,3 +1,12 @@
+```{r, setup, include=FALSE}
+library(magrittr)
+library(patchwork)
+```
+
+## 数据处理的 Metrics
+
+### 提取与合并
+
 首先是样品准备：
 
 ```{r}
@@ -28,7 +37,142 @@ samples <- c(
   "3DPI-TR4-2"
 )
 
-data_folders <- paste0("../results/", samples)
+data_folders <- paste0("../results/RawOutput/", samples)
 ```
 
-然后解析 
+然后解析质量控制文件：
+
+```{r}
+parse_metric_file <- function(file) {
+  metric_lines <- readLines(file)
+
+  # Remove file header
+  metric_lines <- metric_lines[-1:-6]
+
+  # Record table index in raw text
+  raw_table_index <- list(
+    "#Sequencing Quality#" = c(0, 0),
+    "#Library Quality#" = c(0, 0),
+    "#Reads and Molecules#" = c(0, 0),
+    "#Cells RSEC#" = c(0, length(metric_lines))
+  )
+
+  current_table <- ""
+  for (index in seq_along(metric_lines)) {
+    line <- metric_lines[index]
+    if (startsWith(line, "#") && endsWith(line, "#")) {
+      current_table <- line
+      raw_table_index[[current_table]][1] <- index + 1
+    } else if (line == "") {
+      raw_table_index[[current_table]][2] <- index - 1
+    }
+  }
+
+  table_list <- purrr::imap(raw_table_index, function(idx, name) {
+    raw_text <- metric_lines[seq(idx[1], idx[2])]
+    if (name == "#Library Quality#")
+      raw_text[1] <- paste0(raw_text[1], ",Library")
+    read.csv(text = raw_text, header = TRUE, stringsAsFactors = FALSE)
+  })
+
+  table_list
+}
+```
+
+合并所有样本：
+
+```{r}
+combine_library_metrics <- function(data_folders) {
+  # Preprocess
+  lib_list <- lapply(data_folders, function(folder) {
+    sample <- basename(folder)
+    metric_file <- Sys.glob(paste0(folder, "/*_Metrics_Summary.csv"))
+    if (length(metric_file) != 1)
+      stop("*_Metrics_Summary.csv not found.")
+    table_list <- parse_metric_file(metric_file)
+  
+    #browser()
+    for (table_name in c("#Sequencing Quality#", "#Library Quality#")) {
+      table <- table_list[[table_name]]
+      if (nrow(table) == 1) {
+        table$Library <- sample
+      } else {
+        table <- table[table$Library == "Combined_stats",]
+        table$Library <- sample
+      }
+      table <- dplyr::select(table, Library, dplyr::everything())
+      table_list[[table_name]] <- table
+    }
+  
+    for (table_name in c("#Reads and Molecules#", "#Cells RSEC#")) {
+      table_list[[table_name]]$Library <- sample
+      table_list[[table_name]] <- dplyr::select(
+        table_list[[table_name]], Library, dplyr::everything())
+    }
+  
+    table_list
+  })
+  
+  tablenames <- c("#Sequencing Quality#", "#Library Quality#", "#Reads and Molecules#", "#Cells RSEC#")
+  names(tablenames) <- tablenames
+  
+  lib_tbl_list <- lapply(tablenames, function(name) {
+      lapply(lib_list, `[[`, name) %>% dplyr::bind_rows()
+    })
+  
+  lib_tbl_list
+}
+
+metrics <- combine_library_metrics(data_folders)
+
+metrics %>% str()
+```
+
+### 展示
+
+```{r}
+make_downloadable_table <- function(metrics, table_name) {
+  id <- table_name %>%
+    stringr::str_replace_all("#", "") %>%
+    stringr::str_replace_all(" ", "-") %>%
+    stringr::str_to_lower()
+  htmltools::browsable(
+    htmltools::tagList(
+      htmltools::tags$button(
+        "Download as CSV",
+        onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", id, id)
+      ),
+      reactable::reactable(
+        metrics[[table_name]],
+        defaultPageSize = 5,
+        elementId = id
+      )
+    )
+  )
+}
+```
+
+
+#### Sequencing Quality
+
+```{r}
+make_downloadable_table(metrics, "#Sequencing Quality#")
+```
+
+#### Library Quality
+
+```{r}
+make_downloadable_table(metrics, "#Library Quality#")
+```
+
+#### Reads and Molecules
+
+```{r}
+make_downloadable_table(metrics, "#Reads and Molecules#")
+```
+
+#### Cells RSEC
+
+```{r}
+make_downloadable_table(metrics, "#Cells RSEC#")
+```
