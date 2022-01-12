@@ -6,6 +6,8 @@ output: html_document
 ```{r, setup, include=FALSE}
 library(magrittr)
 library(patchwork)
+source("../scripts/UtilityFunctions.R")
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 ```
 
 ## 1 所有样本的整合
@@ -28,7 +30,7 @@ obj <- readRDS("../results/IntegratedAnalysis/All-Sample-NoRef-RPCA-An5/Seurat_O
 
 > By connecting clusters in this way we can see how clusters are related to each other, which are clearly distinct and which are unstable.
 
-```{r fig.height=14, fig.width=10}
+```{r}
 library(clustree)
 
 obj <- xfun::cache_rds(
@@ -37,7 +39,9 @@ obj <- xfun::cache_rds(
   expr = Seurat::FindClusters(
     obj, resolution = seq(0, 1.6, 0.2), verbose = FALSE)
 )
+```
 
+```{r fig.height=14, fig.width=10, cache=TRUE}
 clustree::clustree(obj, prefix = "integrated_snn_res.")
 ```
 
@@ -51,7 +55,7 @@ clustree::clustree(obj, prefix = "integrated_snn_res.")
 
 ##### t-SNE
 
-```{r fig.height=10, fig.width=14}
+```{r fig.height=10, fig.width=14, cache=TRUE}
 clustree::clustree_overlay(
   obj,
   prefix = "integrated_snn_res.",
@@ -65,7 +69,7 @@ clustree::clustree_overlay(
 
 ##### UMAP
 
-```{r fig.height=10, fig.width=14}
+```{r fig.height=10, fig.width=14, cache=TRUE}
 clustree::clustree_overlay(
   obj,
   prefix = "integrated_snn_res.",
@@ -449,6 +453,58 @@ Dim3DPlot <- function(obj, dim_prefix, cols) {
 Dim3DPlot(obj, "UMAP_", cols = ident_cols)
 ```
 
+### 1.7 按处理拆分降维图 {.tabset}
+
+将所有样本降维图拆解成 "MOCK-AllSample"、"PNR2-AllSample"以及 "TR4-AllSample"：
+
+```{r}
+obj$treatment_type <- dplyr::recode(obj$group,
+  "0DPI-MOCK" = "MOCK",
+  "1DPI-MOCK" = "MOCK",
+  "2DPI-MOCK" = "MOCK",
+  "3DPI-MOCK" = "MOCK",
+
+  "1DPI-PNR2" = "PNR2",
+  "2DPI-PNR2" = "PNR2",
+  "3DPI-PNR2" = "PNR2",
+
+  "1DPI-TR4"  = "TR4",
+  "2DPI-TR4"  = "TR4",
+  "3DPI-TR4"  = "TR4"
+)
+
+obj$time <- dplyr::recode(obj$group,
+  "0DPI-MOCK" = "0DPI",
+  "1DPI-MOCK" = "1DPI",
+  "2DPI-MOCK" = "2DPI",
+  "3DPI-MOCK" = "3DPI",
+
+  "1DPI-PNR2" = "1DPI",
+  "2DPI-PNR2" = "2DPI",
+  "3DPI-PNR2" = "3DPI",
+
+  "1DPI-TR4"  = "1DPI",
+  "2DPI-TR4"  = "2DPI",
+  "3DPI-TR4"  = "3DPI"
+)
+```
+
+#### t-SNE
+
+```{r fig.height=5, fig.width=14, echo=FALSE}
+Seurat::DimPlot(obj, reduction = "tsne", group.by = "time", split.by = "treatment_type") +
+  ggplot2::coord_fixed() +
+  ggplot2::theme(plot.title = ggplot2::element_blank())
+```
+
+#### UMAP
+
+```{r fig.height=7, fig.width=14, echo=FALSE}
+Seurat::DimPlot(obj, reduction = "umap", group.by = "time", split.by = "treatment_type") +
+  ggplot2::coord_fixed() +
+  ggplot2::theme(plot.title = ggplot2::element_blank())
+```
+
 ## 2 细胞类型 Marker 基因鉴定
 
 因为某些 cluster 不是在所有样本中都存在，所以我们不能使用 ConservedMarker 。
@@ -471,46 +527,18 @@ cluster_markers %>% tibble::as_tibble()
 
 ### 2.2 绘制身份待定 cluster 的 Marker
 
-```{r}
-marker_table <- function(df) {
-  reactable::reactable(df,
-    defaultColDef = reactable::colDef(
-      minWidth = 40
-    ),
-    columns = list(
-      .rownames = reactable::colDef(name = "Gene", minWidth = 80),
-      p_val = reactable::colDef(
-        cell = function(x) format(x, digits=3, scientific = TRUE)
-      ),
-      p_val_adj = reactable::colDef(
-        cell = function(x) format(x, digits=3, scientific = TRUE)
-      ),
-      avg_log2FC = reactable::colDef(
-        format = reactable::colFormat(
-          digits = 2
-        )
-      ),
-      pct.1 = reactable::colDef(
-        format = reactable::colFormat(
-          percent = TRUE,
-          digits = 1
-        )
-      ),
-      pct.2 = reactable::colDef(
-        format = reactable::colFormat(
-          percent = TRUE,
-          digits = 1
-        )
-      ),
-      gene = reactable::colDef(
-        show = FALSE
-      )
-    )
-  )
-}
+为了做功能富集分析：
+
+```{r results='hide'}
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+
+background <- rownames(obj)
 ```
 
-#### Un_1
+#### Unknown Cells {.tabset}
+
+##### Un_1
 
 ```{r}
 cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "Un_1")
@@ -529,7 +557,23 @@ marker_genes
 Seurat::FeaturePlot(obj, features = marker_genes)
 ```
 
-#### Un_2
+```{r enrichGO}
+enr <- clusterProfiler::enrichGO(
+    cluster_markers_df$gene,
+    OrgDb = org.Taestivum.iwgsc.db,
+    keyType = "GID",
+    ont = "BP",
+    universe = background) %>%
+  clusterProfiler::simplify()
+```
+
+```{r fig.height=5, fig.width=10}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40, label_format_cladelab = 20, offset = 2)
+```
+
+##### Un_2
 
 ```{r}
 cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "Un_2")
@@ -548,9 +592,202 @@ marker_genes
 Seurat::FeaturePlot(obj, features = marker_genes)
 ```
 
-#### MCs_4
+```{r}
+enr <- clusterProfiler::enrichGO(
+    cluster_markers_df$gene,
+    OrgDb = org.Taestivum.iwgsc.db,
+    keyType = "GID",
+    ont = "BP",
+    universe = background) %>%
+  clusterProfiler::simplify()
+```
+
+```{r fig.height=5, fig.width=10}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40, label_format_cladelab = 20, offset = 2)
+```
+
+#### Cortex Cells {.tabset}
+
+##### CCs_1
+
+```{r CCs_1}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_1")
+marker_table(cluster_markers_df)
+```
+
+##### CCs_2
+
+```{r CCs_2}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_2")
+marker_table(cluster_markers_df)
+```
 
 ```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### CCs_3
+
+```{r CCs_3}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_3")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 11)
+```
+
+##### CCs_4
+
+```{r CCs_4}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_4")
+marker_table(cluster_markers_df)
+```
+
+##### CCs_5
+
+```{r CCs_5}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_5")
+marker_table(cluster_markers_df)
+```
+
+##### CCs_6
+
+```{r CCs_6}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_6")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### CCs_7
+
+```{r CCs_7}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_7")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### CCs_8
+
+```{r CCs_8}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "CCs_8")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+#### Mesophyll Cells {.tabset}
+
+##### MCs_1
+
+```{r MCs_1}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "MCs_1")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### MCs_2
+
+```{r MCs_2}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "MCs_2")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### MCs_3
+
+```{r MCs_3}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "MCs_3")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### MCs_4
+
+```{r MCs_4}
 cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "MCs_4")
 marker_table(cluster_markers_df)
 ```
@@ -567,9 +804,21 @@ marker_genes
 Seurat::FeaturePlot(obj, features = marker_genes)
 ```
 
-#### MCs_5
-
 ```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 8)
+```
+
+##### MCs_5
+
+```{r MCs_5}
 cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "MCs_5")
 marker_table(cluster_markers_df)
 ```
@@ -586,26 +835,47 @@ marker_genes
 Seurat::FeaturePlot(obj, features = marker_genes)
 ```
 
-#### VCs_5
-
 ```{r}
-cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_5")
+<<enrichGO>>
+```
+
+```{r fig.height=8, fig.width=14}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, label_format_cladelab = 20,
+    offset = 1.8, nWords = 0)
+```
+
+#### Vascular Cells {.tabset}
+
+##### VCs_1
+
+```{r VCs_1}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_1")
 marker_table(cluster_markers_df)
 ```
 
 ```{r}
-marker_genes <- cluster_markers_df %>%
-  dplyr::pull(gene) %>%
-  head(9)
-
-marker_genes
+<<enrichGO>>
 ```
 
-```{r fig.height=12, fig.width=12}
-Seurat::FeaturePlot(obj, features = marker_genes)
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
 ```
 
-#### VCs_3
+##### VCs_2
+
+```{r}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_2")
+marker_table(cluster_markers_df)
+```
+
+##### VCs_3
 
 ```{r}
 cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_3")
@@ -624,10 +894,41 @@ marker_genes
 Seurat::FeaturePlot(obj, features = marker_genes)
 ```
 
-#### VCs_2
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=10, fig.width=14}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 2, nWords = 0,
+    nCluster = 10)
+```
+
+##### VCs_4
+
+```{r VCs_4}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_4")
+marker_table(cluster_markers_df)
+```
 
 ```{r}
-cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_2")
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### VCs_5
+
+```{r}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_5")
 marker_table(cluster_markers_df)
 ```
 
@@ -640,5 +941,114 @@ marker_genes
 ```
 
 ```{r fig.height=12, fig.width=12}
-#Seurat::FeaturePlot(obj, features = marker_genes)
+Seurat::FeaturePlot(obj, features = marker_genes)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=10, fig.width=14}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, label_format_cladelab = 20, nWords = 0,
+    offset = 2, nCluster = 10)
+```
+
+##### VCs_6
+
+```{r VCs_6}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "VCs_6")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+#### Epidermal Cells {.tabset}
+
+##### ECs_1
+
+```{r ECs_1}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "ECs_1")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+##### ECs_2
+
+```{r ECs_2}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "ECs_2")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 12)
+```
+
+##### ECs_3
+
+```{r ECs_3}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "ECs_3")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
+```
+
+#### Guard Cells
+
+```{r GCs}
+cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "GCs")
+marker_table(cluster_markers_df)
+```
+
+```{r}
+<<enrichGO>>
+```
+
+```{r fig.height=9, fig.width=12}
+enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(showCategory = 40,
+    label_format_cladelab = 20, offset = 1, nWords = 0,
+    nCluster = 10)
 ```

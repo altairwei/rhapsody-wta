@@ -111,7 +111,7 @@ performDSCompareORA <- function(
 marker_table <- function(df) {
   df %>%
     dplyr::select(gene, dplyr::everything()) %>%
-    reactable::reactable(df,
+    reactable::reactable(
       defaultColDef = reactable::colDef(
         minWidth = 40
       ),
