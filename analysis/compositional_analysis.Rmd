@@ -18,7 +18,7 @@ library(magrittr)
 首先加载 Seurat 对象：
 
 ```{r}
-obj <- readRDS("../output/obj_annotated.rds")
+obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
 ```
 
 #### 1.1.1 数据类型
@@ -169,7 +169,7 @@ plot_cell_population_by_time(ca_res_nonclust)
 
 Cell Proportion Bootstrap Distribution
 
-```{r fig.height=10, fig.width=12}
+```{r}
 plot_bootstrap_distribution <- function(
   res, clusters = NULL,
   facet_by = "cellTypes", ncol = NULL, nrow = NULL
@@ -230,8 +230,15 @@ plot_bootstrap_distribution <- function(
   
   p
 }
+```
 
-plot_bootstrap_distribution(ca_res_nonclust)
+```{r fig.height=10, fig.width=13, dev="svg"}
+p <- plot_bootstrap_distribution(ca_res_nonclust) +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 16)
+  )
+
+p
 ```
 
 
