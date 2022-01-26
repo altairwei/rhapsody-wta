@@ -176,3 +176,29 @@ make_downloadable_table(metrics, "#Reads and Molecules#")
 ```{r}
 make_downloadable_table(metrics, "#Cells RSEC#")
 ```
+
+## 质量控制
+
+```{r fig.height=2, fig.width=3}
+DefaultAssay(obj_taes) <- "RNA"
+
+detected <- rownames(obj_taes)
+mt_genes <- intersect(readLines("../data/Ta_mt_gene_list.txt"), detected)
+cp_genes <- intersect(readLines("../data/Ta_cp_gene_list.txt"), detected)
+
+obj_taes[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj_taes, features = mt_genes)
+obj_taes[["percent.cp"]] <- Seurat::PercentageFeatureSet(obj_taes, features = cp_genes)
+
+Seurat::VlnPlot(
+  obj_taes,
+  features = c("percent.mt", "percent.cp"),
+  group.by = "group"
+)
+```
+
+```{r fig.height=2, fig.width=4}
+plot1 <- Seurat::FeatureScatter(obj_taes, feature1 = "nCount_RNA", feature2 = "percent.mt", group.by = "group")
+plot2 <- Seurat::FeatureScatter(obj_taes, feature1 = "nCount_RNA", feature2 = "percent.cp", group.by = "group")
+plot1 + plot2 + patchwork::plot_layout(guides = "collect")
+```
+
