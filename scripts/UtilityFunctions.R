@@ -105,6 +105,91 @@ performDSCompareORA <- function(
   comp_enr
 }
 
+performDSEnrichGSEA <- function(
+  ds, contrasts, clusters,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
+  
+  ## 我们不需要依据 FDR 来筛选基因，只需要 logFC 来排序
+  gsea_df <- ds %>%
+    rhapsodykit::diff_state_pull(contrasts, clusters, c("gene", "logFC"))
+  
+  ## feature 1: numeric vector
+  geneList <- gsea_df[, 2]
+  
+  ## feature 2: named vector
+  names(geneList) <- as.character(gsea_df[, 1])
+  
+  ## feature 3: decreasing order
+  geneList <- sort(geneList, decreasing = TRUE)
+  
+  gsea <- clusterProfiler::gseGO(
+    geneList,
+    ont = ont,
+    OrgDb = org.Taestivum.iwgsc.db,
+    keyType = "GID"
+  )
+  
+  if (simplify && ont != "ALL")
+    gsea <- clusterProfiler::simplify(gsea)
+  
+  list(
+    gsea = gsea,
+    fc = geneList
+  )
+  
+}
+
+performDSCompareGSEA <- function(
+  ds, contrasts, clusters,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
+  
+  if (is.null(names(contrasts)))
+    names(contrasts) <- contrasts
+  if (is.null(names(clusters)))
+    names(clusters) <- clusters
+  
+  compare_df <- purrr::imap(clusters, function(clr, clr_name) {
+    purrr::imap(contrasts, function(con, con_name) {
+      df <- ds %>%
+        rhapsodykit::diff_state_pull(con, clr, c("gene", "logFC"))
+      geneList <- df[, 2]
+      names(geneList) <- as.character(df[, 1])
+      geneList <- sort(geneList, decreasing = TRUE)
+      data.frame(
+        gene = names(geneList),
+        fc = geneList,
+        cluster = clr_name,
+        contrast = con_name
+      )
+    })
+  }) %>%
+    unlist(recursive = FALSE) %>%
+    dplyr::bind_rows()
+  
+  compare_df$cluster <- factor(compare_df$cluster, levels = names(clusters))
+  compare_df$contrast <- factor(compare_df$contrast, levels = names(contrasts))
+  
+  comp_enr <- clusterProfiler::compareCluster(
+    gene | fc ~ cluster + contrast,
+    data = compare_df,
+    OrgDb = org.Taestivum.iwgsc.db,
+    fun = "gseGO",
+    keyType = "GID",
+    ont = ont
+  )
+  
+  if (simplify && ont != "ALL")
+    comp_enr <- clusterProfiler::simplify(comp_enr, cutoff = 0.5)
+  
+  comp_enr
+}
+
 #' Display cluster markers in a html table
 #'
 #' @param df Data frame returned by Seurat::FindAllMarkers
@@ -116,7 +201,7 @@ marker_table <- function(df) {
         minWidth = 40
       ),
       columns = list(
-        gene = reactable::colDef(name = "Gene", minWidth = 80),
+        gene = reactable::colDef(minWidth = 80),
         p_val = reactable::colDef(
           cell = function(x) format(x, digits=3, scientific = TRUE)
         ),
