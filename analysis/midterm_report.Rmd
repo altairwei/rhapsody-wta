@@ -30,9 +30,67 @@ Seurat::DimPlot(obj, reduction = "umap", cols = Seurat::DiscretePalette(25)) +
   ggplot2::coord_fixed()
 ```
 
+### Cell population proportional change
+
+```{r}
+ca_res_nonclust <- readRDS(Sys.glob("../output/ca_res_nonclust_*.rds"))
+
+# Use BCa as CI
+df_to_plot <- ca_res_nonclust$results %>%
+  tibble::as_tibble() %>%
+  dplyr::filter(method == "BCa") %>%
+  dplyr::mutate(
+    time = sapply(strsplit(cond, split = "-"), "[", 1),
+    rep = sapply(strsplit(as.character(subject), split = "-"),
+      function(x) paste(x[2:3], collapse = "-")),
+    treatment = sapply(strsplit(cond, split = "-"), "[", 2)
+  )
+
+prop_df <- ca_res_nonclust$thetastar %>%
+  as.data.frame()
+
+colnames(prop_df) <- paste("BS_", seq_len(ncol(ca_res_nonclust$thetastar)), sep = "")
+
+df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
+  tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
+
+df_to_plot <- dplyr::group_by(df_to_plot, cellTypes, treatment, time) %>%
+  dplyr::summarise(prop = median(prop))
+
+htmltools::browsable(
+  htmltools::tagList(
+    htmltools::tags$button(
+      "Download as CSV",
+      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "prop_table", "prop_table")
+    ),
+    reactable::reactable(
+      df_to_plot,
+      defaultPageSize = 5,
+      elementId = "prop_table"
+    )
+  )
+)
+```
+
 ## Pathogen Induced Stress States of Cell Population Define the Heterogeneity of Plant Defence Responses
 
 ## Covert Penetration Helps *F. graminearum* Evade Host Recognition
+
+### 1DPI DEGs
+
+```{r}
+df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
+dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs. 1DPI-MOCK", y_var = "p_adj.glb") +
+  ggplot2::facet_wrap(~cluster_id, scales = "free_y")
+```
+
+```{r}
+df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
+dplyr::filter(df_to_plot, contrast == "X1DPI.TR4-X1DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "1DPI-TR4 vs. 1DPI-MOCK", y_var = "p_adj.glb") +
+  ggplot2::facet_wrap(~cluster_id, scales = "free_y")
+```
 
 ### Comparison between VCs_5 and MCs_5
 
@@ -80,6 +138,46 @@ select(GO.db,
 ```
 
 ```{r}
+DEGs_1DPI <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_format() %>%
+  dplyr::filter(
+    contrast %in% c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
+    cluster_id %in% c("VCs_5", "MCs_5")) %>%
+  dplyr::select(gene, cluster_id, contrast, logFC, p_val, p_adj.loc, p_adj.glb)
+
+anno <- brookite::pull_annotation(
+    DEGs_1DPI$gene,
+    mart_info = list(
+      mart = "plants_mart",
+      dataset = "taestivum_eg_gene",
+      host = "https://plants.ensembl.org"
+    ),
+    dest_attrs = c(
+      Description = "description",
+      GO_Name = "name_1006"
+    ))
+
+DEGs_1DPI <- dplyr::left_join(DEGs_1DPI, anno, by = c("gene" = "ensembl_gene_id")) %>%
+  dplyr::select(gene, cluster_id, contrast, Description, GO_Name, dplyr::everything())
+
+htmltools::browsable(
+  htmltools::tagList(
+    htmltools::tags$button(
+      "Download as CSV",
+      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "deg_1dpi_table", "deg_1dpi_table")
+    ),
+    reactable::reactable(
+      DEGs_1DPI,
+      defaultPageSize = 5,
+      elementId = "deg_1dpi_table"
+    )
+  )
+)
+```
+
+
+```{r}
 comp_enr[["GO:0006955"]]
 ```
 
@@ -88,9 +186,65 @@ Seurat::FeaturePlot(obj, features = comp_enr[["GO:0006955"]]$MCs_5.TR4_1DPI$`GO:
   ggplot2::coord_fixed()
 ```
 
+### 其他细胞类型的 GSEA 比较
+
+```{r other-gsea, cache=TRUE}
+comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
+  contrasts = c(
+    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
+    "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+  ),
+  clusters = c(
+    "CCs_1", "CCs_2", "CCs_3", "CCs_6",
+    "CCs_7", "CCs_8", "ECs_1", "ECs_2",
+    "GCs",   "MCs_1", "MCs_2", "MCs_3",
+    "Un_1",  "Un_2",  "VCs_4"
+  ),
+  simplify = TRUE
+)
+```
+
+```{r fig.height=24, fig.width=24}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 20, nCluster = 20,
+    offset = 1, offset_tiplab = 0.22,
+    label_format_cladelab = 5,
+    geneClusterPanel = "heatMap", cex_category = 20, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(8, 0))) +
+  ggplot2::coord_cartesian()
+p
+```
+
+### NLR 基因与 DS 基因的交集
+
+```{r}
+NLRs <- readr::read_csv("../tmp/2020Frontiers in Genetics-Wheat DR genes-NLRs.csv") %>%
+  .[, 1, drop=TRUE] %>%
+  unique()
+
+NB_ARCs <- readLines("../tmp/NB-ARC.txt") %>% unique()
+
+LRRs <- readLines("../tmp/LRR.txt") %>% unique()
+
+CCs <- readLines("../tmp/CC.txt") %>% unique()
+
+NHPs <- readLines("../tmp/NHP.txt") %>% unique()
+
+ds_genes <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_format() %>%
+  .$gene %>%
+  unique()
+
+intersect(NHPs, ds_genes) %>% cat(sep="\n")
+```
+
+
 ## Candidate genes for *in situ* hybridization
 
-### Un_1
+### Un_1 Markers
 
 ```{r}
 cluster_markers <- readRDS(Sys.glob("../output/int_cluster_markers_*.rds"))
@@ -106,81 +260,128 @@ marker_genes <- cluster_markers_df %>%
   dplyr::pull(gene) %>%
   head(10)
 
-brookite::pull_annotation(marker_genes, mart_info = list(
-  mart = "plants_mart",
-  dataset = "taestivum_eg_gene",
-  host = "https://plants.ensembl.org"
-)) %>% reactable::reactable()
-```
+anno <- brookite::pull_annotation(cluster_markers_df$gene,
+    mart_info = list(
+      mart = "plants_mart",
+      dataset = "taestivum_eg_gene",
+      host = "https://plants.ensembl.org"
+    ),
+    dest_attrs = c(
+      Description = "description",
+      GO_ID = "go_id",
+      GO_Name = "name_1006",
+      GO_Level = "namespace_1003"
+    ))
 
-```{r fig.height=12, fig.width=26}
-Seurat::FeaturePlot(obj, features = marker_genes, ncol = 5) +
-  ggplot2::coord_fixed()
-```
-
-```{r eval=FALSE}
-brookite::pull_annotation(
-  c(
-    "TraesCS2A02G424800",
-    "TraesCS2B02G444500",
-    "TraesCS2A02G424861"
-  ),
-  mart_info = list(
-    mart = "plants_mart",
-    dataset = "taestivum_eg_gene",
-    host = "https://plants.ensembl.org"
-  )
-)
-```
-
-WAK 相关基因：
-
-```{r fig.height=4, fig.width=12}
-Seurat::FeaturePlot(obj, features = c(
-  "TraesCS2D02G442100",
-  "TraesCS2B02G464100",
-  "TraesCS2A02G071800"
-), ncol = 3) +
-  ggplot2::coord_fixed()
-```
-
-```{r}
-ca_res_nonclust <- readRDS(Sys.glob("../output/ca_res_nonclust_*.rds"))
-
-# Use BCa as CI
-df_to_plot <- ca_res_nonclust$results %>%
-  tibble::as_tibble() %>%
-  dplyr::filter(method == "BCa") %>%
-  dplyr::mutate(
-    time = sapply(strsplit(cond, split = "-"), "[", 1),
-    rep = sapply(strsplit(as.character(subject), split = "-"),
-      function(x) paste(x[2:3], collapse = "-")),
-    treatment = sapply(strsplit(cond, split = "-"), "[", 2)
-  )
-
-prop_df <- ca_res_nonclust$thetastar %>%
-  as.data.frame()
-
-colnames(prop_df) <- paste("BS_", seq_len(ncol(ca_res_nonclust$thetastar)), sep = "")
-
-df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
-  tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
-
-df_to_plot <- dplyr::group_by(df_to_plot, cellTypes, treatment, time) %>%
-  dplyr::summarise(prop = median(prop))
+Un1Markers <- dplyr::left_join(cluster_markers_df, anno, by = c("gene" = "ensembl_gene_id")) %>%
+  dplyr::select(gene, cluster, Description, GO_Name, avg_log2FC, pct.1, pct.2, p_val_adj)
 
 htmltools::browsable(
   htmltools::tagList(
     htmltools::tags$button(
       "Download as CSV",
-      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "prop_table", "prop_table")
+      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "un1_marker_table", "un1_marker_table")
     ),
     reactable::reactable(
-      df_to_plot,
+      Un1Markers,
       defaultPageSize = 5,
-      elementId = "prop_table"
+      elementId = "un1_marker_table"
     )
   )
 )
 ```
+
+
+```{r fig.height=12, fig.width=26}
+Seurat::FeaturePlot(obj, features = marker_genes, ncol = 5) &
+  ggplot2::coord_fixed()
+```
+
+```{r}
+gr <- clusterProfiler::groupGO(
+  Un1Markers$gene,
+  keyType = "GID",
+  ont = "BP",
+  level = 3,
+  OrgDb = "org.Taestivum.iwgsc.db"
+)
+
+reactable::reactable(gr@result %>% dplyr::filter(Count != 0))
+```
+
+```{r}
+hfile <- SeuratDisk::Connect("../output/obj_annotated.h5seurat")
+data_to_plot <- SeuratDisk::FetchCellData(hfile, vars = c("ident", "UMAP_1", "UMAP_2"))
+hfile$close_all()
+
+ggplot2::ggplot(
+    data = data_to_plot,
+    mapping = ggplot2::aes_string(
+      x = "UMAP_1", y = "UMAP_2", color = "ident")) +
+  ggplot2::geom_point(size = 1) +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(length(levels(data_to_plot$ident)))) +
+  ggplot2::coord_fixed() +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 3))) +
+  cowplot::theme_cowplot()
+```
+
+```{r}
+hfile <- SeuratDisk::Connect("../output/obj_annotated.h5seurat")
+data_to_plot <- SeuratDisk::FetchCellData(
+  hfile,
+  vars = c("ident", "UMAP_1", "UMAP_2", "rna_TraesCS1B02G404500")
+)
+hfile$close_all()
+
+data_to_plot %>%
+  dplyr::arrange(.data[["rna_TraesCS1B02G404500"]]) %>%
+  ggplot2::ggplot(
+      mapping = ggplot2::aes_string(
+        x = "UMAP_1", y = "UMAP_2", color = "rna_TraesCS1B02G404500")) +
+    ggplot2::geom_point(size = .2) +
+    ggplot2::scale_colour_gradient(low = "lightgrey", high = "blue") +
+    ggplot2::ggtitle("rna_TraesCS1B02G404500") +
+    ggplot2::coord_fixed() +
+    cowplot::theme_cowplot() +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(hjust = 0.5),
+      legend.title = ggplot2::element_blank()
+    )
+```
+
+```{r}
+Seurat::FeaturePlot(
+    obj, features = c("rna_TraesCS1B02G404500"),
+    reduction = "umap", order = TRUE
+  ) &
+  ggplot2::coord_fixed()
+```
+
+
+看两个基因的共表达情况：
+
+```{r fig.height=4, fig.width=12}
+Seurat::FeaturePlot(
+    obj, features = c("rna_TraesCS1B02G404500", "rna_TraesCS7D02G255100"),
+    reduction = "umap", order = TRUE, blend = TRUE
+  ) &
+  ggplot2::coord_fixed()
+```
+
+```{r}
+Seurat:::SingleExIPlot(
+    type = "violin",
+    data = data_to_plot[, "rna_TraesCS1B02G404500", drop = FALSE],
+    idents = data_to_plot$ident,
+    adjust = 1,
+    pt.size = 1) +
+  ggplot2::guides(fill = "none")
+```
+
+```{r}
+
+```
+
 
