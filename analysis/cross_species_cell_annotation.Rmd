@@ -1,0 +1,78 @@
+---
+title: "Cross-Species Cell Annotation"
+author: "Altair Wei"
+date: "2022/1/23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(magrittr)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 同源基因分析
+
+### 加载小麦和拟南芥单细胞数据集
+
+拟南芥：
+
+```{r}
+obj_ath <- readRDS("../tmp/shoots_obj.rds")
+logcounts_ath <- obj_ath@assays$RNA@data
+celldata_ath <- obj_ath@meta.data[, c("orig.cluster", "sample")]
+```
+
+小麦：
+
+```{r}
+obj_taes <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+logcounts_taes <- obj_taes@assays$RNA@data
+celldata_taes <- obj_taes@meta.data[, c("sample", "group")]
+celldata_taes$treatment <- stringr::str_remove(celldata_taes$group, "\\dDPI-")
+```
+
+### 加载同源关系
+
+```{r}
+homolog_df <- readr::read_csv("../tmp/wheat_homolog.csv")
+```
+
+### 小麦同源基因
+
+```{r dev="svglite"}
+library(org.Taestivum.iwgsc.db)
+
+fit <- eulerr::euler(
+  list(
+    Wheat_All = keys(org.Taestivum.iwgsc.db, keytype = "GID"),
+    Detected = rownames(logcounts_taes),
+    Has_Homolog = unique(homolog_df$`Gene stable ID`),
+    HVGs = rownames(obj_taes@assays$integrated)
+  ),
+  shape = "ellipse"
+)
+
+plot(fit, quantities = list(type = c("percent", "counts")), legend = TRUE)
+```
+
+### 拟南芥同源基因
+
+```{r dev="svglite"}
+library(org.At.tair.db)
+
+ath_genes <- readLines("../tmp/TAIR10_all_gene_models") %>%
+  stringr::str_remove("\\.\\d*$") %>%
+  unique()
+
+fit <- eulerr::euler(
+  list(
+    Arabidopsis_All = ath_genes,
+    Detected = rownames(logcounts_ath),
+    Has_Homolog = unique(homolog_df$`Arabidopsis thaliana gene stable ID`)
+  )
+)
+
+plot(fit, quantities = list(type = c("percent", "counts")), legend = TRUE)
+```
+
+
