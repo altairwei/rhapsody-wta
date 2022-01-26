@@ -954,9 +954,15 @@ VCs_5 和 MCs_5 的生物主题比较：
 ```{r cache=TRUE}
 comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
   contrasts = c(
+    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
     "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
-  clusters = c("CCs_1", "CCs_2", "ECs_1", "MCs_1", "Un_2", "VCs_4"),
+  clusters = c(
+    "CCs_1", "CCs_2", "CCs_3", "CCs_6",
+    "CCs_7", "CCs_8", "ECs_1", "ECs_2",
+    "GCs",   "MCs_1", "MCs_2", "MCs_3",
+    "Un_1",  "Un_2",  "VCs_4"
+  ),
   simplify = TRUE
 )
 ```
