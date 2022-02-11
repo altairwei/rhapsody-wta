@@ -61,22 +61,18 @@ dataset <- dynwrap::add_grouping(
 )
 ```
 
-添加降维信息：
+添加降维信息到 prior 中，只有这样才能将批次效应移除的效果考虑进去：
 
 ```{r}
-dataset <- dynwrap::add_dimred(
+dataset <- dynwrap::add_prior_information(
   dataset,
-  reducedDim(sce_ep, "PCA")
-)
-
-dataset <- dynwrap::add_dimred(
-  dataset,
-  reducedDim(sce_ep, "UMAP")
+  dimred = reducedDim(sce_ep, "PCA")
 )
 ```
 
 ```{r}
-scater::plotUMAP(sce_ep)
+scater::plotUMAP(sce_ep) +
+  ggplot2::coord_fixed()
 ```
 
 ### 2 使用 dynguidelines
@@ -110,11 +106,10 @@ guidelines <- dynguidelines::guidelines(dataset,
 
 ### 3 测试 dyno 的功能
 
-```{r}
+```{r run-dyno}
 model <- xfun::cache_rds(
   file = "ti_dyno_ep_model_slingshot.rds",
   dir = "../output/",
-  clean = FALSE,
   hash = list(dataset),
   expr = local({
     t_start = Sys.time()
@@ -133,13 +128,30 @@ model <- xfun::cache_rds(
 head(dynwrap::get_dimred(model), 5)
 ```
 
+```{r fig.height=4, fig.width=8}
+dynplot::plot_dendro(model, grouping = dynwrap::group_onto_nearest_milestones(model)) +
+dynplot::plot_dendro(model, color_cells = "grouping", grouping = sce_ep$group_id)
+```
 ```{r}
-dynplot::plot_dimred(model)
+model <- dynwrap::add_root(model, root_milestone_id = "3")
+```
+
+
+```{r fig.height=6, fig.width=12}
+dynplot::plot_dimred(model, grouping = dynwrap::group_onto_nearest_milestones(model)) +
+dynplot::plot_dimred(model, color_cells = "grouping", grouping = sce_ep$group_id)
 ```
 
 ```{r}
-dimred <- dyndimred::dimred_umap(dataset$expression)
-dynplot::plot_dimred(model, dimred = dimred)
+dynplot::plot_dimred(model,
+    dimred = reducedDim(sce_ep, "UMAP"),
+    color_cells = "grouping",
+    grouping = sce_ep$cluster_id
+  ) +
+  ggplot2::coord_fixed() +
+  ggplot2::ylim(8, 18) +
+#  ggplot2::xlim(-3, 3)
+  NULL
 ```
 
 ## 2 使用 {TSCAN} 推断轨迹
