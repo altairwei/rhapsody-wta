@@ -165,6 +165,7 @@ if (!is.null(options$data_list)) {
   data_df <- readr::read_csv(
     options$data_list,
     col_names = TRUE,
+    comment = "#",
     col_types = readr::cols(
       data_folder = readr::col_character(),
       use_as_ref = readr::col_logical()

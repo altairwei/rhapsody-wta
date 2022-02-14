@@ -16,21 +16,15 @@ cd ${SLURM_SUBMIT_DIR}
 source activate renv
 source env.sh
 
-OUTPUT_DIR="$1"
-shift
-INPUT_DIRS="$@"
 
 CMD="SeuratAnalysis.R \
-  --reduction rpca \
-  --anchors 20 \
   --use-matrix \
   --produce-cache \
   --integrate \
   --group-rule \\dDPI-(MOCK|PNR2|TR4) \
   --mem-size 360 \
   --process 64 \
-  --data-list results/datalist.csv \
-  -O ${OUTPUT_DIR} ${INPUT_DIRS}"
+  $@"
 
 echo "$CMD" >&2
 
