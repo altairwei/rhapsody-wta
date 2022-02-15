@@ -25,29 +25,6 @@ rule multiqc_report:
     shell:
         "multiqc -o {output.outdir} {params.indir}"
 
-rule trim_reads:
-    input: 
-        "data/reads/{sample}.R1.fq.gz",
-        "data/reads/{sample}.R2.fq.gz"
-    output:
-        "results/LCMSeq/quality_control/trimmed_reads/{sample}_1P.fq.gz",
-        "results/LCMSeq/quality_control/trimmed_reads/{sample}_1U.fq.gz",
-        "results/LCMSeq/quality_control/trimmed_reads/{sample}_2P.fq.gz",
-        "results/LCMSeq/quality_control/trimmed_reads/{sample}_2U.fq.gz"
-    params:
-        adapter=config["MISC"]["adapter"]
-    threads: 4
-    shell:
-        "trimmomatic PE -threads {threads} {input} {output} "
-        "ILLUMINACLIP:{params.adapter}:2:30:10:2:true SLIDINGWINDOW:4:20 "
-        "TRAILING:20 MINLEN:20 "
-
-rule trim_all_reads:
-    input: expand("results/LCMSeq/quality_control/trimmed_reads/{sample}_{pair}{marker}.fq.gz", \
-        sample=DATASETS, pair=[1,2], marker=["P", "U"])
-    shell:
-        "printf 'Reads library has been trimmed: %s\n' {input}"
-
 rule fastqc_trimmed_reads:
     input: "results/LCMSeq/quality_control/trimmed_reads/{sample}.fq.gz"
     output: 

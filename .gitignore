@@ -6,6 +6,7 @@ dockerImages
 docker_tmp
 tmp*
 .vscode
+.snakemake
 toil*
 node-*
 nohup.out*
@@ -31,3 +32,5 @@ analysis/*_cache
 analysis/site_libs
 docs/
 output/
+*.e*
+*.o*

@@ -1,3 +1,6 @@
 import os.path as path
 
-configfile: "../../../config/config.yml"
+configfile: "config/lcm_seq.yml"
+
+include: "rules/raw_qc.smk"
+include: "rules/trim.smk"
