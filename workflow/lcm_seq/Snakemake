@@ -4,3 +4,6 @@ configfile: "config/lcm_seq.yml"
 
 include: "rules/raw_qc.smk"
 include: "rules/trim.smk"
+include: "rules/align.smk"
+include: "rules/align_qc.smk"
+include: "rules/count.smk"
