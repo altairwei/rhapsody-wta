@@ -8,7 +8,7 @@ rule trimmomatic_pe:
         # reads where trimming entirely removed the mate
         r1_unpaired="results/LCMSeq/trimmed_reads/{sample}_R1_unpaired.fq.gz",
         r2_unpaired="results/LCMSeq/trimmed_reads/{sample}_R2_unpaired.fq.gz"
-    log: "logs/trimmomatic/{sample}.log"
+    log: config["Log_Dir"] + "/trimmomatic/{sample}.log"
     params:
         # list of trimmers (see manual)
         trimmer=[
@@ -41,7 +41,7 @@ rule fastqc_trimmed:
         zip="results/LCMSeq/quality_control/trimmed_fastqc_report/{library}_fastqc.zip"
     params: "--quiet"
     log:
-        "logs/fastqc/{library}.log"
+        config["Log_Dir"] + "/fastqc/{library}.log"
     threads: 1
     conda:
         "../envs/fastqc.yaml"
@@ -55,7 +55,7 @@ rule multiqc_trimmed:
     output:
         "results/LCMSeq/quality_control/trimmed_fastqc_report/multiqc.html"
     log:
-        "logs/multiqc.log"
+        config["Log_Dir"] + "/multiqc.log"
     conda:
         "../envs/multiqc.yaml"
     script:

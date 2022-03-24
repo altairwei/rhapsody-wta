@@ -2,6 +2,13 @@ import os.path as path
 
 configfile: "config/lcm_seq.yml"
 
+rule all:
+    input:
+        "results/LCMSeq/quality_control/fastqc_report/multiqc.html",
+        "results/LCMSeq/quality_control/trimmed_fastqc_report/multiqc.html",
+        "results/LCMSeq/align/rseqc/multiqc_report.html",
+        "results/LCMSeq/gene_quanti/counts/all.featureCounts"
+
 include: "rules/raw_qc.smk"
 include: "rules/trim.smk"
 include: "rules/align.smk"

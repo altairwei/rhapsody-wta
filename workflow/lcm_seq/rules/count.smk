@@ -23,7 +23,7 @@ rule feature_counts:
             " -p" # Pair-End
         )
     log:
-        "logs/featurecounts/all.log"
+        config["Log_Dir"] + "/featurecounts/all.log"
     conda:
         "../envs/featurecounts.yaml"
     script:
@@ -37,7 +37,7 @@ rule calculate_TPM:
         out="results/LCMSeq/gene_quanti/tpm/{sample}.out",
         ent="results/LCMSeq/gene_quanti/tpm/{sample}.ent",
         uni="results/LCMSeq/gene_quanti/tpm/{sample}.uni"
-    log: "logs/TPMCalculator/{sample}.log"
+    log: config["Log_Dir"] + "/TPMCalculator/{sample}.log"
     conda:
         "../envs/tpmcalculator.yaml"
     script:

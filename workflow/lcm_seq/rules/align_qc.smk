@@ -8,7 +8,7 @@ rule rseqc_gtf2bed:
         bed="results/LCMSeq/align/rseqc/annotation.bed",
         db=temp("results/LCMSeq/align/rseqc/annotation.db"),
     log:
-        "logs/rseqc_gtf2bed.log",
+        config["Log_Dir"] + "/rseqc_gtf2bed.log",
     conda:
         "../envs/gffutils.yaml"
     script:
@@ -23,7 +23,7 @@ rule rseqc_junction_annotation:
         "results/LCMSeq/align/rseqc/{sample}.junctionanno.junction.bed",
     priority: 1
     log:
-        "logs/rseqc/rseqc_junction_annotation/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_junction_annotation/{sample}.log",
     params:
         extra=r"-q 255",  # STAR uses 255 as a score for unique mappers
         prefix=lambda w, output: output[0].replace(".junction.bed", ""),
@@ -42,7 +42,7 @@ rule rseqc_junction_saturation:
         "results/LCMSeq/align/rseqc/{sample}.junctionsat.junctionSaturation_plot.pdf",
     priority: 1
     log:
-        "logs/rseqc/rseqc_junction_saturation/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_junction_saturation/{sample}.log",
     params:
         extra=r"-q 255",
         prefix=lambda w, output: output[0].replace(".junctionSaturation_plot.pdf", ""),
@@ -60,7 +60,7 @@ rule rseqc_stat:
         "results/LCMSeq/align/rseqc/{sample}.stats.txt",
     priority: 1
     log:
-        "logs/rseqc/rseqc_stat/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_stat/{sample}.log",
     conda:
         "../envs/rseqc.yaml"
     shell:
@@ -75,7 +75,7 @@ rule rseqc_infer:
         "results/LCMSeq/align/rseqc/{sample}.infer_experiment.txt",
     priority: 1
     log:
-        "logs/rseqc/rseqc_infer/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_infer/{sample}.log",
     conda:
         "../envs/rseqc.yaml"
     shell:
@@ -90,7 +90,7 @@ rule rseqc_innerdis:
         "results/LCMSeq/align/rseqc/{sample}.inner_distance_freq.inner_distance.txt",
     priority: 1
     log:
-        "logs/rseqc/rseqc_innerdis/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_innerdis/{sample}.log",
     params:
         prefix=lambda w, output: output[0].replace(".inner_distance.txt", ""),
     conda:
@@ -107,7 +107,7 @@ rule rseqc_readdis:
         "results/LCMSeq/align/rseqc/{sample}.readdistribution.txt",
     priority: 1
     log:
-        "logs/rseqc/rseqc_readdis/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_readdis/{sample}.log",
     conda:
         "../envs/rseqc.yaml"
     shell:
@@ -121,7 +121,7 @@ rule rseqc_readdup:
         "results/LCMSeq/align/rseqc/{sample}.readdup.DupRate_plot.pdf",
     priority: 1
     log:
-        "logs/rseqc/rseqc_readdup/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_readdup/{sample}.log",
     params:
         prefix=lambda w, output: output[0].replace(".DupRate_plot.pdf", ""),
     conda:
@@ -137,7 +137,7 @@ rule rseqc_readgc:
         "results/LCMSeq/align/rseqc/{sample}.readgc.GC_plot.pdf",
     priority: 1
     log:
-        "logs/rseqc/rseqc_readgc/{sample}.log",
+        config["Log_Dir"] + "/rseqc/rseqc_readgc/{sample}.log",
     params:
         prefix=lambda w, output: output[0].replace(".GC_plot.pdf", ""),
     conda:
@@ -185,13 +185,13 @@ rule align_multiqc:
             sample=config["Samples"],
         ),
         expand(
-            "logs/rseqc/rseqc_junction_annotation/{sample}.log",
+            config["Log_Dir"] + "/rseqc/rseqc_junction_annotation/{sample}.log",
             sample=config["Samples"],
         ),
     output:
         "results/LCMSeq/align/rseqc/multiqc_report.html",
     log:
-        "logs/multiqc.log",
+        config["Log_Dir"] + "/multiqc.log",
     conda:
         "../envs/multiqc.yaml"
     script:

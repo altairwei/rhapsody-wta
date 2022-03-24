@@ -2,7 +2,15 @@ Samples:
   - VC_1
   - VC_2
   - VC_3
+  - CC_1
+  - CC_2
+  - CC_3
+  - MC_1
+  - MC_2
+  - MC_3
 
 Reference_Genome:
  Index: "data/reference_indexes"
  Annotation: "data/annotations/Triticum_aestivum.combined.gtf"
+
+Log_Dir: "logs"

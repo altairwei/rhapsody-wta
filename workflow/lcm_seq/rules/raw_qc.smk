@@ -6,7 +6,7 @@ rule fastqc:
         zip="results/LCMSeq/quality_control/fastqc_report/{library}_fastqc.zip"
     params: "--quiet"
     log:
-        "logs/fastqc/{library}.log"
+        config["Log_Dir"] + "/fastqc/{library}.log"
     threads: 1
     conda:
         "../envs/fastqc.yaml"
@@ -20,7 +20,7 @@ rule multiqc:
     output:
         "results/LCMSeq/quality_control/fastqc_report/multiqc.html"
     log:
-        "logs/multiqc.log"
+        config["Log_Dir"] + "/multiqc.log"
     conda:
         "../envs/multiqc.yaml"
     script:

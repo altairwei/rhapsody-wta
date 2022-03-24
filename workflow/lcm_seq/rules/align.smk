@@ -11,7 +11,7 @@ rule align:
         "results/LCMSeq/align/alignments/{sample}/Aligned.sortedByCoord.out.bam",
         "results/LCMSeq/align/alignments/{sample}/ReadsPerGene.out.tab",
     log:
-        "logs/star/{sample}.log",
+        config["Log_Dir"] + "/star/{sample}.log",
     params:
         index=lambda wc, input: input.index,
         extra="--outSAMtype BAM SortedByCoordinate --outSAMunmapped Within "
