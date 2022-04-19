@@ -1,0 +1,126 @@
+---
+title: "Use LCM-Seq to Annotate Cell Population"
+author: "Altair Wei"
+date: "2022/2/17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 读取 LCM-Seq 的数据
+
+```{r}
+lcm_counts <- readr::read_tsv("../results/LCMSeq/gene_quanti/counts/all.featureCounts", comment = "#")
+lcm_counts <- lcm_counts[!(names(lcm_counts) %in% c("Chr", "Start", "End", "Strand", "Length"))]
+names(lcm_counts) <- c("Gene", basename(dirname(names(lcm_counts)[-1])))
+lcm_mtx <- as.matrix(lcm_counts[-1])
+rownames(lcm_mtx) <- lcm_counts$Gene
+lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
+```
+
+## 制作 pseudo-bulk 数据
+
+```{r}
+hfile <- SeuratDisk::Connect("../output/obj_annotated.h5seurat")
+obj <- SeuratDisk::LoadH5Seurat(
+  "../output/obj_annotated.h5seurat",
+  assays = list(RNA="counts"),
+  reductions = FALSE
+)
+
+sc_counts <- Seurat::GetAssayData(obj, slot = "counts")
+
+sc_mtx <- vapply(
+  X = levels(Idents(obj)),
+  FUN = function(i) {
+    Matrix::rowSums(
+      sc_counts[, Seurat::WhichCells(obj, ident = i)])
+  },
+  FUN.VALUE = numeric(length = nrow(obj))
+)
+
+sc_mtx <- sc_mtx[ rowSums(sc_mtx) > 1, ]
+```
+
+## 合并两个数据集
+
+```{r}
+all_genes <- union(rownames(lcm_mtx), rownames(sc_mtx))
+mtx <- matrix(0,
+  nrow = length(all_genes),
+  ncol = ncol(lcm_mtx) + ncol(sc_mtx),
+  dimnames = list(
+    all_genes,
+    c(colnames(lcm_mtx), colnames(sc_mtx))
+  )
+)
+
+mtx[rownames(lcm_mtx), colnames(lcm_mtx)] <- lcm_mtx
+mtx[rownames(sc_mtx), colnames(sc_mtx)] <- sc_mtx
+```
+
+## 辅助细胞注释
+
+```{r}
+dds <- DESeq2::DESeqDataSetFromMatrix(
+  countData = mtx,
+  colData = data.frame(
+    SampleName = colnames(mtx),
+    Technology = c(rep("LCM_Seq", 3), rep("scRNA_Seq", 25)),
+    row.names = colnames(mtx)
+  ),
+  design = ~ Technology
+)
+```
+
+过滤掉不表达的基因：
+
+```{r}
+dds <- dds[ rowSums(counts(dds)) > 1, ]
+nrow(dds)
+```
+
+稳定方差：
+
+```{r}
+vsd <- DESeq2::vst(dds, blind = TRUE)
+rld <- DESeq2::rlog(dds, blind = TRUE)
+```
+
+计算样本距离：
+
+```{r}
+sampleDists <- dist(t(assay(rld)))
+
+sampleDistMatrix <- as.matrix( sampleDists )
+colors <- colorRampPalette( rev(RColorBrewer::brewer.pal(9, "Blues")) )(255)
+pheatmap::pheatmap(
+  sampleDistMatrix,
+  clustering_distance_rows = sampleDists,
+  clustering_distance_cols = sampleDists,
+  col = colors
+)
+```
+
+```{r}
+poisd <- PoiClaClu::PoissonDistance(t(counts(dds)))
+samplePoisDistMatrix <- as.matrix( poisd$dd )
+rownames(samplePoisDistMatrix) <- colnames(dds)
+colnames(samplePoisDistMatrix) <- colnames(dds)
+pheatmap::pheatmap(
+  samplePoisDistMatrix,
+  clustering_distance_rows = poisd$dd,
+  clustering_distance_cols = poisd$dd,
+  col = colors
+)
+```
+
+不同技术之间的差异支配了最大的样本间差异：
+
+```{r}
+DESeq2::plotPCA(vsd, intgroup = c("Technology"))
+```
+
+

@@ -1,0 +1,150 @@
+---
+title: "Decompose the composition of coleoptile niches"
+author: "Altair Wei"
+date: "2022/2/23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+```
+
+## 准备 LCM-Seq 数据
+
+```{r}
+lcm_counts <- readr::read_tsv("../results/LCMSeq/gene_quanti/counts/all.featureCounts", comment = "#")
+lcm_counts <- lcm_counts[!(names(lcm_counts) %in% c("Chr", "Start", "End", "Strand", "Length"))]
+names(lcm_counts) <- c("Gene", basename(dirname(names(lcm_counts)[-1])))
+lcm_mtx <- as.matrix(lcm_counts[-1])
+rownames(lcm_mtx) <- lcm_counts$Gene
+lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
+```
+
+## 准备细胞类型特征矩阵
+
+```{r}
+hfile <- SeuratDisk::Connect("../output/obj_annotated.h5seurat")
+obj <- SeuratDisk::LoadH5Seurat(
+  "../output/obj_annotated.h5seurat",
+  assays = list(RNA="counts"),
+  reductions = FALSE
+)
+
+sc_counts <- Seurat::GetAssayData(obj, slot = "counts")
+```
+
+### 标志基因
+
+这个标志基因是通过 `Seurat::FindAllMarkers` 找出的：
+
+```{r}
+markers_df <- readRDS(Sys.glob("../output/int_cluster_markers_*.rds"))
+markergenes <- unique(markers_df$gene)
+```
+
+但这里我没有找到 (Baccin, Chiara et al. 2020) 文献中提到的寻找特征基因的算法。
+
+### 特征矩阵
+
+对 counts 求平均值，以
+
+```{r}
+sc_mtx <- vapply(
+  X = levels(Seurat::Idents(obj)),
+  FUN = function(i) {
+    Matrix::rowMeans(
+      sc_counts[markergenes, Seurat::WhichCells(obj, ident = i)])
+  },
+  FUN.VALUE = numeric(length = length(markergenes))
+)
+
+sc_mtx <- sc_mtx[ rowSums(sc_mtx) > 1, ]
+```
+
+
+## 反卷积
+
+### 运行算法
+
+```{r}
+LCM_design <- c(
+  "VC_1" = "vascular",
+  "VC_2" = "vascular",
+  "VC_3" = "vascular",
+  "CC_1" = "cortex",
+  "CC_2" = "cortex",
+  "CC_3" = "cortex",
+  "MC_1" = "mesophyll",
+  "MC_2" = "mesophyll",
+  "MC_3" = "mesophyll"
+)
+
+CIBER <- RNAMagnet::runCIBERSORT(
+  exprs = lcm_mtx,
+  base = sc_mtx,
+  design = LCM_design,
+  markergenes = intersect(rownames(lcm_mtx), rownames(sc_mtx)),
+  mc.cores = 3
+)
+```
+
+### 绘图
+
+值得注意的是 CIBERSORT 适合评估 niches 之间的细胞类型比例差异，但不适合评估单个 niches 中的细胞比例。
+
+> The algorithm excels at comparing relative cell type abundancies between niches (i.e. ‘cell type X localizes to niche A over niche B and niche C’), but performs only moderately at estimating cell type proportions within a single niche (i.e. it cannot draw statements like ‘niche A consists to 70% of cell type X and 30% of cell type Y’)
+
+```{r fig.height=7, fig.width=8, dev='svglite'}
+ggplot2::ggplot(
+    data = CIBER,
+    mapping = ggplot2::aes(x = SampleClass, y= Fraction, color = CellType)
+  ) +
+  ggplot2::geom_point(stat = "summary", fun = mean) +
+  ggplot2::geom_errorbar(
+    stat="summary",
+    fun.min = function(x) mean(x)+sd(x)/sqrt(length(x)),
+    fun.max = function(x) mean(x)-sd(x)/sqrt(length(x)),
+    width = 0.2
+  ) +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::facet_wrap(~ CellType, scales = "free_y") +
+  ggplot2::theme_bw(base_size=12) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90),
+    panel.grid = ggplot2::element_blank()
+  ) +
+  ggplot2::guides(color = "none") +
+  ggplot2::ylab("CIBERSORT estimate (a.u.)") +
+  ggplot2::xlab("Niche")
+```
+
+```{r}
+mtx_df <- CIBER %>%
+  dplyr::group_by(SampleClass, CellType) %>%
+  dplyr::summarise(
+    MeanFrac = mean(Fraction)
+  ) %>%
+  dplyr::select(CellType, SampleClass, MeanFrac) %>%
+  tidyr::pivot_wider(names_from = SampleClass, values_from = MeanFrac)
+
+mtx <- as.matrix(mtx_df[, -1])
+rownames(mtx) <- mtx_df$CellType
+mtx
+```
+
+```{r fig.height=5, fig.width=4}
+ComplexHeatmap::Heatmap(
+  matrix = mtx,
+  col = c("white", "blue", "red"),
+  row_dend_width = grid::unit(4, "cm"),
+  heatmap_legend_param = list(
+    title = "Fraction",
+    #title_position = "leftcenter",
+    legend_direction = "vertical",
+    legend_height = grid::unit(4, "cm")
+  )
+)
+```
+
+
