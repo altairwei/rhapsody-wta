@@ -1,0 +1,320 @@
+---
+title: "Sources of Stress State Subpopulations"
+author: "Altair Wei"
+date: "2022/3/4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(Matrix)
+library(patchwork)
+library(SingleCellExperiment)
+```
+
+## 使用 {TSCAN} 推断全局结构
+
+### 数据准备
+
+加载 Suerat 对象：
+
+```{r}
+obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+```
+
+首先我们需要将 Seurat 对象转换 SingleCellExperiment 对象：
+
+```{r}
+sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = FALSE)
+```
+
+### 结构推断
+
+预先计算：
+
+```{r}
+by.cluster <- scater::aggregateAcrossCells(sce, ids = sce$cluster_id)
+centroids <- SingleCellExperiment::reducedDim(by.cluster, "PCA")
+```
+
+获得 MST ：
+
+```{r}
+mst <- TSCAN::createClusterMST(centroids, clusters = NULL, outgroup = TRUE)
+```
+
+绘制：
+
+```{r dev="svglite"}
+plot(mst)
+```
+
+几个细胞世系：
+
+* MCs_1/MCs_2/Un_1/Un_2，结合 LCM-Seq 来看 MCs_2 有很强的皮层和叶肉细胞倾向。
+* VCs_2/CCs_6/Un_2，结合 LCM-Seq 看 VCs_2 有很强的皮层倾向。
+* MCs_5/VCs_5/CCs_3/CCs_7/MCs_3/Un_2，大多是皮层和叶肉倾向。UMAP 中间一溜。
+* CCs_1/CCs_5/CCs_2/CCs_8/CCs_4/Un_2，皮层或维管束。在 UMAP 左侧一大坨。
+
+## 使用 {Slingshot} 算法推断轨迹
+
+```{r}
+quickSlingshot <- function(sce) {
+  dataset <- dynwrap::wrap_expression(
+    expression = t(assay(sce, "logcounts")),
+    counts = t(assay(sce, "counts"))
+  )
+
+  dataset <- dynwrap::add_grouping(
+    dataset,
+    sce$cluster_id
+  )
+
+  dataset <- dynwrap::add_prior_information(
+    dataset,
+    dimred = reducedDim(sce, "PCA")
+  )
+
+  model <- dynwrap::infer_trajectory(
+    dataset,
+    dynmethods::ti_slingshot(),
+    give_priors = c("dimred"),
+    verbose = TRUE
+  )
+
+  model
+}
+
+plot_dyno <- function(sce, model) {
+  g <- ggplot2::guides(
+    color = ggplot2::guide_legend(
+      override.aes = list(alpha = 1, size = 2)
+    )
+  )
+  
+  p1 <- dynplot::plot_dendro(
+    model,
+    color_cells = "grouping",
+    grouping = sce$cluster_id,
+    alpha_cells = 1,
+    size_cells = .1
+  ) + g
+
+  p2 <- dynplot::plot_dimred(
+    model,
+    color_cells = "grouping",
+    grouping = sce$cluster_id
+  ) + ggplot2::coord_fixed()
+
+  p3 <- dynplot::plot_dimred(
+    model,
+    dimred = reducedDim(sce, "UMAP"),
+    color_cells = "grouping",
+    grouping = sce$cluster_id
+  ) + ggplot2::coord_fixed()
+
+  p4 <- dynplot::plot_dendro(
+    model,
+    color_cells = "grouping",
+    grouping = stringr::str_extract(sce$group_id, "\\dDPI"),
+    alpha_cells = 1,
+    size_cells = .1
+  ) + g
+  
+  p5 <- dynplot::plot_dendro(
+    model,
+    color_cells = "grouping",
+    grouping = stringr::str_extract(sce$group_id, "(MOCK|TR4|PNR2)"),
+    alpha_cells = 1,
+    size_cells = .1
+  ) + g
+    
+  print(p1/p4/p5)
+  print(p2 + p3)
+}
+```
+
+dynwrap 使用的是 purrr::map ，并不能并行计算。
+
+### 世系0：表皮细胞
+
+```{r}
+sce_ep <- sce[, sce$cluster_id %in% c("ECs_1", "ECs_2", "ECs_3")]
+```
+
+```{r}
+model <- xfun::cache_rds(
+  file = "ti_dyno_ep_model_slingshot.rds",
+  dir = "../output/",
+  expr = local({
+    t_start = Sys.time()
+    model <- quickSlingshot(sce_ep)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    model
+  })
+)
+```
+
+```{r}
+model <- dynwrap::add_root(model, root_milestone_id = "1")
+dynplot::plot_dendro(
+  model,
+  color_cells = "grouping",
+  grouping = dynwrap::group_onto_nearest_milestones(model),
+  alpha_cells = 0.1,
+  size_cells = 2.5
+) + ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(alpha = 1)))
+
+dynplot::plot_dendro(
+  model,
+  color_cells = "grouping",
+  grouping = stringr::str_extract(sce_ep$group_id, "\\dDPI"),
+  alpha_cells = 1,
+  size_cells = 1.5
+)
+
+dynplot::plot_dendro(
+  model,
+  color_cells = "grouping",
+  grouping = stringr::str_extract(sce_ep$group_id, "(MOCK|TR4|PNR2)"),
+  alpha_cells = 1,
+  size_cells = 1.5
+)
+```
+
+```{r}
+plot_dyno(sce_ep, model)
+```
+
+
+### 世系1：叶肉细胞
+
+```{r}
+sce_me_1 <- sce[, sce$cluster_id %in% c("MCs_1", "MCs_2", "Un_1", "Un_2")]
+```
+
+```{r}
+model_me_1 <- xfun::cache_rds(
+  file = "ti_dyno_me_1_model_slingshot.rds",
+  dir = "../output/",
+  expr = local({
+    t_start = Sys.time()
+    model <- quickSlingshot(sce_me_1)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    model
+  })
+)
+```
+
+```{r}
+plot_dyno(sce_me_1, model_me_1)
+```
+
+### 世系2：维管束
+
+```{r}
+sce_va_1 <- sce[, sce$cluster_id %in% c("VCs_2", "CCs_6", "VCs_6", "MCs_4", "Un_2", "VCs_3")]
+```
+
+```{r}
+model_va_1 <- xfun::cache_rds(
+  file = "ti_dyno_va_1_model_slingshot.rds",
+  dir = "../output/",
+  expr = local({
+    t_start = Sys.time()
+    model <- quickSlingshot(sce_va_1)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    model
+  })
+)
+```
+
+```{r}
+plot_dyno(sce_va_1, model_va_1)
+```
+
+### 世系3：叶肉细胞
+
+```{r}
+sce_me_2 <- sce[, sce$cluster_id %in% c("MCs_5", "VCs_5", "CCs_3", "CCs_7", "MCs_3", "VCs_3", "Un_2")]
+```
+
+
+```{r}
+model_me_2 <- xfun::cache_rds(
+  file = "ti_dyno_me_2_model_slingshot.rds",
+  dir = "../output/",
+  expr = local({
+    t_start = Sys.time()
+    model <- quickSlingshot(sce_me_2)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    model
+  })
+)
+```
+
+```{r}
+plot_dyno(sce_me_2, model_me_2)
+```
+
+### 世系4： 皮层
+
+```{r}
+sce_co_1 <- sce[, sce$cluster_id %in% c("CCs_1", "CCs_5", "CCs_2", "CCs_8", "CCs_4", "Un_2")]
+```
+
+```{r}
+model_co_1 <- xfun::cache_rds(
+  file = "ti_dyno_co_1_model_slingshot.rds",
+  dir = "../output/",
+  expr = local({
+    t_start = Sys.time()
+    model <- quickSlingshot(sce_co_1)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    model
+  })
+)
+```
+
+```{r}
+plot_dyno(sce_co_1, model_co_1)
+```
+
+### 世系2&3
+
+```{r}
+sce_mix_1 <- sce[, sce$cluster_id %in% c(
+  "VCs_2", "CCs_6", "VCs_6", "MCs_4", "Un_2",
+  "MCs_5", "VCs_5", "CCs_3", "CCs_7", "MCs_3", "VCs_3")]
+```
+
+```{r}
+model_mix_1 <- xfun::cache_rds(
+  file = "ti_dyno_mix_1_model_slingshot.rds",
+  dir = "../output/",
+  expr = local({
+    t_start = Sys.time()
+    model <- quickSlingshot(sce_mix_1)
+    t_end = Sys.time()
+    print(t_end - t_start)
+
+    model
+  })
+)
+```
+
+```{r}
+plot_dyno(sce_mix_1, model_mix_1)
+```
+

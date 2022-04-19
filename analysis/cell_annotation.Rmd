@@ -418,41 +418,6 @@ rhapsodykit::barplot_cluster_abundance(obj, position = "dodge")
 
 TODO: 参考 [Relative cluster-abundances](https://htmlpreview.github.io/?https://raw.githubusercontent.com/HelenaLC/muscat-comparison/master/LPS/docs/2-annotation.html) 绘制一个细胞群集丰度矩阵，也许能方便地看出丰度变化模式。
 
-### 1.6 3D 降维图
-
-二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
-
-```{r message=FALSE, eval=FALSE}
-obj <- Seurat::RunTSNE(
-  obj, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
-obj <- Seurat::RunUMAP(obj, dims = 1:20, n.components = 3, verbose = FALSE)
-
-gg_color_hue <- function(n) {
-  hues <- seq(15, 375, length = n + 1)
-  hcl(h = hues, l = 65, c = 100)[1:n]
-}
-
-Dim3DPlot <- function(obj, dim_prefix, cols) {
-  d1 <- paste0(dim_prefix, "1")
-  d2 <- paste0(dim_prefix, "2")
-  d3 <- paste0(dim_prefix, "3")
-
-  df_to_plot <- Seurat::FetchData(obj, vars = c(d1, d2, d3, "ident"))
-  
-  plotly::plot_ly(
-    df_to_plot,
-    x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
-    color = ~ ident,
-    colors = cols,
-    type = "scatter3d",
-    mode = "markers",
-    marker = list(size = 4)
-  )
-}
-
-Dim3DPlot(obj, "UMAP_", cols = ident_cols)
-```
-
 ### 1.7 按处理拆分降维图 {.tabset}
 
 将所有样本降维图拆解成 "MOCK-AllSample"、"PNR2-AllSample"以及 "TR4-AllSample"：
@@ -1051,4 +1016,39 @@ enr %>%
   enrichplot::treeplot(showCategory = 40,
     label_format_cladelab = 20, offset = 1, nWords = 0,
     nCluster = 10)
+```
+
+## 3 细胞 3D 降维图
+
+二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
+
+```{r message=FALSE, eval=TRUE}
+obj <- Seurat::RunTSNE(
+  obj, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
+obj <- Seurat::RunUMAP(obj, dims = 1:20, n.components = 3, verbose = FALSE)
+
+gg_color_hue <- function(n) {
+  hues <- seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+Dim3DPlot <- function(obj, dim_prefix, cols) {
+  d1 <- paste0(dim_prefix, "1")
+  d2 <- paste0(dim_prefix, "2")
+  d3 <- paste0(dim_prefix, "3")
+
+  df_to_plot <- Seurat::FetchData(obj, vars = c(d1, d2, d3, "ident"))
+  
+  plotly::plot_ly(
+    df_to_plot,
+    x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
+    color = ~ ident,
+    colors = cols,
+    type = "scatter3d",
+    mode = "markers",
+    marker = list(size = 4)
+  )
+}
+
+Dim3DPlot(obj, "UMAP_", cols = ident_cols)
 ```

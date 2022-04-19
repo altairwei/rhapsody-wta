@@ -132,10 +132,22 @@ head(dynwrap::get_dimred(model), 5)
 dynplot::plot_dendro(model, grouping = dynwrap::group_onto_nearest_milestones(model)) +
 dynplot::plot_dendro(model, color_cells = "grouping", grouping = sce_ep$group_id)
 ```
+
 ```{r}
 model <- dynwrap::add_root(model, root_milestone_id = "3")
 ```
 
+```{r}
+dynplot::plot_graph(
+  model,
+  color_cells = "grouping",
+  grouping = sce_ep$group_id,
+  alpha_cells = 0.1,
+  size_cells = 2.5
+) + ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(alpha = 1)))
+
+dynplot::plot_dendro(model, color_cells = "grouping", grouping = sce_ep$group_id)
+```
 
 ```{r fig.height=6, fig.width=12}
 dynplot::plot_dimred(model, grouping = dynwrap::group_onto_nearest_milestones(model)) +
