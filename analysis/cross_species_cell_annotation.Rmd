@@ -19,6 +19,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 obj_ath <- readRDS("../tmp/shoots_obj.rds")
 logcounts_ath <- obj_ath@assays$RNA@data
+counts_ath <- obj_ath@assays$RNA@counts
 celldata_ath <- obj_ath@meta.data[, c("orig.cluster", "sample")]
 ```
 
@@ -27,6 +28,7 @@ celldata_ath <- obj_ath@meta.data[, c("orig.cluster", "sample")]
 ```{r}
 obj_taes <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
 logcounts_taes <- obj_taes@assays$RNA@data
+counts_taes <- obj_taes@assays$RNA@counts
 celldata_taes <- obj_taes@meta.data[, c("sample", "group")]
 celldata_taes$treatment <- stringr::str_remove(celldata_taes$group, "\\dDPI-")
 ```

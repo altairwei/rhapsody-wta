@@ -1,0 +1,277 @@
+---
+title: "Ambient Gene Expressions Correction"
+author: "Altair Wei"
+date: "2022/3/29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(Matrix)
+library(reticulate)
+use_virtualenv()
+```
+
+
+# 环境 RNA 污染
+
+因为BD技术捕获单细胞的系统是半开放式的，这导致细胞裂解时环境RNA污染的可能性大增。 但问题是 SoupX 应该应用在哪个阶段？ 从文献中发现，SoupX 应该应用在 Seurat 处理后的数据上。
+
+## 加载数据
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  "3DPI-PNR2-2",
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+names(samples) <- samples
+```
+
+```{r warning=FALSE}
+sc_list <- xfun::cache_rds(
+  file = "sc_list.rds",
+  dir = "../results/ObjectCache/QualityControl/",
+  expr = lapply(samples, function(sample) {
+    obj <- readRDS(Sys.glob(sprintf(
+      "../results/ObjectCache/QualityControl/obj_processed_%s_*.rds", sample)))
+    toc <- obj@assays$RNA@counts
+    tod <- rhapsodykit::read_unfiltered_csv(paste0("../results/RawOutput/", sample))
+    tod <- tod[rownames(toc),]
+
+    sc = SoupX::SoupChannel(tod, toc, calcSoupProfile = FALSE)
+    sc = SoupX::estimateSoup(sc)
+    sc = SoupX::setClusters(sc, Seurat::Idents(obj))
+    sc = SoupX::setDR(sc, obj@reductions$umap@cell.embeddings)
+  
+    rm(obj, tod, toc)
+    gc()
+  
+    sc
+  })
+)
+```
+
+## 寻找环境污染
+
+### 可视化基因与环境 RNA 污染 {.tabset}
+
+> Tt's worth checking if the expression of a gene in these scattered cells is more than we would expect by chance from the soup (ambient RNA). We can get a rough idea just by calculating how many counts we would expect for a gene in each cell, by assuming that cell contained nothing but soup. The function `plotMarkerMap` allows you to visualise the ratio of observed counts for a gene (or set of genes) to this expectation value. That is, given a set of genes, this function calculates how many counts would be expected if that droplet were nothing but soup and compares that to the observed count. This is done via a log2 ratio of the two values (observed/expected). A Poisson test is performed and points that have a statistically significant enrichment over the background
+
+红色表示基因的表达不是偶然，蓝色表示基因表达来自于环境 RNA 污染。
+
+```{r results='asis'}
+purrr::imap(sc_list, function(sc, sample) {
+  cat("####", sample, "\n\n")
+
+  tryCatch(
+    expr = {
+      p <- SoupX::plotMarkerMap(sc,
+        geneSet = c(
+          "TraesCS1D02G194000",
+          "TraesCS1A02G189900",
+          "TraesCS1B02G192000"
+        )
+      )
+      print(p)
+    },
+    error = function(e) {print(e)}
+  )
+
+  cat("\n\n")
+}) %>% invisible()
+```
+
+### 评估污染比例 {.tabset}
+
+> The contamination fraction estimate is the fraction of your data that will be discarded. If this value is set too low, your “corrected” data will potentially still be highly contaminated. If you set it too high, you will discard real data. SoupX has been designed to be conservative in the sense that it errs on the side of retaining true expression at the cost of letting some contamination to creep through.
+
+评估污染比例的方法有两种，其一是基于特异性表达 Marker 的方法，其二是自动鉴定。 因为小麦没有明确有效的细胞类型 marker 基因，所以我们选择污染比例自动鉴定法。
+
+```{r results='asis'}
+sc_list <- purrr::imap(sc_list, function(sc, sample) {
+  cat("####", sample, "\n\n")
+  frame()
+  sc <- SoupX::autoEstCont(sc)
+  cat("\n\n")
+  sc
+})
+```
+
+### 细胞数量与污染比例的关系
+
+虽然 BD Rhapsody Scanner 的荧光技术算法不适合大体积的植物原生质体（荧光在单个细胞内很分散），但在 Bead Wash 阶段的荧光技术仍然能很好的反应溶液中的细胞数量。
+
+```{r}
+# Data from BD Rhapsody Scanner outputs
+rho_df <- tidyr::tribble(
+  ~sample,          ~captured,    ~total,
+  "1DPI-MOCK-1",    8490,         13128,
+  "1DPI-PNR2-1",    8478,         12840,
+  "3DPI-PNR2-1",    13639,        19407,
+  "3DPI-MOCK-1",    14606,        22983,
+  "0DPI-MOCK-1",    10551,        20757,
+  "1DPI-TR4-1",     6683,         13686,
+  "1DPI-MOCK-2",    8609,         17090,
+  "1DPI-PNR2-2",    9922,         18060,
+  "0DPI-MOCK-2",    10911,        18153,
+  "1DPI-TR4-2",     7242,         11293,
+  "3DPI-PNR2-2",    20024,        25013,
+  "3DPI-MOCK-2",    13413,        23045,
+  "3DPI-PNR2-3",    17287,        42313,
+  "3DPI-TR4-1",     11357,        21722,
+  "3DPI-TR4-2",     11428,        20874,
+  "2DPI-PNR2-1",    13742,        24879,
+  "2DPI-TR4-1",     15264,        24511,
+  "2DPI-MOCK-1",    15009,        25395,
+  "2DPI-PNR2-2",    12285,        21575,
+  "2DPI-TR4-2",     14309,        23591,
+  "2DPI-MOCK-2",    15226,        27975
+)
+
+purrr::pmap(rho_df, function(sample, captured, total){
+  sc <- sc_list[[sample]]
+  data.frame(
+    sample = sample,
+    captured = captured,
+    total = total,
+    real = ncol(sc$toc),
+    rho = sc$fit$rhoEst
+  )
+}) %>% dplyr::bind_rows() %>%
+  ggplot2::ggplot(ggplot2::aes(x = captured, y = rho, label = sample, size = real)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_smooth(method = "lm", formula= y~x) +
+  ggrepel::geom_text_repel(size = 3)
+```
+
+上面这幅图反应了细胞捕获数量与污染比例的关系，说明 SoupX 的自动评估法是符合期望的。其中 3DPI-PNR-2 样本的高污染是预期的，因为该样本的细胞浓度较低，包含较多碎片。
+
+## 修正数据
+
+```{r warning=FALSE, message=FALSE}
+out_list <- xfun::cache_rds(
+  file = "out_list.rds",
+  dir = "../results/ObjectCache/QualityControl/",
+  expr = lapply(sc_list, function(sc) SoupX::adjustCounts(sc))
+)
+```
+
+### 检查数据修正效果 {.tabset}
+
+基因表达从非零被修正为零的细胞比例：
+
+```{r results='asis', eval=FALSE}
+for (sample in samples) {
+  cat("####", sample, "\n\n")
+  sc = sc_list[[sample]]
+  out = out_list[[sample]]
+  cntSoggy = rowSums(sc$toc > 0)
+  cntStrained = rowSums(out > 0)
+  mostZeroed = tail(sort((cntSoggy - cntStrained)/cntSoggy), n = 100)
+  print(mostZeroed)
+  cat("\n\n")
+}
+```
+
+基因表达在修正前后有数量差异的细胞比例：
+
+```{r results='asis', eval=FALSE}
+for (sample in samples) {
+  cat("####", sample, "\n\n")
+  sc = sc_list[[sample]]
+  out = out_list[[sample]]
+  tail(sort(rowSums(sc$toc > out)/rowSums(sc$toc > 0)), n = 100)
+  cat("\n\n")
+}
+```
+
+### 可视化表达分布 {.tabset}
+
+下图表示每个细胞中被认为是环境污染并且被移除的表达比例：
+
+```{r results='asis'}
+for (sample in samples) {
+  cat("####", sample, "\n\n")
+  sc = sc_list[[sample]]
+  out = out_list[[sample]]
+
+  tryCatch(
+    expr = {
+      p <- SoupX::plotChangeMap(sc, out,
+        geneSet = c(
+          "TraesCS4B02G297500",
+          "TraesCS4D02G296400",
+          "TraesCS4A02G007400"
+        )
+      )
+      print(p)
+    },
+    error = function(e) {print(e)}
+  )
+
+  tryCatch(
+    expr = {
+      p <- SoupX::plotChangeMap(sc, out,
+        geneSet = c(
+          "TraesCS5D02G329200",
+          "TraesCS5B02G322900",
+          "TraesCS5A02G322500"
+        )
+      )
+      print(p)
+    },
+    error = function(e) {print(e)}
+  )
+
+  cat("\n\n")
+}
+```
+
+从上图看出来，叶肉细胞造成的污染太严重了。
+
+## 构建 Seurat 对象
+
+```{r results='hide'}
+for (sample in samples) {
+  xfun::cache_rds(
+    file = paste0("obj_strained_", sample),
+    dir = "../results/ObjectCache/QualityControl/",
+    expr = local({
+      out = out_list[[sample]]
+      seurat_obj <- Seurat::CreateSeuratObject(
+        counts = out, project = sample)
+      seurat_obj$sample <- sample
+      seurat_obj$group <- stringr::str_extract(seurat_obj$sample, "\\dDPI-(MOCK|PNR2|TR4)")
+      seurat_obj$time <- stringr::str_extract(seurat_obj$sample, "\\dDPI")
+      seurat_obj$treatment <- stringr::str_extract(seurat_obj$sample, "MOCK|PNR2|TR4")
+      seurat_obj
+    })
+  )
+}
+```
+
+

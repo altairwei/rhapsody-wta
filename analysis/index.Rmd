@@ -8,6 +8,10 @@ editor_options:
   chunk_output_type: console
 ---
 
+- Quality Control
+  - [Quality Control of Cells and Genes](quality_control_of_cells_and_genes.Rmd)
+  - [Find and Remove Doublets](quality_control_of_doublets.Rmd)
+  - [Ambient Gene Expressions Correction](quality_control_of_ambient_rna.Rmd)
 - [Integration](sample_integration.html)
 - [Annotation](cell_annotation.html)
 - Differential Abundance Analysis

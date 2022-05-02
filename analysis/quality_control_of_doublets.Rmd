@@ -1,0 +1,247 @@
+---
+title: "Find and Remove Doublets"
+author: "Altair Wei"
+date: "2022/4/25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+```
+
+# 双细胞检测
+
+首先BD Rhapsody技术的双细胞率就比10X技术低。其次植物细胞体积普遍较大，其直径几乎接近蜂窝孔的大小，这让两个植物细胞掉落同一个孔变得不可能。
+
+## 加载数据
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  "3DPI-PNR2-2",
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+names(samples) <- samples
+```
+
+```{r message=FALSE}
+obj_list <- lapply(samples, function(x) {
+  readRDS(Sys.glob(sprintf(
+    "../results/ObjectCache/QualityControl/obj_filtered_%s_*.rds", x)))
+})
+```
+
+```{r message=FALSE, warning=FALSE}
+lapply(obj_list, function(obj) {
+  gc()
+  xfun::cache_rds(
+    file = paste0("obj_processed_", obj@project.name),
+    dir = "../results/ObjectCache/QualityControl/",
+    expr = local({
+      obj <- Seurat::NormalizeData(obj, verbose = FALSE)
+      obj <- Seurat::FindVariableFeatures(
+        obj, selection.method = "vst", nfeatures = 2000, verbose = FALSE)
+      obj <- Seurat::ScaleData(obj, features = rownames(obj), verbose = FALSE)
+      obj <- Seurat::RunPCA(
+        obj, features = Seurat::VariableFeatures(obj), verbose = FALSE)
+      obj <- Seurat::FindNeighbors(obj, dims = 1:20, verbose = FALSE)
+      obj <- Seurat::FindClusters(obj, resolution = 0.5,verbose = FALSE)
+      obj <- Seurat::RunUMAP(obj, dims = 1:20, verbose = FALSE)
+      obj <- Seurat::RunTSNE(obj, dims = 1:20, check_duplicates = FALSE, verbose = FALSE)
+      obj
+    })
+  )
+  NULL
+}) %>% invisible()
+```
+
+```{r}
+obj_1dpi_mock_1 <- readRDS(Sys.glob(
+  "../results/ObjectCache/QualityControl/obj_processed_1DPI-MOCK-1_*.rds"))
+```
+
+## DoubletFinder
+
+https://github.com/chris-mcginnis-ucsf/DoubletFinder
+
+按照作者的说法，应该单独在各个样本上运行 DoubletFinder：
+
+> But generally speaking, you should run DoubletFinder independently on each dataset you are integrating to avoid finding inter-sample doublets that do not actually exist. Even if you are running technical replicates across multiple 10x lanes, running DoubletFinder on the full dataset is just no more accurate than running independently is just more computationally intensive.
+
+这个工具的缺点是不能检测相同细胞状态的双细胞，在同质性较高的数据集中也表现不好。
+
+> DoubletFinder performance suffers when applied to transcriptionally-homogenous data. DoubletFinder is sensitive to heterotypic doublets -- i.e., doublets formed from transcriptionally-distinct cell states -- but is insensitive to homotypic doublets -- i.e., doublets formed from transcriptionally-similar cell states. 
+
+因为 DoubletFinder 只能检测异型双细胞，因此使用仪器的双细胞率（含有同型双细胞）来指导 DoubletFinder 会导致其高估。作者推荐使用文献支持的细胞类型注释来对同态双细胞率建模。
+
+```{r}
+Seurat::DimPlot(obj_1dpi_mock_1, reduction = "umap") + ggplot2::coord_fixed()
+```
+
+### pK Identification
+
+> Optimal pK for any scRNA-seq data can be manually discerned as maxima in BCmvn distributions.
+
+看样子应该选择得分最高的 pK 值：0.3
+
+```{r message=FALSE, warning=FALSE}
+bcmvn <- xfun::cache_rds(
+  file = paste0("bcmnv_1DPI-MOCK-1.rds"),
+  dir = "../results/ObjectCache/QualityControl/",
+  expr = local({
+    sweep <- DoubletFinder::paramSweep_v3(obj_1dpi_mock_1, PCs = 1:20, sct = FALSE)
+    sweep.stats <- DoubletFinder::summarizeSweep(sweep, GT = FALSE)
+    bcmvn <- DoubletFinder::find.pK(sweep.stats)
+    bcmvn
+  })
+)
+
+```
+
+```{r}
+ggplot2::ggplot(bcmvn, ggplot2::aes(x = ParamID, y = BCmetric, label = pK)) +
+  ggplot2::geom_point(color = "#41b6c4") +
+  ggplot2::geom_line(color = "#41b6c4") +
+  ggrepel::geom_text_repel()
+```
+
+### Homotypic Doublet Proportion Estimate
+
+```{r}
+## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+homotypic.prop <- DoubletFinder::modelHomotypic(Seurat::Idents(obj_1dpi_mock_1))
+## Assuming 7.5% doublet formation rate - tailor for your dataset
+nExp_poi <- round(0.018*ncol(obj_1dpi_mock_1))
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+### Run DoubletFinder with varying classification stringencies
+
+```{r}
+obj_1dpi_mock_1 <- DoubletFinder::doubletFinder_v3(
+  obj_1dpi_mock_1,
+  PCs = 1:20, pN = 0.018, pK = 0.3,
+  nExp = nExp_poi,
+  reuse.pANN = FALSE,
+  sct = FALSE
+)
+
+obj_1dpi_mock_1 <- DoubletFinder::doubletFinder_v3(
+  obj_1dpi_mock_1,
+  PCs = 1:20, pN = 0.018, pK = 0.3,
+  nExp = nExp_poi.adj,
+  reuse.pANN = "pANN_0.018_0.3_91",
+  sct = FALSE
+)
+```
+
+```{r}
+Seurat::FetchData(
+  obj_1dpi_mock_1,
+  c("UMAP_1", "UMAP_2",
+    "DF.classifications_0.018_0.3_91", "DF.classifications_0.018_0.3_75")
+) %>%
+  dplyr::arrange(desc(DF.classifications_0.018_0.3_91)) %>%
+  ggplot2::ggplot(ggplot2::aes(
+      x = UMAP_1, y = UMAP_2, color = DF.classifications_0.018_0.3_91)) +
+    ggplot2::geom_point() +
+    ggplot2::coord_fixed()
+```
+
+## scrublet
+
+https://github.com/swolock/scrublet
+
+> Scrublet can only detect neotypic doublets.
+
+跟 DoubletFinder 很像，scrublet 也只能检测异型的双细胞。
+
+### 设置 python 运行环境
+
+```{r}
+reticulate::use_virtualenv()
+```
+
+```{python}
+import scrublet as scr
+import scipy.io
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import matplotlib
+matplotlib.use("Agg", force = True)
+```
+
+### 转换数据
+
+在 Seurat 中基因是行，细胞是列。但 scanpy 与 Seurat 是相反的。
+
+```{r}
+counts <- t(obj_1dpi_mock_1@assays$RNA@counts)
+```
+
+```{python}
+counts_matrix = r.counts
+print('Counts matrix shape: {} rows, {} columns'.format(counts_matrix.shape[0], counts_matrix.shape[1]))
+```
+
+```{python}
+scrub = scr.Scrublet(counts_matrix, expected_doublet_rate = 0.018)
+```
+
+### 运行算法
+
+```{python}
+doublet_scores, predicted_doublets = scrub.scrub_doublets(
+  min_counts=2, min_cells=3, min_gene_variability_pctl=85, n_prin_comps=30)
+```
+
+### 可视化结果
+
+> The simulated doublet histogram is typically bimodal. The left mode corresponds to "embedded" doublets generated by two cells with similar gene expression. The right mode corresponds to "neotypic" doublets, which are generated by cells with distinct gene expression (e.g., different cell types) and are expected to introduce more artifacts in downstream analyses. Scrublet can only detect neotypic doublets.
+>
+> To call doublets vs. singlets, we must set a threshold doublet score, ideally at the minimum between the two modes of the simulated doublet histogram. scrub_doublets() attempts to identify this point automatically and has done a good job in this example. However, if automatic threshold detection doesn't work well, you can adjust the threshold with the call_doublets() function.
+>
+> Check that the doublet score threshold is reasonable (in an ideal case, separating the two peaks of a bimodal simulated doublet score histogram, as in this example), and adjust manually if necessary. Visualize the doublet predictions in a 2-D embedding (e.g., UMAP or t-SNE). Predicted doublets should mostly co-localize (possibly in multiple clusters). If they do not, you may need to adjust the doublet score threshold, or change the pre-processing parameters to better resolve the cell states present in your data.
+
+```{python fig.height=2, fig.width=6}
+scrub.plot_histogram()
+plt.show()
+```
+
+```{r}
+umap <- obj_1dpi_mock_1@reductions$umap@cell.embeddings
+```
+
+```{python}
+scrub.call_doublets(threshold=0.065)
+scrub.set_embedding('UMAP', scr.get_umap(scrub.manifold_obs_, 10, min_dist = 0.3))
+```
+
+```{python}
+scrub.plot_embedding('UMAP', order_points=True);
+plt.show()
+```
