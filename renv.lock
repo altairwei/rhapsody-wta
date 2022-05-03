@@ -518,6 +518,13 @@
       "Source": "Bioconductor",
       "Hash": "27d907d4865fa44f6f17f757352ae7a3"
     },
+    "SoupX": {
+      "Package": "SoupX",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "e078d8d723d5b43adaf295f0f62edd20"
+    },
     "SparseM": {
       "Package": "SparseM",
       "Version": "1.81",
@@ -2381,8 +2388,8 @@
       "RemoteRepo": "rhapsodykit",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "dc2f25134f9f9fbea1c54765d8cb682effbe3d26",
-      "Hash": "7a5ef12c2c0e31aaed86b926c93d5ff4"
+      "RemoteSha": "7a58375399bf36147a9160f40e214267f5c90559",
+      "Hash": "296992413fb16866fb8b5108781b0ff3"
     },
     "rjson": {
       "Package": "rjson",

@@ -9,12 +9,16 @@ editor_options:
 ---
 
 - Quality Control
-  - [Quality Control of Cells and Genes](quality_control_of_cells_and_genes.Rmd)
-  - [Find and Remove Doublets](quality_control_of_doublets.Rmd)
-  - [Ambient Gene Expressions Correction](quality_control_of_ambient_rna.Rmd)
-- [Integration](sample_integration.html)
-- [Annotation](cell_annotation.html)
+  - [Quality Control of Cells and Genes](quality_control_of_cells_and_genes.html)
+  - [Find and Remove Doublets](quality_control_of_doublets.html)
+  - [Ambient Gene Expressions Correction](quality_control_of_ambient_rna.html)
+- Integration And Annotation
+  - [Integration And Annotation](sample_integration.html)
+  - [Cell Population Annotation](cell_annotation.html)
 - Differential Abundance Analysis
   - [Estimate Cell-Type Proportions Confidence Intervals](compositional_analysis.html)
   - [Identify Differentially Abundant Subpopulation](differential_abundance_subpopulation.html)
-- [Differential State](differential_state_analysis.html)
+  - [Geneset Enrichment for Differential Abundant Subpopulation](diff_abundance_geneset_analysis.html)
+- Differential State Analysis
+  - [Perform Differential State Analysis](differential_state_analysis.html)
+  - [Geneset Enrichment Analysis](diff_state_geneset_analysis.html)
