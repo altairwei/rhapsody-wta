@@ -137,17 +137,14 @@ select(GO.db,
   ))
 ```
 
+### 导出 DEGs 表格
+
 ```{r}
-DEGs_1DPI <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_format() %>%
-  dplyr::filter(
-    contrast %in% c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
-    cluster_id %in% c("VCs_5", "MCs_5")) %>%
-  dplyr::select(gene, cluster_id, contrast, logFC, p_val, p_adj.loc, p_adj.glb)
+DEGs_table <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_format()
 
 anno <- brookite::pull_annotation(
-    DEGs_1DPI$gene,
+    unique(DEGs_table$gene),
     mart_info = list(
       mart = "plants_mart",
       dataset = "taestivum_eg_gene",
@@ -156,26 +153,17 @@ anno <- brookite::pull_annotation(
     dest_attrs = c(
       Description = "description",
       GO_Name = "name_1006"
-    ))
+    )
+)
 
-DEGs_1DPI <- dplyr::left_join(DEGs_1DPI, anno, by = c("gene" = "ensembl_gene_id")) %>%
+DEGs_table <- dplyr::left_join(DEGs_table, anno, by = c("gene" = "ensembl_gene_id")) %>%
   dplyr::select(gene, cluster_id, contrast, Description, GO_Name, dplyr::everything())
 
-htmltools::browsable(
-  htmltools::tagList(
-    htmltools::tags$button(
-      "Download as CSV",
-      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "deg_1dpi_table", "deg_1dpi_table")
-    ),
-    reactable::reactable(
-      DEGs_1DPI,
-      defaultPageSize = 5,
-      elementId = "deg_1dpi_table"
-    )
-  )
-)
+split(DEGs_table, DEGs_table$cluster_id) %>%
+  purrr::imap(function(DEGs, cluster) {
+    readr::write_csv(DEGs, paste0("../tmp/", "DEGs_", cluster, ".csv"))
+  }) %>% invisible()
 ```
-
 
 ```{r}
 comp_enr[["GO:0006955"]]
