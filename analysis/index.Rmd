@@ -13,8 +13,8 @@ editor_options:
   - [Find and Remove Doublets](quality_control_of_doublets.html)
   - [Ambient Gene Expressions Correction](quality_control_of_ambient_rna.html)
 - Integration And Annotation
-  - [Integration And Annotation](sample_integration.html)
-  - [Cell Population Annotation](cell_annotation.html)
+  - [Integration and Annotation of MOCK Samples](integration_of_mock_samples.html)
+  - [Integration of All Samples](integration_of_stimulating_samples.html)
 - Differential Abundance Analysis
   - [Estimate Cell-Type Proportions Confidence Intervals](compositional_analysis.html)
   - [Identify Differentially Abundant Subpopulation](differential_abundance_subpopulation.html)

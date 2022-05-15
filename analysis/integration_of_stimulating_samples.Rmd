@@ -1,0 +1,277 @@
+---
+title: "Integration of Stimulating Samples"
+author: "Altair Wei"
+date: "2022/5/5"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(magrittr)
+knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/UtilityFunctions.R")
+```
+
+# 整合 MOCK 和 Stim 样本
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  #"3DPI-PNR2-2", # 这个样本的细胞数量太少，丢弃掉。
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+names(samples) <- samples
+```
+
+```{r}
+obj_list <- lapply(samples, function(sample) readRDS(
+  Sys.glob(paste0(
+    "../results/ObjectCache/QualityControl/",
+    "obj_strained_", sample, "_*.rds"))
+  )
+)
+```
+
+```{r}
+obj_mock_combined <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+obj_mock_combined$cellType <- as.character(Seurat::Idents(obj_mock_combined))
+```
+
+## 1 细胞类型标签转移
+
+### 1.1 转移
+
+```{r}
+obj_list <- xfun::cache_rds(
+  file = "obj_list_transferred.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = lapply(obj_list, function(obj) {
+
+    anchors <- Seurat::FindTransferAnchors(
+      reference = obj_mock_combined, query = obj,
+      dims = 1:30, reference.reduction = "pca",
+      verbose = FALSE)
+    
+    predictions <- Seurat::TransferData(
+      anchorset = anchors,
+      refdata = obj_mock_combined$cellType,
+      dims = 1:30, verbose = FALSE)
+    
+    obj <- Seurat::AddMetaData(obj, metadata = predictions)
+    obj
+  })
+)
+```
+
+### 1.2 可视化
+
+```{r}
+df <- lapply(obj_list, function(obj) 
+    obj@meta.data[, c("predicted.id", "prediction.score.max", "sample", "group")]) %>%
+  dplyr::bind_rows()
+```
+
+```{r fig.height=6, fig.width=10}
+ggplot2::ggplot(df, ggplot2::aes(
+    x = sample, y = prediction.score.max, color = group)) +
+  ggplot2::geom_boxplot(outlier.size = .5) +
+  ggplot2::scale_color_manual(
+    values = colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(10)
+  ) +
+  ggplot2::facet_wrap(~predicted.id) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+```
+
+
+## 2 基于 MOCK 的数据整合
+
+```{r results='hide'}
+obj_integrated <- xfun::cache_rds(
+  file = "obj_integrated.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = rhapsodykit::integrated_sample_analysis(
+    obj_list, reduction = "rpca",
+    k.anchor = 5, n_dims = 30,
+    normalization = "LogNormalize",
+    reference = stringr::str_which(names(obj_list), "MOCK"),
+    analyze = TRUE, verbose = TRUE
+  )
+)
+```
+
+```{r}
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_integrated))), palette = NULL)
+```
+
+### 2.1 细胞降维图 {.tabset}
+
+```{r}
+obj_integrated <- Seurat::RunUMAP(
+  obj_integrated, dims = 1:30, verbose = FALSE, seed.use = 8964)
+```
+
+```{r}
+obj_integrated <- Seurat::RunTSNE(
+  obj_integrated, dims = 1:30, verbose = TRUE, seed.use = 8964)
+```
+
+#### UMAP
+
+```{r fig.height=4, fig.width=10}
+p1 <- Seurat::DimPlot(obj_integrated, reduction = "umap", cols = ident_cols) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_integrated, reduction = "umap", group.by = "sample") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+#### t-SNE
+
+```{r fig.height=4, fig.width=10}
+p1 <- Seurat::DimPlot(obj_integrated, reduction = "tsne", cols = ident_cols) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_integrated, reduction = "tsne", group.by = "sample") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+### 2.2 细胞类型预测
+
+```{r fig.height=4, fig.width=10}
+p1 <- Seurat::DimPlot(
+    obj_integrated, reduction = "tsne",
+    group.by = "predicted.id") +
+  ggplot2::coord_fixed()
+p2 <- Seurat::FeaturePlot(
+    obj_integrated, reduction = "tsne",
+    feature = "prediction.score.max", order = FALSE) +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+```{r}
+overlap_df <- obj_integrated@meta.data %>%
+  dplyr::select(seurat_clusters, predicted.id, prediction.score.max) %>%
+  dplyr::group_by(seurat_clusters, predicted.id) %>%
+  dplyr::summarise(
+    n = length(predicted.id),
+    mean = mean(prediction.score.max),
+    median = median(prediction.score.max)
+  )
+
+ggplot2::ggplot(overlap_df, ggplot2::aes(
+    x = seurat_clusters, y = predicted.id, color = mean, size = n)) +
+  ggplot2::geom_point() +
+  ggplot2::scale_color_gradientn(colours = c("white", "blue"))
+```
+
+### 2.3 同源标志基因
+
+```{r fig.width=15, fig.height=7}
+Seurat::DefaultAssay(obj_integrated) <- "RNA"
+plot_markers(obj_integrated, cluster.idents = TRUE)
+```
+
+
+## 3 细胞类型注释
+
+### 3.1 注释
+
+```{r}
+obj_annotated <- xfun::cache_rds(
+  file = "obj_annotated.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = local({
+    Seurat::DefaultAssay(obj_integrated) <- "integrated"
+    obj_annotated <- Seurat::RenameIdents(
+      obj_integrated,
+
+      # Vascular Cells
+      `13` = "Va_1",
+      `9`  = "Va_2",
+      `3`  = "Va_3",
+      `8`  = "Va_4",
+      `7`  = "Va_5",
+
+      # Cortex Cells
+      `5`  = "Co_1",
+      `11` = "Co_2",
+      `4`  = "Co_3",
+    
+      # Mesophyll Cells
+      `1`  = "Me_1",
+      `0`  = "Me_2",
+      `10` = "Me_4",
+      `6`  = "Me_6",
+
+
+      # Epidermal Cells
+      `12` = "Ep_1",
+      `14` = "Ep_2",
+      `16` = "Ep_3",
+
+    
+      # Guardian Cells
+      `15` = "Gu",
+
+    
+      # Unknown Cells
+      `2`  = "Un_1"
+
+    )
+
+    obj_annotated
+  })
+)
+```
+
+### 3.2 细胞降维图 {.tabset}
+
+```{r}
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_annotated))), palette = NULL)
+```
+
+#### UMAP
+
+```{r fig.height=4, fig.width=10}
+p1 <- Seurat::DimPlot(obj_annotated, reduction = "umap", cols = ident_cols) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_annotated, reduction = "umap", group.by = "sample") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+#### t-SNE
+
+```{r fig.height=4, fig.width=10}
+p1 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", cols = ident_cols) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", group.by = "sample") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+

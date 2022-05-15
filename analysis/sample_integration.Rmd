@@ -37,11 +37,12 @@ output: html_document
     >
     > -   A substantial fraction of cells in one dataset have no matching type in the other
     >
-    > -   Datasets originate from the same platform (i.e. multiple lanes of 10x genomics)
+    > -   Datasets originate from the same platform (i.e.multiple lanes of 10x genomics)
     >
     > -   There are a large number of datasets or cells to integrate (see INSERT LINK for more tips on integrating large datasets)
 
-    基于 RPCA 的整合运行速度明显更快，也代表了一种更保守的方法，处于不同生物状态的细胞在整合后不太可能 "对齐"。基于 RPCA 的方法适用于以下情景：(1) 一个数据集中的相当一部分细胞在另一个数据集中没有匹配的类型； (2) 数据集来自于同一平台； (3) 有大量的数据集或细胞需要整合。
+    基于 RPCA 的整合运行速度明显更快，也代表了一种更保守的方法，处于不同生物状态（比如不同实验条件）的细胞在整合后不太可能 "对齐"。可以通过增加 `k.anchor` 的数值来增强 “对齐” 力量以强制不同生物状态的细胞强制对齐。
+    基于 RPCA 的方法适用于以下情景：(1) 一个数据集中的相当一部分细胞在另一个数据集中没有匹配的类型； (2) 数据集来自于同一平台； (3) 有大量的数据集或细胞需要整合。
 
 -   reference-based integration
 

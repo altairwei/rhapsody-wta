@@ -292,3 +292,141 @@ plot_bootstrap_distribution <- function(
   
   p
 }
+
+plot_markers <- function(obj, ...) {
+  Seurat::DotPlot(
+    obj,
+    features = list(
+      # Epidermal Cells
+      "FDH" = c(
+        "TraesCS4B02G297500",
+        "TraesCS4D02G296400",
+        "TraesCS4A02G007400"
+      ),
+      "ATML1" = c(
+        "TraesCS2A02G474000",
+        "TraesCS2D02G473700"
+      ),
+      "DCR" = c(
+        "TraesCS1A02G341300",
+        "TraesCS1D02G343400"
+      ),
+      
+      # EP3 是排水孔相关基因
+      "EP3" = c(
+        "TraesCS2A02G350700",
+        "TraesCS2D02G348800",
+        "TraesCS6D02G199500",
+        "TraesCS6A02G216100"
+      ),
+      
+      # Guardian Cells
+      "ALMT12" = c(
+        "TraesCS1D02G194000",
+        "TraesCS1A02G189900",
+        "TraesCS1B02G192000"
+      ),
+      "MYB60" = c(
+        "TraesCS4A02G322200",
+        "TraesCS5D02G552200"
+      ),
+      "HIC" = c(
+        "TraesCS4D02G226100"
+      ),
+      
+      # Mesophyll Cells
+      "RBCS" = c(
+        "TraesCS2A02G066800",
+        #"TraesCS2B02G079200",
+        #"TraesCS2D02G065200",
+        #"TraesCS2D02G065300",
+        "TraesCS5A02G165400",
+        #"TraesCS5A02G165700",
+        #"TraesCS5B02G162600",
+        #"TraesCS5B02G162800",
+        #"TraesCS5D02G169600",
+        "TraesCS5D02G169900"
+      ),
+      "CAB3" = c(
+        "TraesCS7A02G276400",
+        #"TraesCS1D02G411300",
+        "TraesCS1B02G317500",
+        #"TraesCS7D02G276300",
+        #"TraesCS5B02G353200",
+        #"TraesCS5A02G350600",
+        "TraesCS1A02G403300"
+      ),
+      "LHCB2.1" = c(
+        "TraesCS5D02G329200",
+        "TraesCS5B02G322900",
+        "TraesCS5A02G322500"
+      ),
+      "CA1" = c(
+        #"TraesCS7D02G443400",
+        "TraesCS7B02G354800",
+        "TraesCS3A02G230000",
+        #"TraesCS3D02G223300",
+        "TraesCS3B02G259300"
+      ),
+      "AOC2" = c(
+        "TraesCS6D02G314300",
+        "TraesCS6A02G334800",
+        "TraesCS6B02G365200"
+      ),
+      
+      # Vascular Cells
+      "SULTR3;4" = c(
+        "TraesCS7A02G088700",
+        "TraesCS4A02G388000",
+        "TraesCS7D02G084100"
+      ),
+      "TaGSr" = c(
+        "TraesCS4B02G240900",
+        "TraesCS4D02G240700",
+        "TraesCS4A02G063800"
+      ),
+      "gl-OXO" = c(
+        "TraesCS4D02G032000",
+        "TraesCS4B02G033300",
+        "TraesCS4A02G279200",
+        "TraesCS4D02G031800"
+      ),
+      "TaSUT1" = c(
+        "TraesCS4A02G016400",
+        "TraesCS4B02G287800",
+        "TraesCS4D02G286500"
+      ),
+      "CPIII" = c(
+        "TraesCS6B02G050700",
+        "TraesCS6D02G041700",
+        "TraesCS6A02G036100"
+      ),
+      
+      # Cortex Cells
+      "AT1G62510" = c(
+        "TraesCS2A02G424800",
+        "TraesCS2B02G444500",
+        #"TraesCS2D02G422700",
+        #"TraesCS2D02G422800",
+        "TraesCS2A02G424861"
+      ),
+      # Bulliform
+      "PFA-DSP2" = c(
+        "TraesCS5B02G163200",
+        "TraesCS5D02G170400"
+      )
+    ),
+    ...
+  ) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1),
+      strip.text.x = ggplot2::element_text(angle = 90)
+    )
+}
+
+choose_indent_res <- function(obj, meta_col) {
+  Seurat::Idents(obj) <- meta_col
+  lvs <- type.convert(levels(obj))
+  Seurat::Idents(obj) <- factor(Seurat::Idents(obj), levels = sort(lvs))
+  obj
+}
