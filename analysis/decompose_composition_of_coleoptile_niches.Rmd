@@ -10,7 +10,16 @@ knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 ```
 
-## 准备 LCM-Seq 数据
+
+```{r}
+obj_mock_combined <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_mock_combined_*.rds"))
+```
+
+
+# 1 CIBERSORT
+
+## 1.1 准备 LCM-Seq 数据
 
 ```{r}
 lcm_counts <- readr::read_tsv("../results/LCMSeq/gene_quanti/counts/all.featureCounts", comment = "#")
@@ -21,26 +30,40 @@ rownames(lcm_mtx) <- lcm_counts$Gene
 lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
 ```
 
-## 准备细胞类型特征矩阵
+## 1.2 准备细胞类型特征矩阵
 
 ```{r}
-hfile <- SeuratDisk::Connect("../output/obj_annotated.h5seurat")
-obj <- SeuratDisk::LoadH5Seurat(
-  "../output/obj_annotated.h5seurat",
-  assays = list(RNA="counts"),
-  reductions = FALSE
-)
-
-sc_counts <- Seurat::GetAssayData(obj, slot = "counts")
+sc_counts <- SeuratObject::GetAssayData(obj_mock_combined, assay = "RNA", slot = "counts")
 ```
 
 ### 标志基因
 
+```{r cache=TRUE}
+marker_cosg <- COSG::cosg(
+ obj_mock_combined,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+```{r}
+markers_df <- xfun::cache_rds(
+  file = "markers_obj_mock_combined.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindAllMarkers(
+    obj_mock_combined, only.pos = TRUE, min.pct = 0.25,
+    logfc.threshold = 0.25, verbose = FALSE)
+)
+```
+
 这个标志基因是通过 `Seurat::FindAllMarkers` 找出的：
 
 ```{r}
-markers_df <- readRDS(Sys.glob("../output/int_cluster_markers_*.rds"))
-markergenes <- unique(markers_df$gene)
+#markergenes <- unique(markers_df$gene)
+markergenes <- unique(unlist(marker_cosg$names))
 ```
 
 但这里我没有找到 (Baccin, Chiara et al. 2020) 文献中提到的寻找特征基因的算法。
@@ -51,10 +74,10 @@ markergenes <- unique(markers_df$gene)
 
 ```{r}
 sc_mtx <- vapply(
-  X = levels(Seurat::Idents(obj)),
+  X = levels(Seurat::Idents(obj_mock_combined)),
   FUN = function(i) {
     Matrix::rowMeans(
-      sc_counts[markergenes, Seurat::WhichCells(obj, ident = i)])
+      sc_counts[markergenes, Seurat::WhichCells(obj_mock_combined, ident = i)])
   },
   FUN.VALUE = numeric(length = length(markergenes))
 )
@@ -63,7 +86,7 @@ sc_mtx <- sc_mtx[ rowSums(sc_mtx) > 1, ]
 ```
 
 
-## 反卷积
+## 1.3 反卷积
 
 ### 运行算法
 
@@ -98,7 +121,9 @@ CIBER <- RNAMagnet::runCIBERSORT(
 ```{r fig.height=7, fig.width=8, dev='svglite'}
 ggplot2::ggplot(
     data = CIBER,
-    mapping = ggplot2::aes(x = SampleClass, y= Fraction, color = CellType)
+    mapping = ggplot2::aes(
+      x = factor(SampleClass, unique(LCM_design)),
+      y= Fraction, color = as.character(CellType))
   ) +
   ggplot2::geom_point(stat = "summary", fun = mean) +
   ggplot2::geom_errorbar(
@@ -146,5 +171,23 @@ ComplexHeatmap::Heatmap(
   )
 )
 ```
+
+
+# 2 MuSiC
+
+## 2.1 构建 ExpressionSet
+
+不支持 dgCMatrix ，无法使用 MuSiC
+
+```{r}
+sc_eset <- Biobase::ExpressionSet(
+  assayData = as.matrix(obj_mock_combined@assays$RNA@counts[1:2000,]),
+  phenoData = obj_mock_combined@meta.data
+)
+
+sc_eset
+```
+
+
 
 

@@ -18,7 +18,7 @@ library(magrittr)
 首先加载 Seurat 对象：
 
 ```{r}
-obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
 
 #### 1.1.1 数据类型
@@ -91,14 +91,15 @@ table(cond, cellTypes)
 ```{r run-bootstrap}
 ca_res_nonclust <- xfun::cache_rds(
   file = "ca_res_nonclust.rds",
-  dir = "../output/",
+  rerun = TRUE,
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = local({
     res <- scDC::scDC_noClustering(
       cellTypes, subject,
       nboot = 500,
       calCI = TRUE,
       calCI_method = c("percentile", "BCa", "multinom"),
-      ncores = 6
+      ncores = 4
     )
 
     res$results$cond <- cond[match(res$results$subject, subject)]
@@ -232,7 +233,7 @@ plot_bootstrap_distribution <- function(
 }
 ```
 
-```{r fig.height=10, fig.width=13, dev="svg"}
+```{r fig.height=8, fig.width=13, dev="svg"}
 p <- plot_bootstrap_distribution(ca_res_nonclust) +
   ggplot2::theme(
     strip.text.x = ggplot2::element_text(size = 16)
@@ -250,6 +251,7 @@ p
 ca_res_nonclust_glm <- xfun::cache_rds(
   file = "ca_glm_nonclust.rds",
   dir = "../output/",
+  rerun = TRUE,
   expr = scDC::fitGLM(
     ca_res_nonclust,
     ca_res_nonclust$info$cond,
@@ -303,10 +305,5 @@ barplotCI <- function(res, clusters = NULL, samples = NULL){
 
   g_bar
 }
-
-barplotCI(
-  ca_res_nonclust,
-  clusters = c("CCs_4", "CCs_5", "MCs_4", "VCs_1", "VCs_2", "VCs_3"),
-)
 ```
 

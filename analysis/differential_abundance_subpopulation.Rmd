@@ -8,6 +8,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 library(magrittr)
 ```
+
 # 差异丰度的细胞亚群鉴定
 
 ## 1 算法探索
@@ -19,7 +20,7 @@ library(magrittr)
 首先加载 Seurat 对象：
 
 ```{r read-seurat-obj}
-obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj))), palette = NULL)
 ```
 
@@ -314,22 +315,27 @@ contrib_df %>%
 
 #### 1.4.2 基于 {Seurat} 的标志基因鉴定
 
-```{r seurat-markers, cache = TRUE, eval=FALSE}
+```{r seurat-markers, cache = TRUE}
 obj_sub <- DAseq::addDAslot(obj_sub, da.regions = da_regions, da.slot = "da")
 Seurat_markers <- DAseq::SeuratMarkerFinder(
-  obj_sub, da.slot = "da", assay = "RNA", test.use = "negbinom", only.pos = T
+  obj_sub, da.slot = "da", assay = "RNA"
 )
-```
 
+str(Seurat_markers)
+```
 
 #### 1.4.3 基于 STG 的标志基因鉴定
 
+```{r}
+reticulate::use_virtualenv()
+```
+
 原文中使用的是整合后 Seurat 对象 “RNA” 分析中的 “data” 槽。另外我们可以参考 https://theislab.github.io/scanpy-in-R 设置 Python 运行环境。
 
-```{r stg-markers, results="hide"}
+```{r stg-markers, results="hide", eval=FALSE}
 STG_markers <- xfun::cache_rds(
   file = "PNR2_2dpi_da_markers.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = DAseq::STGmarkerFinder(
     X = obj_sub@assays$RNA@data,
     da.regions = da_regions, 
@@ -343,7 +349,7 @@ STG_markers <- xfun::cache_rds(
 
 还有一个问题是 tensorflow 似乎无法检测到 CUDA，想办法解决这个问题。问题出在 [TensorFlow : failed call to cuInit: CUDA_ERROR_NO_DEVICE](https://stackoverflow.com/questions/48658204/tensorflow-failed-call-to-cuinit-cuda-error-no-device) 这里，我们错误的设置了 `GPU = 1` 这个值，应该设置成 `GPU = 0`
 
-```{r}
+```{r eval=FALSE}
 str(STG_markers, max.level = 2)
 ```
 
@@ -587,7 +593,7 @@ plot_da_overlap <- function(obj) {
 ```{r run-pnr2-and-tr4}
 PNR2_da <- xfun::cache_rds(
   file = "da_All_PNR2.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = find_diff_abundant_cells(obj,
     stim = paste(1:3, "DPI-PNR2", sep = ""),
     ctrl = paste(0:3, "DPI-MOCK", sep = "")
@@ -596,7 +602,7 @@ PNR2_da <- xfun::cache_rds(
 
 TR4_da <- xfun::cache_rds(
   file = "da_All_TR4.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = find_diff_abundant_cells(obj,
     stim = paste(1:3, "DPI-TR4", sep = ""),
     ctrl = paste(0:3, "DPI-MOCK", sep = "")
@@ -697,10 +703,10 @@ patchwork::wrap_plots(
 
 #### 鉴定 Marker 基因
 
-```{r PNR2_da_markers, results="hide"}
+```{r PNR2_da_markers, results="hide", eval=FALSE}
 PNR2_all_da_markers <- xfun::cache_rds(
   file = "PNR2_all_da_markers.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = {
     sub <- subset(obj, subset = group %in% c(
       paste(1:3, "DPI-PNR2", sep = ""),
@@ -715,10 +721,10 @@ PNR2_all_da_markers <- xfun::cache_rds(
 )
 ```
 
-```{r TR4_da_markers, results="hide"}
+```{r TR4_da_markers, results="hide", eval=FALSE}
 TR4_all_da_markers <- xfun::cache_rds(
   file = "TR4_all_da_markers.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = find_da_markers(TR4_da, obj)
 )
 ```
@@ -728,7 +734,7 @@ TR4_all_da_markers <- xfun::cache_rds(
 ```{r run-pnr2-vs-tr4}
 PNR2_vs_TR4_da <- xfun::cache_rds(
   file = "da_All_PNR2vsTR4.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = find_diff_abundant_cells(obj,
     stim = paste(1:3, "DPI-PNR2", sep = ""),
     ctrl = paste(1:3, "DPI-TR4", sep = "")
@@ -775,7 +781,7 @@ plot_da_overlap(PNR2_vs_TR4_da) + ggplot2::ggtitle("PNR2 vs. TR4")
 ```{r 1dpi-sample-data, warning=FALSE, message=FALSE, results="hide"}
 results_1dpi <- xfun::cache_rds(
   file = "da_1dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = lapply(
     list(
       "PNR2 vs. MOCK - 1DPI" = c("1DPI-PNR2", "1DPI-MOCK"),
@@ -792,7 +798,7 @@ results_1dpi <- xfun::cache_rds(
 ```{r}
 da_1dpi_marker <- xfun::cache_rds(
   file = "da_marker_1dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = purrr::imap(
     list(
       "PNR2 vs. MOCK - 1DPI" = c("1DPI-PNR2", "1DPI-MOCK"),
@@ -888,9 +894,9 @@ pnr2_da2 %>% reactable::reactable(
 )
 ```
 
-```{r fig.height=12, fig.width=26}
+```{r fig.height=12, fig.width=26, eval=FALSE}
 Seurat::DefaultAssay(obj) <- "RNA"
-Seurat::FeaturePlot(obj, features = head(pnr2_da2$gene, 10), ncol = 5) +
+Seurat::FeaturePlot(obj, reduction = "tsne", features = head(pnr2_da2$gene, 10), ncol = 5) &
   ggplot2::coord_fixed()
 ```
 
@@ -899,7 +905,7 @@ Seurat::FeaturePlot(obj, features = head(pnr2_da2$gene, 10), ncol = 5) +
 ```{r 2dpi-sample-data, warning=FALSE, message=FALSE, results="hide"}
 results_2dpi <- xfun::cache_rds(
   file = "da_2dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = lapply(
     list(
       "PNR2 vs. MOCK - 2DPI" = c("2DPI-PNR2", "2DPI-MOCK"),
@@ -916,7 +922,7 @@ results_2dpi <- xfun::cache_rds(
 ```{r}
 da_2dpi_marker <- xfun::cache_rds(
   file = "da_marker_2dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = purrr::imap(
     list(
       "PNR2 vs. MOCK - 2DPI" = c("2DPI-PNR2", "2DPI-MOCK"),
@@ -950,7 +956,7 @@ generate_overlap(results_2dpi) + patchwork::plot_layout(heights = c(2, 3), guide
 ```{r 3dpi-sample-data, warning=FALSE, message=FALSE, results="hide"}
 results_3dpi <- xfun::cache_rds(
   file = "da_3dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = lapply(
     list(
       "PNR2 vs. MOCK - 3DPI" = c("3DPI-PNR2", "3DPI-MOCK"),
@@ -967,7 +973,7 @@ results_3dpi <- xfun::cache_rds(
 ```{r}
 da_3dpi_marker <- xfun::cache_rds(
   file = "da_marker_3dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = purrr::imap(
     list(
       "PNR2 vs. MOCK - 3DPI" = c("3DPI-PNR2", "3DPI-MOCK"),
