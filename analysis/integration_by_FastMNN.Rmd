@@ -1,0 +1,158 @@
+---
+title: "Integration by FastMNN"
+author: "Altair Wei"
+date: "2022/6/1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(SingleCellExperiment)
+```
+
+## 加载数据
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  #"3DPI-PNR2-2", # 这个样本的细胞数量太少，丢弃掉。
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+names(samples) <- samples
+```
+
+```{r}
+obj_list <- lapply(samples, function(sample) readRDS(
+  Sys.glob(paste0(
+    "../results/ObjectCache/QualityControl/",
+    "obj_strained_", sample, "_*.rds"))
+  )
+)
+```
+
+## 整合数据
+
+### 初始化对象
+
+```{r}
+obj_merged <- merge(
+  x = obj_list[[1]],
+  y = obj_list[-1],
+  add.cell.ids = names(obj_list)
+)
+
+obj_merged <- obj_merged %>%
+  Seurat::NormalizeData(verbose = FALSE) %>%
+  Seurat::FindVariableFeatures(
+    selection.method = "vst", nfeatures = 5000, verbose = FALSE)
+
+chosen.hvgs <- Seurat::VariableFeatures(obj_merged)
+
+sce <- Seurat::as.SingleCellExperiment(obj_merged)
+sce
+```
+
+### 运行 FastMNN
+
+```{r}
+integrated <- batchelor::fastMNN(
+  sce, prop.k = 0.1, batch = sce$sample, subset.row = chosen.hvgs)
+```
+
+### 整合对象
+
+```{r}
+reduc <- reducedDim(integrated, "corrected")
+colnames(reduc) <- paste0("fastMNN_", 1:50)
+stdevs <- apply(reduc, MARGIN = 2, FUN = sd)
+
+obj_merged[["fastMNN"]] <- Seurat::CreateDimReducObject(
+  embeddings = reduc, stdev = stdevs, key = "fastMNN_", assay = "RNA")
+```
+
+```{r fig.height=5, fig.width=12}
+p1 <- Seurat::DimPlot(
+  object = obj_merged, reduction = "fastMNN", pt.size = .1, group.by = "group")
+p2 <- Seurat::VlnPlot(
+  object = obj_merged, features = "fastMNN_1", group.by = "sample", pt.size = .1)
+p1 + p2
+```
+
+## 降维聚类
+
+```{r}
+obj_merged <- obj_merged %>%
+    Seurat::RunUMAP(
+      reduction = "fastMNN", dims = 1:50, verbose = FALSE) %>%
+    Seurat::RunTSNE(
+      reduction = "fastMNN", dims = 1:50, check_duplicates = FALSE, verbose = FALSE) %>%
+    Seurat::FindNeighbors(reduction = "fastMNN", dims = 1:50, verbose = FALSE) %>%
+    Seurat::FindClusters(resolution = 0.2, verbose = FALSE)
+```
+
+### 降维图 {.tabset}
+
+```{r}
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_merged))), palette = NULL)
+```
+
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_merged, reduction = "tsne", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+#### UMAPs
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_merged, reduction = "umap", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_merged, reduction = "umap", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+
+
+
+
+
+
+
+
+

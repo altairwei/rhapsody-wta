@@ -139,22 +139,22 @@ obj_integrated <- Seurat::RunTSNE(
   obj_integrated, dims = 1:30, verbose = TRUE, seed.use = 8964)
 ```
 
-#### UMAP
-
-```{r fig.height=4, fig.width=10}
-p1 <- Seurat::DimPlot(obj_integrated, reduction = "umap", cols = ident_cols) +
-  ggplot2::coord_fixed()
-p2 <- Seurat::DimPlot(obj_integrated, reduction = "umap", group.by = "sample") +
-  ggplot2::coord_fixed()
-p1 + p2
-```
-
 #### t-SNE
 
 ```{r fig.height=4, fig.width=10}
 p1 <- Seurat::DimPlot(obj_integrated, reduction = "tsne", cols = ident_cols) +
   ggplot2::coord_fixed()
 p2 <- Seurat::DimPlot(obj_integrated, reduction = "tsne", group.by = "sample") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+#### UMAP
+
+```{r fig.height=4, fig.width=10}
+p1 <- Seurat::DimPlot(obj_integrated, reduction = "umap", cols = ident_cols) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_integrated, reduction = "umap", group.by = "sample") +
   ggplot2::coord_fixed()
 p1 + p2
 ```
@@ -255,22 +255,25 @@ obj_annotated <- xfun::cache_rds(
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_annotated))), palette = NULL)
 ```
 
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+    obj_annotated, reduction = "tsne",
+    cols = ident_cols, label = TRUE, label.box = TRUE, label.color = "black") +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", group.by = "sample") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
 #### UMAP
 
 ```{r fig.height=4, fig.width=10}
 p1 <- Seurat::DimPlot(obj_annotated, reduction = "umap", cols = ident_cols) +
   ggplot2::coord_fixed()
 p2 <- Seurat::DimPlot(obj_annotated, reduction = "umap", group.by = "sample") +
-  ggplot2::coord_fixed()
-p1 + p2
-```
-
-#### t-SNE
-
-```{r fig.height=4, fig.width=10}
-p1 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", cols = ident_cols) +
-  ggplot2::coord_fixed()
-p2 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", group.by = "sample") +
   ggplot2::coord_fixed()
 p1 + p2
 ```

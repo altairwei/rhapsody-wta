@@ -1,0 +1,534 @@
+---
+title: "Integration by Harmony"
+author: "Altair Wei"
+date: "2022/5/23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+library(magrittr)
+source("../scripts/UtilityFunctions.R")
+```
+
+## 加载数据
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  #"3DPI-PNR2-2", # 这个样本的细胞数量太少，丢弃掉。
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+names(samples) <- samples
+```
+
+```{r}
+obj_list <- lapply(samples, function(sample) readRDS(
+  Sys.glob(paste0(
+    "../results/ObjectCache/QualityControl/",
+    "obj_strained_", sample, "_*.rds"))
+  )
+)
+```
+
+## 整合数据
+
+### 初始化对象
+
+```{r}
+obj_merged <- merge(
+  x = obj_list[[1]],
+  y = obj_list[-1],
+  add.cell.ids = names(obj_list)
+)
+
+obj_merged <- obj_merged %>%
+  Seurat::NormalizeData(verbose = FALSE) %>%
+  Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>% 
+  Seurat::ScaleData(verbose = FALSE) %>% 
+  Seurat::RunPCA(features = NULL, npcs = 20, verbose = FALSE)
+```
+
+```{r fig.height=5, fig.width=12}
+p1 <- Seurat::DimPlot(object = obj_merged, reduction = "pca", pt.size = .1, group.by = "sample")
+p2 <- Seurat::VlnPlot(object = obj_merged, features = "PC_1", group.by = "sample", pt.size = .1)
+p1 + p2
+```
+
+### 运行 Harmony
+
+关于 `theta` 参数，考虑到我们数据集是同一种模态、同一种机器产生的、植物生长状态尽量保持一致。唯一的批次效应可能来源于测序深度，所以数据集的批次效应应该是较小的，而生物学效应远远大于批次效应。
+
+> First, if the batch effect is small enough (here, SNR > 3.4), then theta=0 is sufficient for integration. Second, setting theta >=1 allows Harmony to work even when the effect of batch is equal to or greather than biology. This behavior powers Harmony to integrate across vastly different types of datasets.
+
+关于 `lambda` 参数：
+
+> Smaller values result in more aggressive correction.
+
+```{r fig.height=2.5, fig.width=6}
+obj_merged <- obj_merged %>% 
+    harmony::RunHarmony(
+      group.by.vars = c("time", "treatment", "sample"),
+      theta = c(4, 1, 2),
+      kmeans_init_nstart=20, kmeans_init_iter_max=100,
+      epsilon.cluster=-Inf, epsilon.harmony=-Inf,
+      plot_convergence = TRUE)
+```
+
+上图可以看到 objective score 随着循环数发生的变化，如果分数随着循环的增加不再变化，那说明收敛了。如果感觉过早结束了循环，那么可以 `epsilon.cluster=-Inf` 和 `epsilon.harmony=-Inf` 来防止。
+
+```{r fig.height=5, fig.width=12}
+p1 <- Seurat::DimPlot(object = obj_merged, reduction = "harmony", pt.size = .1, group.by = "sample")
+p2 <- Seurat::VlnPlot(object = obj_merged, features = "harmony_1", group.by = "sample", pt.size = .1)
+p1 + p2
+```
+
+## 降维聚类
+
+```{r}
+obj_merged <- obj_merged %>%
+    Seurat::RunUMAP(reduction = "harmony", dims = 1:20, verbose = FALSE) %>%
+    Seurat::RunTSNE(reduction = "harmony", dims = 1:20, verbose = FALSE) %>%
+    Seurat::FindNeighbors(reduction = "harmony", dims = 1:20, verbose = FALSE) %>%
+    Seurat::FindClusters(resolution = 0.6, verbose = FALSE, random.seed = 8964)
+```
+
+### 调整分辨率
+
+```{r}
+library(clustree)
+
+obj_merged <- xfun::cache_rds(
+  file = "obj_harmony_clustree.rds",
+  rerun = T,
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = local({
+    obj_merged <- Seurat::FindClusters(
+      obj_merged, resolution = seq(0, 1.6, 0.2), verbose = FALSE)
+    obj_merged <- choose_indent_res(obj_merged, "RNA_snn_res.0.6")
+    obj_merged
+  })
+)
+```
+
+```{r fig.height=14, fig.width=10}
+clustree::clustree(obj_merged, prefix = "RNA_snn_res.")
+```
+
+### 将聚类树覆盖到降维空间中 {.tabset}
+
+#### t-SNE
+
+```{r fig.height=10, fig.width=14}
+clustree::clustree_overlay(
+  obj_merged,
+  prefix = "RNA_snn_res.",
+  assay = "RNA",
+  red_dim = "tsne",
+  x_value = "tsne1",
+  y_value = "tsne2",
+  use_colour = "points"
+) + ggplot2::coord_fixed()
+```
+
+#### UMAP
+
+```{r fig.height=10, fig.width=14}
+clustree::clustree_overlay(
+  obj_merged,
+  prefix = "RNA_snn_res.",
+  assay = "RNA",
+  red_dim = "umap",
+  x_value = "umap1",
+  y_value = "umap2",
+  use_colour = "points"
+) + ggplot2::coord_fixed()
+```
+
+
+### 降维图 {.tabset}
+
+```{r}
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_merged))), palette = NULL)
+```
+
+#### UMAP
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_merged, reduction = "umap", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_merged, reduction = "umap", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "umap",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
+
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_merged, reduction = "tsne", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "tsne",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
+
+
+## 细胞种群标志基因
+
+### 同源标志基因
+
+```{r fig.width=15, fig.height=7}
+Seurat::DefaultAssay(obj_merged) <- "RNA"
+plot_markers(obj_merged, cluster.idents = TRUE)
+```
+
+### 新标志基因
+
+```{r cache=TRUE}
+marker_cosg <- COSG::cosg(
+ obj_merged,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+```{r cache=TRUE, eval=FALSE}
+markers_df <- Seurat::FindAllMarkers(
+    obj_merged, only.pos = TRUE, min.pct = 0.25,
+    logfc.threshold = 0.25, verbose = FALSE)
+```
+
+#### 散点投影 {.tabset}
+
+```{r fig.height=7, fig.width=11, results='asis'}
+for (i in names(marker_cosg$names)) {
+  cat("#####", i, "\n\n")
+  p <- Seurat::FeaturePlot(
+      obj_merged,
+      features = marker_cosg$names[[i]][1:6],
+      order = TRUE,
+      ncol = 3) &
+    ggplot2::coord_fixed()
+  print(p)
+  cat("\n\n")
+}
+```
+
+#### 气泡图 {.tabset}
+
+```{r}
+m1 <- unlist(lapply(marker_cosg$names, function(m) m[1:3]), use.names = FALSE) %>%
+  unique()
+#m2 <- split(markers_df$gene, markers_df$cluster) %>%
+#  lapply(function(x) x[1:3]) %>% unlist() %>% unique()
+```
+
+##### COSG
+
+```{r fig.width=15, fig.height=7}
+Seurat::DotPlot(obj_merged, assay = "RNA", features = m1, cluster.idents = FALSE) +
+  ggplot2::scale_y_discrete(limits = rev) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+```
+
+##### Seurat
+
+```{r fig.width=15, fig.height=7, eval=FALSE}
+Seurat::DotPlot(obj_merged, assay = "RNA", features = m2, cluster.idents = FALSE) +
+  ggplot2::scale_y_discrete(limits = rev) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+```
+
+## 激光显微切割反卷积
+
+### 加载 LCM 数据
+
+```{r}
+lcm_counts <- readr::read_tsv("../results/LCMSeq/gene_quanti/counts/all.featureCounts", comment = "#")
+lcm_counts <- lcm_counts[!(names(lcm_counts) %in% c("Chr", "Start", "End", "Strand", "Length"))]
+names(lcm_counts) <- c("Gene", basename(dirname(names(lcm_counts)[-1])))
+lcm_mtx <- as.matrix(lcm_counts[-1])
+rownames(lcm_mtx) <- lcm_counts$Gene
+lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
+```
+
+是否需要使用归一化后的表达之呢？不需要，MuSiC 就是 raw counts
+
+```{r}
+sc_counts <- SeuratObject::GetAssayData(obj_merged, assay = "RNA", slot = "counts")
+```
+
+```{r}
+markergenes <- unique(unlist(marker_cosg$names))
+```
+
+```{r}
+#markergenes <- unique(markers_df$gene)
+```
+
+```{r}
+sc_mtx <- vapply(
+  X = levels(Seurat::Idents(obj_merged)),
+  FUN = function(i) {
+    Matrix::rowMeans(
+      sc_counts[markergenes, Seurat::WhichCells(obj_merged, ident = i)])
+  },
+  FUN.VALUE = numeric(length = length(markergenes))
+)
+
+sc_mtx <- sc_mtx[ rowSums(sc_mtx) > 1, ]
+```
+
+### 运行反卷积算法
+
+```{r}
+LCM_design <- c(
+  "VC_1" = "vascular",
+  "VC_2" = "vascular",
+  "VC_3" = "vascular",
+  "CC_1" = "cortex",
+  "CC_2" = "cortex",
+  "CC_3" = "cortex",
+  "MC_1" = "mesophyll",
+  "MC_2" = "mesophyll",
+  "MC_3" = "mesophyll"
+)
+
+CIBER <- RNAMagnet::runCIBERSORT(
+  exprs = lcm_mtx,
+  base = sc_mtx,
+  design = LCM_design,
+  markergenes = intersect(rownames(lcm_mtx), rownames(sc_mtx)),
+  mc.cores = 3
+)
+```
+
+### 可视化细胞种群比例
+
+```{r fig.height=6, fig.width=8, dev='svglite'}
+ggplot2::ggplot(
+    data = CIBER,
+    mapping = ggplot2::aes(
+      x = factor(SampleClass, unique(LCM_design)),
+      y= Fraction, color = as.character(CellType))
+  ) +
+  ggplot2::geom_point(stat = "summary", fun = mean) +
+  ggplot2::geom_errorbar(
+    stat="summary",
+    fun.min = function(x) mean(x)+sd(x)/sqrt(length(x)),
+    fun.max = function(x) mean(x)-sd(x)/sqrt(length(x)),
+    width = 0.2
+  ) +
+  ggplot2::scale_y_continuous(labels = scales::percent) +
+  ggplot2::facet_wrap(~ CellType, scales = "free_y") +
+  ggplot2::theme_bw(base_size=12) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90),
+    panel.grid = ggplot2::element_blank()
+  ) +
+  ggplot2::guides(color = "none") +
+  ggplot2::ylab("CIBERSORT estimate (a.u.)") +
+  ggplot2::xlab("Niche")
+```
+
+```{r}
+mtx_df <- CIBER %>%
+  dplyr::group_by(SampleClass, CellType) %>%
+  dplyr::summarise(
+    MeanFrac = mean(Fraction)
+  ) %>%
+  dplyr::select(CellType, SampleClass, MeanFrac) %>%
+  tidyr::pivot_wider(names_from = SampleClass, values_from = MeanFrac)
+
+mtx <- as.matrix(mtx_df[, -1])
+rownames(mtx) <- mtx_df$CellType
+```
+
+```{r fig.height=5, fig.width=4}
+ComplexHeatmap::Heatmap(
+  matrix = mtx,
+  col = c("white", "blue", "red"),
+  row_dend_width = grid::unit(4, "cm"),
+  column_order = unique(LCM_design),
+  heatmap_legend_param = list(
+    title = "Fraction",
+    #title_position = "leftcenter",
+    legend_direction = "vertical",
+    legend_height = grid::unit(4, "cm")
+  )
+)
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+## 细胞类型注释
+
+### 注释
+
+```{r}
+obj_annotated <- xfun::cache_rds(
+  file = "obj_annotated.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  rerun = T,
+  expr = local({
+    obj_merged <- Seurat::RenameIdents(
+      obj_merged,
+
+      # Vascular Cells
+      `12` = "Va_1",
+      `8`  = "Va_2",
+      `9`  = "Va_3",
+      `13` = "Va_4",
+      `10` = "Va_5",
+
+      # Mesophyll Cells
+      `0`  = "Me_1",
+      `1`  = "Me_2",
+      `3`  = "Me_3",
+      `6`  = "Me_4",
+      `5`  = "Me_5",
+      `2`  = "Me_6",
+      
+      # Cotex Cells
+      `15` = "Co_1",
+      `4`  = "Co_2",
+      
+      # Epidermal Cells
+      `11` = "Ep_1",
+      `14` = "Ep_2",
+      
+      # Guardian Cells
+      `16` = "Gu",
+
+      # Unknown Cells
+      `7`  = "Un"
+
+    )
+
+    obj_merged
+  })
+)
+```
+
+### 降维图 {.tabset}
+
+#### UMAP
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_annotated, reduction = "umap", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_annotated, reduction = "umap", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_annotated, reduction = "tsne", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+## 细胞 3D 降维图
+
+二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
+
+```{r message=FALSE, eval=TRUE}
+obj_annotated <- Seurat::RunTSNE(
+  obj_annotated, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
+obj_annotated <- Seurat::RunUMAP(obj_annotated, dims = 1:20, n.components = 3, verbose = FALSE)
+
+gg_color_hue <- function(n) {
+  hues <- seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+Dim3DPlot <- function(obj_annotated, dim_prefix, cols) {
+  d1 <- paste0(dim_prefix, "1")
+  d2 <- paste0(dim_prefix, "2")
+  d3 <- paste0(dim_prefix, "3")
+
+  df_to_plot <- Seurat::FetchData(obj_annotated, vars = c(d1, d2, d3, "ident"))
+  
+  plotly::plot_ly(
+    df_to_plot,
+    x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
+    color = ~ ident,
+    colors = cols,
+    type = "scatter3d",
+    mode = "markers",
+    marker = list(size = 4)
+  )
+}
+
+Dim3DPlot(obj_annotated, "UMAP_", cols = ident_cols)
+```
+

@@ -1,0 +1,161 @@
+---
+title: "Integration by scVI"
+author: "Altair Wei"
+date: "2022/5/31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+reticulate::use_virtualenv()
+```
+
+## 加载数据
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  #"3DPI-PNR2-2", # 这个样本的细胞数量太少，丢弃掉。
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+names(samples) <- samples
+```
+
+```{r}
+obj_list <- lapply(samples, function(sample) readRDS(
+  Sys.glob(paste0(
+    "../results/ObjectCache/QualityControl/",
+    "obj_strained_", sample, "_*.rds"))
+  )
+)
+```
+
+## 整合数据
+
+### 初始化对象
+
+```{r}
+obj_merged <- merge(
+  x = obj_list[[1]],
+  y = obj_list[-1],
+  add.cell.ids = names(obj_list)
+)
+
+obj_merged <- obj_merged %>%
+  Seurat::NormalizeData(verbose = FALSE) %>%
+  Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000)
+
+top2k <- obj_merged[Seurat::VariableFeatures(obj_merged),]
+top2k
+```
+
+### 运行 scVI
+
+```{r}
+adata <- sceasy::convertFormat(
+  top2k,
+  from="seurat", to="anndata",
+  main_layer="counts", drop_single_values=FALSE)
+print(adata)
+```
+
+```{r message=FALSE, warning=FALSE}
+scvi <- reticulate::import("scvi", convert = FALSE)
+
+# run setup_anndata, use column stim for batch
+scvi$model$SCVI$setup_anndata(
+  adata, batch_key = "sample")
+
+# create the model
+model = scvi$model$SCVI(
+  adata, n_latent = 30L,
+  n_layers = 2L, gene_likelihood = "nb"
+)
+
+# train the model
+model$train()
+```
+
+```{r}
+# get the latent represenation
+latent = model$get_latent_representation()
+
+# put it back in our original Seurat object
+latent <- as.matrix(latent)
+rownames(latent) = colnames(top2k)
+obj_merged[["scvi"]] <- Seurat::CreateDimReducObject(
+  embeddings = latent, key = "scvi_", assay = "RNA")
+```
+
+## 降维聚类
+
+```{r}
+obj_merged <- obj_merged %>%
+    Seurat::RunUMAP(reduction = "scvi", dims = 1:30, verbose = FALSE) %>%
+    Seurat::RunTSNE(reduction = "scvi", dims = 1:30, verbose = FALSE) %>%
+    Seurat::FindNeighbors(reduction = "scvi", dims = 1:30, verbose = FALSE) %>%
+    Seurat::FindClusters(resolution = 0.6, verbose = FALSE, random.seed = 8964)
+```
+
+```{r fig.height=5, fig.width=12}
+p1 <- Seurat::DimPlot(object = obj_merged, reduction = "scvi", pt.size = .1, group.by = "sample")
+p2 <- Seurat::VlnPlot(object = obj_merged, features = "scvi_1", group.by = "sample", pt.size = .1)
+p1 + p2
+```
+
+### 细胞类型 {.tabset}
+
+```{r}
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_merged))), palette = NULL)
+```
+
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_merged, reduction = "tsne", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+#### UMAP
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DimPlot(
+        obj_merged, reduction = "umap", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed()
+p2 <- Seurat::DimPlot(obj_merged, reduction = "umap", group.by = "sample", pt.size = .001) +
+  #ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
