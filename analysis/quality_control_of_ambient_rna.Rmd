@@ -51,9 +51,10 @@ samples <- c(
 names(samples) <- samples
 ```
 
-```{r warning=FALSE}
+```{r message=FALSE, warning=FALSE, results='hide'}
 sc_list <- xfun::cache_rds(
   file = "sc_list.rds",
+  rerun = TRUE,
   dir = "../results/ObjectCache/QualityControl/",
   expr = lapply(samples, function(sample) {
     obj <- readRDS(Sys.glob(sprintf(
@@ -175,6 +176,7 @@ purrr::pmap(rho_df, function(sample, captured, total){
 ```{r warning=FALSE, message=FALSE}
 out_list <- xfun::cache_rds(
   file = "out_list.rds",
+  rerun = TRUE,
   dir = "../results/ObjectCache/QualityControl/",
   expr = lapply(sc_list, function(sc) SoupX::adjustCounts(sc))
 )
@@ -260,6 +262,7 @@ for (sample in samples) {
   xfun::cache_rds(
     file = paste0("obj_strained_", sample),
     dir = "../results/ObjectCache/QualityControl/",
+    rerun = TRUE,
     expr = local({
       out = out_list[[sample]]
       seurat_obj <- Seurat::CreateSeuratObject(

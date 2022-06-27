@@ -8,11 +8,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
+library(Matrix)
+library(SingleCellExperiment)
 ```
 
 # 细胞和基因的质量控制
 
-## 加载数据
+## 1 加载数据
 
 这里考虑利用简单的 Seurat 合并功能，将不同样本的数据合并到一个对象中，然后一起质量控制。数据整合时再拆分成对象列表。
 
@@ -72,10 +74,10 @@ obj_list <- lapply(obj_list, function(obj) {
   detected <- rownames(obj)
   mt_genes <- intersect(readLines("../data/Ta_mt_gene_list.txt"), detected)
   cp_genes <- intersect(readLines("../data/Ta_cp_gene_list.txt"), detected)
-  
+
   obj[["percent.mt"]] <- Seurat::PercentageFeatureSet(obj, features = mt_genes)
   obj[["percent.cp"]] <- Seurat::PercentageFeatureSet(obj, features = cp_genes)
-  
+
   obj$log10GenesPerUMI <- log10(obj$nFeature_RNA) / log10(obj$nCount_RNA)
 
   obj
@@ -84,7 +86,12 @@ obj_list <- lapply(obj_list, function(obj) {
 
 转换出 SingleCellExperiment 对象：
 
-```{r eval=FALSE}
+```{r eval=TRUE}
+obj_merged <- merge(
+  x = obj_list[[1]],
+  y = obj_list[-1],
+  add.cell.ids = names(obj_list)
+)
 sce_merged <- Seurat::as.SingleCellExperiment(obj_merged)
 colData(sce_merged) <- cbind(colData(sce_merged), scater::perCellQCMetrics(sce_merged))
 ```
@@ -94,32 +101,21 @@ meta_df <- lapply(obj_list, function(obj) obj[[]]) %>%
   dplyr::bind_rows()
 ```
 
+## 2 细胞质量控制
 
-## 细胞质量控制
-
-### 细胞文库尺寸 {.tabset}
-
-```{r}
-count_thr <- attr(
-  scater::isOutlier(meta_df$nCount_RNA, log = TRUE, type = "lower"), "thresholds")[1]
-feat_thr <- attr(
-  scater::isOutlier(meta_df$nFeature_RNA, log = TRUE, type = "lower"), "thresholds")[1]
-```
+### 2.1 细胞文库尺寸 {.tabset}
 
 某些细胞的 counts 太高了：
 
 ```{r fig.height=4, fig.width=8}
 ggplot2::ggplot(meta_df, ggplot2::aes(nCount_RNA, fill = group)) +
   ggplot2::geom_histogram(bins = 100) +
-  ggplot2::geom_vline(xintercept = count_thr) +
   ggplot2::scale_x_log10() +
 ggplot2::ggplot(meta_df, ggplot2::aes(nFeature_RNA, fill = group)) +
   ggplot2::geom_histogram(bins = 100) +
-  ggplot2::geom_vline(xintercept = feat_thr) +
   ggplot2::scale_x_log10() +
 patchwork::plot_layout(guides = "collect")
 ```
-
 
 ```{r fig.height=3, fig.width=10}
 p1 <- ggplot2::quickplot(data = meta_df,
@@ -161,7 +157,37 @@ ggplot2::quickplot(data = meta_df,
   x = nCount_RNA, y = nFeature_RNA, color = sample, geom = "point")
 ```
 
-### 破损细胞
+### 2.2 离群值检测
+
+在检测 nCount_RNA 和 nFeature 离群值时，使用 `scuttle::isOutlier()` 。 因为这两个数据都是严重的右尾，所以在检测 lower 时要使用 log 转换，检测 higher 时不用。
+
+但是考虑到大尺寸的细胞很多，从 nCount_RNA 的分布来看，不应该过滤掉那些大细胞。 这些大细胞不可能是同态双细胞，因为 Rhapsody WTA 技术的双细胞率本来旧低，而植物细胞本身又很大。
+
+```{r fig.height=6, fig.width=10}
+meta_df %>%
+  dplyr::mutate(
+    isLowerOutlier = scuttle::isOutlier(nFeature_RNA, nmads = 3, log = TRUE, type = "lower", batch = sample),
+    isHigherOutlier = scuttle::isOutlier(nFeature_RNA, type = "higher", nmads = 10, batch = sample),
+    isOutlier = isLowerOutlier | isHigherOutlier
+  ) %>%
+  ggplot2::ggplot(ggplot2::aes(x = nFeature_RNA, fill = isOutlier)) +
+    ggplot2::geom_histogram(bins = 60) +
+    ggplot2::facet_wrap(~sample) +
+    ggplot2::scale_x_log10()
+```
+
+```{r}
+obj_list <- lapply(obj_list, function(obj) {
+  outlier <- scuttle::isOutlier(
+    obj$nFeature_RNA, nmads = 3, log = TRUE, type = "lower")
+  obj$featureThreshold <- attr(outlier, "thresholds")[1]
+  obj$isFeatureOutlier <- outlier
+  obj
+})
+```
+
+
+### 2.3 破损细胞
 
 线粒体和叶绿体的counts比例通常只在低counts的细胞中才会高。这可能是损伤/死亡的细胞，其细胞质的mRNA已经通过破裂的膜泄漏出来，因此，只有位于线粒体的mRNA才会被捕获。这些细胞应该被过滤掉。
 
@@ -179,9 +205,7 @@ p2 <- ggplot2::quickplot(data = meta_df,
 p1 + p2 + patchwork::plot_layout(guides = "collect")
 ```
 
-TODO: 可以在 PCA 上展示出过滤掉的细胞。
-
-### 表达的复杂性
+### 2.3 表达的复杂性
 
 每个 UMIs 能检测到的基因数量，这个度量让我们对数据集的复杂性有了一个概念。每个UMI检测到的基因越多，我们的数据就越复杂。这些样本的表达复杂性都蛮高的，当然也有可能是测序深度不足。
 
@@ -193,12 +217,18 @@ meta_df %>%
 ```
 
 ```{r}
+ggplot2::quickplot(data = meta_df,
+  x = nCount_RNA, y = nFeature_RNA, color = log10GenesPerUMI, geom = "point") +
+  ggthemes::scale_color_gradient2_tableau()
+```
+
+```{r}
 sum(meta_df$log10GenesPerUMI < 0.8)
 ```
 
-## 基因的质量控制
+## 3 基因的质量控制
 
-### 高表达量基因
+### 3.1 高表达量基因
 
 绘制在所有细胞中具有最高平均表达量的基因，以及它们在每个细胞中的表达量：
 
@@ -206,12 +236,12 @@ sum(meta_df$log10GenesPerUMI < 0.8)
 
 在下图中排名第一和第二的是光合相关基因，第三的是镁离子结合，第四是碳固定。这些基因理论是是植物数据中被期望看到的。
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 p <- scater::plotHighestExprs(sce_merged)
 p
 ```
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 anno <- brookite::pull_annotation(
     p$data$Tag %>% head(50),
     mart_info = list(
@@ -227,9 +257,9 @@ anno <- brookite::pull_annotation(
 anno[-2]
 ```
 
-### 影响表达方差的因素
+### 3.2 影响表达方差的因素
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 sce_merged <- scater::logNormCounts(sce_merged) 
 
 vars <- scater::getVarianceExplained(sce_merged, 
@@ -242,68 +272,44 @@ vars <- scater::getVarianceExplained(sce_merged,
 scater::plotExplanatoryVariables(vars)
 ```
 
-### 离群值检测
+## 4 数据过滤标准
 
-在检测 nCount_RNA 和 nFeature 离群值时，使用 `scuttle::isOutlier()` 。 因为这两个数据都是严重的右尾，所以在检测 lower 时要使用 log 转换，检测 higher 时不用。
-
-```{r}
-meta_df %>%
-  dplyr::mutate(
-    isLowerOutlier = scuttle::isOutlier(nCount_RNA, log = TRUE, type = "lower", batch = sample),
-    isHigherOutlier = scuttle::isOutlier(nCount_RNA, type = "higher", nmads = 10, batch = sample),
-    isOutlier = isLowerOutlier | isHigherOutlier
-  ) %>%
-  ggplot2::ggplot(ggplot2::aes(x = nCount_RNA, fill = isOutlier)) +
-    ggplot2::geom_histogram(bins = 60) +
-#    ggplot2::facet_wrap(~sample) +
-    ggplot2::scale_x_log10()
+```{r }
+ncells_outlier <- sapply(obj_list, function(obj) sum(obj$isFeatureOutlier)) |> sum()
+thr <- sapply(obj_list, function(obj) unique(obj$featureThreshold))
+thr_mean <- round(mean(thr), digits = 0)
+thr_sd <- round(sd(thr), digits = 0)
 ```
 
-但是考虑到大尺寸的细胞很多，从 nCount_RNA 的分布来看，不应该过滤掉那些大细胞。 这些大细胞不可能是同态双细胞，因为 Rhapsody WTA 技术的双细胞率本来旧低，而植物细胞本身又很大。
-
-```{r}
-meta_df %>%
-  dplyr::mutate(
-    isLowerOutlier = scuttle::isOutlier(nFeature_RNA, log = TRUE, type = "lower", batch = sample),
-    isHigherOutlier = scuttle::isOutlier(nFeature_RNA, type = "higher", nmads = 10, batch = sample),
-    isOutlier = isLowerOutlier | isHigherOutlier
-  ) %>%
-  ggplot2::ggplot(ggplot2::aes(x = nFeature_RNA, fill = isOutlier)) +
-    ggplot2::geom_histogram(bins = 60) +
-#    ggplot2::facet_wrap(~sample) +
-    ggplot2::scale_x_log10()
-```
-
-```{r}
-obj_list <- lapply(obj_list, function(obj) {
-  obj$isCountOutlier <- scuttle::isOutlier(
-    obj$nCount_RNA, log = TRUE, type = "lower")
-  obj$isFeatureOutlier <- scuttle::isOutlier(
-    obj$nFeature_RNA, log = TRUE, type = "lower")
-  obj
-})
-```
-
-## 数据过滤标准
-
-* 针对不同批次的样本应用离群值计算来移除不合格的细胞。
-  * 超过中位数3倍MAD的值就是离群值。
-  * `nCount_RNA` 和 `nFeature_RNA`。
-* 叶绿体基因 counts 占比小于 10%，不管线粒体。
-* log10GenesPerUMI > 0.8
+* `nFeature_RNA` 低于3倍MAD的值就是离群值，将要移除的细胞数量为 `r ncells_outlier` 个，下限是 `r thr_mean`±`r thr_sd` genes/cell。
+* 叶绿体基因 counts 占比大于 10%，线粒体大于 5% 即为破损细胞。移除的细胞数量为 `r sapply(obj_list, function(obj) sum(obj$percent.cp > 10)) |> sum()` 个。
+* log10GenesPerUMI < 0.8 即为低复杂性细胞，移除的细胞数量为 `r sapply(obj_list, function(obj) sum(obj$log10GenesPerUMI < 0.8)) |> sum()`
 * 保留在 10 个以上细胞中表达的基因。
+
+```{r}
+removed <- sapply(obj_list, function(obj) sum(
+  obj$isFeatureOutlier
+    | obj$percent.cp > 10
+    | obj$percent.mt > 5
+    | obj$log10GenesPerUMI < 0.8)) |> sum()
+
+total <- sapply(obj_list, function(obj) ncol(obj)) |> sum()
+```
+
+移除的总细胞数量为 `r removed` 个, 比例为 `r round(removed/total*100, digits = 2)`%
 
 ```{r}
 obj_list <- lapply(obj_list, function(obj) {
   xfun::cache_rds(
     file = paste0("obj_filtered_", obj@project.name),
     dir = "../results/ObjectCache/QualityControl/",
+    rerun = TRUE,
     expr = local({
       subset(
         obj,
-        subset = isCountOutlier == FALSE
-          & isFeatureOutlier == FALSE
-          & percent.mt < 10
+        subset = isFeatureOutlier == FALSE
+          & percent.cp < 10
+          & percent.mt < 5
           & log10GenesPerUMI > 0.8,
         features = which(
           rowSums(Seurat::GetAssayData(obj, slot = "count") > 0) > 10)
@@ -314,3 +320,5 @@ obj_list <- lapply(obj_list, function(obj) {
 
 obj_list
 ```
+
+

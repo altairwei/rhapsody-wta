@@ -60,6 +60,7 @@ lapply(obj_list, function(obj) {
   xfun::cache_rds(
     file = paste0("obj_processed_", obj@project.name),
     dir = "../results/ObjectCache/QualityControl/",
+    rerun = TRUE,
     expr = local({
       obj <- Seurat::NormalizeData(obj, verbose = FALSE)
       obj <- Seurat::FindVariableFeatures(
@@ -111,6 +112,7 @@ Seurat::DimPlot(obj_1dpi_mock_1, reduction = "umap") + ggplot2::coord_fixed()
 bcmvn <- xfun::cache_rds(
   file = paste0("bcmnv_1DPI-MOCK-1.rds"),
   dir = "../results/ObjectCache/QualityControl/",
+  rerun = FALSE,
   expr = local({
     sweep <- DoubletFinder::paramSweep_v3(obj_1dpi_mock_1, PCs = 1:20, sct = FALSE)
     sweep.stats <- DoubletFinder::summarizeSweep(sweep, GT = FALSE)
