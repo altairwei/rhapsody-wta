@@ -7,11 +7,12 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/UtilityFunctions.R")
 library(magrittr)
 library(SingleCellExperiment)
 ```
 
-## 加载数据
+## 1 加载数据
 
 ```{r}
 samples <- c(
@@ -51,9 +52,11 @@ obj_list <- lapply(samples, function(sample) readRDS(
     "obj_strained_", sample, "_*.rds"))
   )
 )
+
+obj_list <- obj_list[stringr::str_which(samples, "MOCK")]
 ```
 
-## 整合数据
+## 2 整合数据
 
 ### 初始化对象
 
@@ -101,7 +104,7 @@ p2 <- Seurat::VlnPlot(
 p1 + p2
 ```
 
-## 降维聚类
+## 3 降维聚类
 
 ```{r}
 obj_merged <- obj_merged %>%
@@ -133,7 +136,7 @@ p2 <- Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "sample", pt.si
 p1 + p2
 ```
 
-#### UMAPs
+#### UMAP
 
 ```{r fig.height=8, fig.width=16}
 p1 <- Seurat::DimPlot(
@@ -148,7 +151,58 @@ p1 + p2
 ```
 
 
+## 4 同源标志基因矩阵
 
+```{r fig.width=15, fig.height=7}
+Seurat::DefaultAssay(obj_merged) <- "RNA"
+plot_markers(obj_merged, cluster.idents = TRUE)
+```
+
+
+## 5 细胞种群的标志基因
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj_merged,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+## 6 激光显微切割反卷积
+
+```{r}
+LCM_design <- c(
+  "VC_1" = "vascular",
+  "VC_2" = "vascular",
+  "VC_3" = "vascular",
+  "CC_1" = "cortex",
+  "CC_2" = "cortex",
+  "CC_3" = "cortex",
+  "MC_1" = "mesophyll",
+  "MC_2" = "mesophyll",
+  "MC_3" = "mesophyll"
+)
+
+CIBER <- deconvLCM(
+  seurat = obj_merged,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
+  design = LCM_design,
+  mc.cores = 4
+  )
+```
+
+```{r fig.height=6, fig.width=8, dev='svglite'}
+deconvScatter(CIBER, LCM_design)
+```
+
+```{r fig.height=5, fig.width=4}
+deconvHeatmap(CIBER)
+```
 
 
 

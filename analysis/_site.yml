@@ -5,14 +5,6 @@ navbar:
   left:
   - text: Home
     href: index.html
-  - text: Integration
-    href: sample_integration.html
-  - text: Annotation
-    href: cell_annotation.html
-  - text: Differential Abundance
-    href: differential_abundance.html
-  - text: Differential State
-    href: differential_state_analysis.html
   - text: About
     href: about.html
   - text: License

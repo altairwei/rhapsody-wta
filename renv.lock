@@ -464,6 +464,12 @@
       "Repository": "CRAN",
       "Hash": "bfa84efcd9664b73fb37db87968fcaf1"
     },
+    "ResidualMatrix": {
+      "Package": "ResidualMatrix",
+      "Version": "1.4.0",
+      "Source": "Bioconductor",
+      "Hash": "b212a06899e6a7a45f4ea69d45bc14a9"
+    },
     "Rmagic": {
       "Package": "Rmagic",
       "Version": "2.0.3",
@@ -692,6 +698,12 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "543776ae6848fde2f48ff3816d0628bc"
+    },
+    "batchelor": {
+      "Package": "batchelor",
+      "Version": "1.10.0",
+      "Source": "Bioconductor",
+      "Hash": "4c054eebc8b869abc555adc8469fa09e"
     },
     "beachmat": {
       "Package": "beachmat",
@@ -2447,8 +2459,8 @@
       "RemoteRepo": "rhapsodykit",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "2bf2c8209afdf5922c689a12cbd9e3ce3f6708a1",
-      "Hash": "944c808a7a6db5cb3431ca40e7c617a9"
+      "RemoteSha": "8334cc42efddf8399cecf2546ea5e6d5af475b3b",
+      "Hash": "bd824bff51eca92508b46e75eadf4e4d"
     },
     "rjson": {
       "Package": "rjson",

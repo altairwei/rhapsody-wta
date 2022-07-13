@@ -430,3 +430,146 @@ choose_indent_res <- function(obj, meta_col) {
   Seurat::Idents(obj) <- factor(Seurat::Idents(obj), levels = sort(lvs))
   obj
 }
+
+#' Deconvolution of LCM Samples
+#'
+#' @param seurat Seurat object
+#' @param lcm_file Count file of LCM samples
+#' @param markers Marker genes used for deconvolution
+#' @param design Named vector to specify sample information, such
+#' as which duplicates belong to the same group (case/control)
+#' @param ... Arguments passed to \link[RNAMagnet]{runCIBERSORT}
+#'
+#' @return A data frame returned by \link[RNAMagnet]{runCIBERSORT}
+deconvLCM <- function(seurat, lcm_file, markers, design, ...) {
+  # Load LCM data
+  lcm_counts <- readr::read_tsv(lcm_file, comment = "#")
+  lcm_counts <- lcm_counts[!(names(lcm_counts) %in% c("Chr", "Start", "End", "Strand", "Length"))]
+  names(lcm_counts) <- c("Gene", basename(dirname(names(lcm_counts)[-1])))
+  lcm_mtx <- as.matrix(lcm_counts[-1])
+  rownames(lcm_mtx) <- lcm_counts$Gene
+  lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
+
+  # scRNA-seq data
+  # 是否需要使用归一化后的表达之呢？不需要，MuSiC 就是 raw counts
+  sc_counts <- SeuratObject::GetAssayData(seurat, assay = "RNA", slot = "counts")
+  sc_mtx <- vapply(
+    X = levels(Seurat::Idents(seurat)),
+    FUN = function(i) {
+      Matrix::rowMeans(
+        sc_counts[markers, Seurat::WhichCells(seurat, ident = i)])
+    },
+    FUN.VALUE = numeric(length = length(markers))
+  )
+  
+  sc_mtx <- sc_mtx[ rowSums(sc_mtx) > 1, ]
+
+  CIBER <- RNAMagnet::runCIBERSORT(
+    exprs = lcm_mtx,
+    base = sc_mtx,
+    design = LCM_design,
+    markergenes = intersect(rownames(lcm_mtx), rownames(sc_mtx)),
+    ...
+  )
+
+  CIBER
+}
+
+#' Scatter Plot of Cell Type Estimate
+#'
+#' @inheritParams deconvLCM
+#'
+#' @return ggplot object
+deconvScatter <- function(CIBER, design) {
+  ggplot2::ggplot(
+    data = CIBER,
+    mapping = ggplot2::aes(
+      x = factor(SampleClass, unique(design)),
+      y= Fraction, color = as.character(CellType))
+  ) +
+    ggplot2::geom_point(stat = "summary", fun = mean) +
+    ggplot2::geom_errorbar(
+      stat="summary",
+      fun.min = function(x) mean(x)+sd(x)/sqrt(length(x)),
+      fun.max = function(x) mean(x)-sd(x)/sqrt(length(x)),
+      width = 0.2
+    ) +
+    ggplot2::scale_y_continuous(labels = scales::percent) +
+    ggplot2::facet_wrap(~ CellType, scales = "free_y") +
+    ggplot2::theme_bw(base_size=12) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90),
+      panel.grid = ggplot2::element_blank()
+    ) +
+    ggplot2::guides(color = "none") +
+    ggplot2::ylab("CIBERSORT estimate (a.u.)") +
+    ggplot2::xlab("Niche")
+}
+
+#' Heatmap of Cell Type Estimate
+#'
+#' @inheritParams deconvLCM
+#'
+#' @return A \link[ComplexHeatmap]{Heatmap} object
+deconvHeatmap <- function(CIBER) {
+  mtx_df <- CIBER %>%
+    dplyr::group_by(SampleClass, CellType) %>%
+    dplyr::summarise(
+      MeanFrac = mean(Fraction)
+    ) %>%
+    dplyr::select(CellType, SampleClass, MeanFrac) %>%
+    tidyr::pivot_wider(names_from = SampleClass, values_from = MeanFrac)
+
+  mtx <- as.matrix(mtx_df[, -1])
+  rownames(mtx) <- mtx_df$CellType
+
+  ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = c("white", "blue", "red"),
+    row_dend_width = grid::unit(4, "cm"),
+    column_order = unique(LCM_design),
+    heatmap_legend_param = list(
+      title = "Fraction",
+      #title_position = "leftcenter",
+      legend_direction = "vertical",
+      legend_height = grid::unit(4, "cm")
+    )
+  )
+}
+
+
+pseudobulk <- function(seurat,
+    type = c("counts", "logcounts", "cpm", "vstresiduals"),
+    fun = NULL) {
+  seurat$cellType <- Seurat::Idents(seurat)
+  sce <- Seurat::as.SingleCellExperiment(seurat, assay = "RNA")
+  sce <- muscat::prepSCE(
+    sce,
+    kid = "ident", # subpopulation assignments
+    gid = "group", # group IDs (ctrl/stim)
+    sid = "sample", # sample IDs (ctrl/stim.1234)
+    drop = FALSE
+  )
+
+  sce <- sce[Matrix::rowSums(SingleCellExperiment::counts(sce) > 0) > 0, ]
+
+  type <- match.arg(type)
+  splits <- unique(sce$treatment)
+  names(splits) <- splits
+  pb_list <- splits |>
+    lapply(function(tr) sce[, sce$treatment == tr]) |>
+    lapply(function(sub) {
+      pb <- rhapsodykit::calculate_pseudo_bulk(
+        sub, type, fun = fun, by = c("time", "cellType"))
+      as.list(pb@assays@data)
+    })
+
+  pb_list <- unlist(pb_list, recursive = FALSE, use.names = TRUE) %>%
+    purrr::imap(function(mtx, name) {
+      colnames(mtx) <- paste(name, colnames(mtx), sep = ".")
+      mtx
+    })
+
+  do.call(cbind, pb_list)
+}
+

@@ -1,17 +1,23 @@
 ---
-title: "Integration by Harmony"
+title: "Integration of Mock Samples by Harmony"
 author: "Altair Wei"
-date: "2022/5/23"
+date: "2022/6/24"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 source("../scripts/UtilityFunctions.R")
+
+library(reactable)
+# setup reactable HTML dependencies
+reactable::reactable(iris)
 ```
 
-## 加载数据
+# MOCK 样本的整合与注释
+
+## 1 加载数据
 
 ```{r}
 samples <- c(
@@ -35,7 +41,7 @@ samples <- c(
   "3DPI-MOCK-1",
   "3DPI-MOCK-2",
   "3DPI-PNR2-1",
-  #"3DPI-PNR2-2", # 这个样本的细胞数量太少，丢弃掉。
+  "3DPI-PNR2-2",
   "3DPI-PNR2-3",
   "3DPI-TR4-1",
   "3DPI-TR4-2"
@@ -44,6 +50,7 @@ samples <- c(
 names(samples) <- samples
 ```
 
+
 ```{r}
 obj_list <- lapply(samples, function(sample) readRDS(
   Sys.glob(paste0(
@@ -51,20 +58,22 @@ obj_list <- lapply(samples, function(sample) readRDS(
     "obj_strained_", sample, "_*.rds"))
   )
 )
+
+obj_mock <- obj_list[stringr::str_which(samples, "MOCK")]
 ```
 
-## 整合数据
+## 2 数据整合
 
-### 初始化对象
+我们选择 Seurat RPCA 方法来整合样本，因为 0~3DPI 的 MOCK 反应着胚芽鞘的生长发育，样本细胞之间不需要太 “对齐” 。参数 `k.anchor=5` 也选择默认值。
 
-```{r}
-obj_merged <- merge(
-  x = obj_list[[1]],
-  y = obj_list[-1],
-  add.cell.ids = names(obj_list)
+```{r message=FALSE, warning=FALSE}
+obj_mock_combined <- merge(
+  x = obj_mock[[1]],
+  y = obj_mock[-1],
+  add.cell.ids = names(obj_mock)
 )
 
-obj_merged <- obj_merged %>%
+obj_mock_combined <- obj_mock_combined %>%
   Seurat::NormalizeData(verbose = FALSE) %>%
   Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>% 
   Seurat::ScaleData(verbose = FALSE) %>% 
@@ -72,43 +81,33 @@ obj_merged <- obj_merged %>%
 ```
 
 ```{r fig.height=5, fig.width=12}
-p1 <- Seurat::DimPlot(object = obj_merged, reduction = "pca", pt.size = .1, group.by = "sample")
-p2 <- Seurat::VlnPlot(object = obj_merged, features = "PC_1", group.by = "sample", pt.size = .1)
+p1 <- Seurat::DimPlot(object = obj_mock_combined, reduction = "pca", pt.size = .1, group.by = "sample")
+p2 <- Seurat::VlnPlot(object = obj_mock_combined, features = "PC_1", group.by = "sample", pt.size = .1)
 p1 + p2
 ```
 
 ### 运行 Harmony
 
-关于 `theta` 参数，考虑到我们数据集是同一种模态、同一种机器产生的、植物生长状态尽量保持一致。唯一的批次效应可能来源于测序深度，所以数据集的批次效应应该是较小的，而生物学效应远远大于批次效应。
-
-> First, if the batch effect is small enough (here, SNR > 3.4), then theta=0 is sufficient for integration. Second, setting theta >=1 allows Harmony to work even when the effect of batch is equal to or greather than biology. This behavior powers Harmony to integrate across vastly different types of datasets.
-
-关于 `lambda` 参数：
-
-> Smaller values result in more aggressive correction.
-
 ```{r fig.height=2.5, fig.width=6}
-obj_merged <- obj_merged %>% 
+obj_mock_combined <- obj_mock_combined %>% 
     harmony::RunHarmony(
-      group.by.vars = c("time", "treatment", "sample"),
-      theta = c(4, 1, 2),
+      group.by.vars = c("time", "sample"),
+      theta = c(4, 2),
       kmeans_init_nstart=20, kmeans_init_iter_max=100,
       epsilon.cluster=-Inf, epsilon.harmony=-Inf,
       plot_convergence = TRUE)
 ```
 
-上图可以看到 objective score 随着循环数发生的变化，如果分数随着循环的增加不再变化，那说明收敛了。如果感觉过早结束了循环，那么可以 `epsilon.cluster=-Inf` 和 `epsilon.harmony=-Inf` 来防止。
-
 ```{r fig.height=5, fig.width=12}
-p1 <- Seurat::DimPlot(object = obj_merged, reduction = "harmony", pt.size = .1, group.by = "sample")
-p2 <- Seurat::VlnPlot(object = obj_merged, features = "harmony_1", group.by = "sample", pt.size = .1)
+p1 <- Seurat::DimPlot(object = obj_mock_combined, reduction = "harmony", pt.size = .1, group.by = "sample")
+p2 <- Seurat::VlnPlot(object = obj_mock_combined, features = "harmony_1", group.by = "sample", pt.size = .1)
 p1 + p2
 ```
 
-## 降维聚类
+## 3 降维聚类
 
 ```{r}
-obj_merged <- obj_merged %>%
+obj_mock_combined <- obj_mock_combined %>%
     Seurat::RunUMAP(reduction = "harmony", dims = 1:20, verbose = FALSE) %>%
     Seurat::RunTSNE(reduction = "harmony", dims = 1:20, verbose = FALSE) %>%
     Seurat::FindNeighbors(reduction = "harmony", dims = 1:20, verbose = FALSE) %>%
@@ -120,21 +119,21 @@ obj_merged <- obj_merged %>%
 ```{r}
 library(clustree)
 
-obj_merged <- xfun::cache_rds(
-  file = "obj_harmony_clustree.rds",
-  rerun = T,
+obj_mock_combined <- xfun::cache_rds(
+  file = "obj_mock_harmony_clustree.rds",
+  rerun = TRUE,
   dir = "../results/ObjectCache/IntegrationAndAnnotation/",
   expr = local({
-    obj_merged <- Seurat::FindClusters(
-      obj_merged, resolution = seq(0, 1.6, 0.2), verbose = FALSE)
-    obj_merged <- choose_indent_res(obj_merged, "RNA_snn_res.0.6")
-    obj_merged
+    obj_mock_combined <- Seurat::FindClusters(
+      obj_mock_combined, resolution = seq(0, 1.6, 0.2), verbose = FALSE)
+    obj_mock_combined <- choose_indent_res(obj_mock_combined, "RNA_snn_res.0.6")
+    obj_mock_combined
   })
 )
 ```
 
 ```{r fig.height=14, fig.width=10}
-clustree::clustree(obj_merged, prefix = "RNA_snn_res.")
+clustree::clustree(obj_mock_combined, prefix = "RNA_snn_res.")
 ```
 
 ### 将聚类树覆盖到降维空间中 {.tabset}
@@ -143,7 +142,7 @@ clustree::clustree(obj_merged, prefix = "RNA_snn_res.")
 
 ```{r fig.height=10, fig.width=14}
 clustree::clustree_overlay(
-  obj_merged,
+  obj_mock_combined,
   prefix = "RNA_snn_res.",
   assay = "RNA",
   red_dim = "tsne",
@@ -157,7 +156,7 @@ clustree::clustree_overlay(
 
 ```{r fig.height=10, fig.width=14}
 clustree::clustree_overlay(
-  obj_merged,
+  obj_mock_combined,
   prefix = "RNA_snn_res.",
   assay = "RNA",
   red_dim = "umap",
@@ -171,25 +170,26 @@ clustree::clustree_overlay(
 ### 降维图 {.tabset}
 
 ```{r}
-ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_merged))), palette = NULL)
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_mock_combined))), palette = NULL)
 ```
 
 #### UMAP
 
 ```{r fig.height=8, fig.width=16}
 p1 <- Seurat::DimPlot(
-        obj_merged, reduction = "umap", cols = ident_cols,
+        obj_mock_combined, reduction = "umap", cols = ident_cols,
         label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
   ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
   ggplot2::coord_fixed()
-p2 <- Seurat::DimPlot(obj_merged, reduction = "umap", group.by = "sample", pt.size = .001) +
+p2 <- Seurat::DimPlot(obj_mock_combined, reduction = "umap", group.by = "sample", pt.size = .001) +
   #ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::coord_fixed()
 p1 + p2
 ```
+
 ```{r fig.height=5, fig.width=18}
 Seurat::DimPlot(
-    obj_merged, reduction = "umap",
+    obj_mock_combined, reduction = "umap",
     group.by = "sample", split.by = "time",
     pt.size = .1) +
   ggthemes::scale_color_tableau("Tableau 20") +
@@ -200,11 +200,11 @@ Seurat::DimPlot(
 
 ```{r fig.height=8, fig.width=16}
 p1 <- Seurat::DimPlot(
-        obj_merged, reduction = "tsne", cols = ident_cols,
+        obj_mock_combined, reduction = "tsne", cols = ident_cols,
         label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
   ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
   ggplot2::coord_fixed()
-p2 <- Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "sample", pt.size = .001) +
+p2 <- Seurat::DimPlot(obj_mock_combined, reduction = "tsne", group.by = "sample", pt.size = .001) +
   #ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::coord_fixed()
 p1 + p2
@@ -213,28 +213,26 @@ p1 + p2
 
 ```{r fig.height=5, fig.width=18}
 Seurat::DimPlot(
-    obj_merged, reduction = "tsne",
+    obj_mock_combined, reduction = "tsne",
     group.by = "sample", split.by = "time",
     pt.size = .1) +
   ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::coord_fixed()
 ```
 
-
-## 细胞种群标志基因
-
-### 同源标志基因
+## 4 标志基因矩阵
 
 ```{r fig.width=15, fig.height=7}
-Seurat::DefaultAssay(obj_merged) <- "RNA"
-plot_markers(obj_merged, cluster.idents = TRUE)
+Seurat::DefaultAssay(obj_mock_combined) <- "RNA"
+plot_markers(obj_mock_combined, cluster.idents = TRUE)
 ```
 
-### 新标志基因
 
-```{r cache=TRUE}
+## 5 细胞种群的标志基因
+
+```{r}
 marker_cosg <- COSG::cosg(
- obj_merged,
+ obj_mock_combined,
  groups = 'all',
  assay = 'RNA',
  slot = 'data',
@@ -243,98 +241,13 @@ marker_cosg <- COSG::cosg(
 )
 ```
 
-```{r cache=TRUE, eval=FALSE}
+```{r eval=FALSE}
 markers_df <- Seurat::FindAllMarkers(
-    obj_merged, only.pos = TRUE, min.pct = 0.25,
+    obj_mock_combined, only.pos = TRUE, min.pct = 0.25,
     logfc.threshold = 0.25, verbose = FALSE)
 ```
 
-#### 散点投影 {.tabset}
-
-```{r fig.height=7, fig.width=11, results='asis'}
-for (i in names(marker_cosg$names)) {
-  cat("#####", i, "\n\n")
-  p <- Seurat::FeaturePlot(
-      obj_merged,
-      features = marker_cosg$names[[i]][1:6],
-      order = TRUE,
-      ncol = 3) &
-    ggplot2::coord_fixed()
-  print(p)
-  cat("\n\n")
-}
-```
-
-#### 气泡图 {.tabset}
-
-```{r}
-m1 <- unlist(lapply(marker_cosg$names, function(m) m[1:3]), use.names = FALSE) %>%
-  unique()
-#m2 <- split(markers_df$gene, markers_df$cluster) %>%
-#  lapply(function(x) x[1:3]) %>% unlist() %>% unique()
-```
-
-##### COSG
-
-```{r fig.width=15, fig.height=7}
-Seurat::DotPlot(obj_merged, assay = "RNA", features = m1, cluster.idents = FALSE) +
-  ggplot2::scale_y_discrete(limits = rev) +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
-  )
-```
-
-##### Seurat
-
-```{r fig.width=15, fig.height=7, eval=FALSE}
-Seurat::DotPlot(obj_merged, assay = "RNA", features = m2, cluster.idents = FALSE) +
-  ggplot2::scale_y_discrete(limits = rev) +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
-  )
-```
-
-## 激光显微切割反卷积
-
-### 加载 LCM 数据
-
-```{r}
-lcm_counts <- readr::read_tsv("../results/LCMSeq/gene_quanti/counts/all.featureCounts", comment = "#")
-lcm_counts <- lcm_counts[!(names(lcm_counts) %in% c("Chr", "Start", "End", "Strand", "Length"))]
-names(lcm_counts) <- c("Gene", basename(dirname(names(lcm_counts)[-1])))
-lcm_mtx <- as.matrix(lcm_counts[-1])
-rownames(lcm_mtx) <- lcm_counts$Gene
-lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
-```
-
-是否需要使用归一化后的表达之呢？不需要，MuSiC 就是 raw counts
-
-```{r}
-sc_counts <- SeuratObject::GetAssayData(obj_merged, assay = "RNA", slot = "counts")
-```
-
-```{r}
-markergenes <- unique(unlist(marker_cosg$names))
-```
-
-```{r}
-#markergenes <- unique(markers_df$gene)
-```
-
-```{r}
-sc_mtx <- vapply(
-  X = levels(Seurat::Idents(obj_merged)),
-  FUN = function(i) {
-    Matrix::rowMeans(
-      sc_counts[markergenes, Seurat::WhichCells(obj_merged, ident = i)])
-  },
-  FUN.VALUE = numeric(length = length(markergenes))
-)
-
-sc_mtx <- sc_mtx[ rowSums(sc_mtx) > 1, ]
-```
-
-### 运行反卷积算法
+## 6 激光显微切割反卷积
 
 ```{r}
 LCM_design <- c(
@@ -349,122 +262,71 @@ LCM_design <- c(
   "MC_3" = "mesophyll"
 )
 
-CIBER <- RNAMagnet::runCIBERSORT(
-  exprs = lcm_mtx,
-  base = sc_mtx,
+CIBER <- deconvLCM(
+  seurat = obj_mock_combined,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
   design = LCM_design,
-  markergenes = intersect(rownames(lcm_mtx), rownames(sc_mtx)),
-  mc.cores = 3
-)
+  mc.cores = 4
+  )
 ```
-
-### 可视化细胞种群比例
 
 ```{r fig.height=6, fig.width=8, dev='svglite'}
-ggplot2::ggplot(
-    data = CIBER,
-    mapping = ggplot2::aes(
-      x = factor(SampleClass, unique(LCM_design)),
-      y= Fraction, color = as.character(CellType))
-  ) +
-  ggplot2::geom_point(stat = "summary", fun = mean) +
-  ggplot2::geom_errorbar(
-    stat="summary",
-    fun.min = function(x) mean(x)+sd(x)/sqrt(length(x)),
-    fun.max = function(x) mean(x)-sd(x)/sqrt(length(x)),
-    width = 0.2
-  ) +
-  ggplot2::scale_y_continuous(labels = scales::percent) +
-  ggplot2::facet_wrap(~ CellType, scales = "free_y") +
-  ggplot2::theme_bw(base_size=12) +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 90),
-    panel.grid = ggplot2::element_blank()
-  ) +
-  ggplot2::guides(color = "none") +
-  ggplot2::ylab("CIBERSORT estimate (a.u.)") +
-  ggplot2::xlab("Niche")
-```
-
-```{r}
-mtx_df <- CIBER %>%
-  dplyr::group_by(SampleClass, CellType) %>%
-  dplyr::summarise(
-    MeanFrac = mean(Fraction)
-  ) %>%
-  dplyr::select(CellType, SampleClass, MeanFrac) %>%
-  tidyr::pivot_wider(names_from = SampleClass, values_from = MeanFrac)
-
-mtx <- as.matrix(mtx_df[, -1])
-rownames(mtx) <- mtx_df$CellType
+deconvScatter(CIBER, LCM_design)
 ```
 
 ```{r fig.height=5, fig.width=4}
-ComplexHeatmap::Heatmap(
-  matrix = mtx,
-  col = c("white", "blue", "red"),
-  row_dend_width = grid::unit(4, "cm"),
-  column_order = unique(LCM_design),
-  heatmap_legend_param = list(
-    title = "Fraction",
-    #title_position = "leftcenter",
-    legend_direction = "vertical",
-    legend_height = grid::unit(4, "cm")
-  )
-)
+deconvHeatmap(CIBER)
 ```
 
-```{r}
-knitr::knit_exit()
-```
-
-## 细胞类型注释
+## 7 细胞类型注释
 
 ### 注释
 
 ```{r}
-obj_annotated <- xfun::cache_rds(
-  file = "obj_annotated.rds",
+obj_mock_annotated <- xfun::cache_rds(
+  file = "obj_mock_annotated.rds",
   dir = "../results/ObjectCache/IntegrationAndAnnotation/",
-  rerun = T,
+  rerun = TRUE,
   expr = local({
-    obj_merged <- Seurat::RenameIdents(
-      obj_merged,
+    Seurat::DefaultAssay(obj_mock_combined) <- "RNA"
+    obj_mock_combined <- Seurat::RenameIdents(
+      obj_mock_combined,
 
       # Vascular Cells
-      `12` = "Va_1",
-      `8`  = "Va_2",
+      `10` = "CC",    # Companion Cells
+      `7`  = "BS",    # Bundle Sheath
+      `6`  = "MPV",   # Midvein Provascular Cells
+      `5`  = "Va_1",
+      `12` = "Va_2",  # Sieve
       `9`  = "Va_3",
-      `13` = "Va_4",
-      `10` = "Va_5",
+      `2`  = "Va_4",
 
       # Mesophyll Cells
-      `0`  = "Me_1",
-      `1`  = "Me_2",
-      `3`  = "Me_3",
-      `6`  = "Me_4",
-      `5`  = "Me_5",
-      `2`  = "Me_6",
-      
-      # Cotex Cells
-      `15` = "Co_1",
-      `4`  = "Co_2",
-      
+      `3`  = "Me_1",
+      `4`  = "Me_2",
+      `0`  = "Me_3",
+      `1`  = "Me_4",
+      `8`  = "Me_5",
+
       # Epidermal Cells
       `11` = "Ep_1",
-      `14` = "Ep_2",
-      
+      `13` = "Ep_2",
+
       # Guardian Cells
-      `16` = "Gu",
-
-      # Unknown Cells
-      `7`  = "Un"
-
+      `14` = "Gu"
     )
 
-    obj_merged
+    obj_mock_combined
   })
 )
+```
+
+### 标志基因
+
+```{r fig.width=15, fig.height=7}
+Seurat::DefaultAssay(obj_mock_annotated) <- "RNA"
+plot_markers(obj_mock_annotated, cluster.idents = TRUE)
 ```
 
 ### 降维图 {.tabset}
@@ -473,11 +335,11 @@ obj_annotated <- xfun::cache_rds(
 
 ```{r fig.height=8, fig.width=16}
 p1 <- Seurat::DimPlot(
-        obj_annotated, reduction = "umap", cols = ident_cols,
+        obj_mock_annotated, reduction = "umap", cols = ident_cols,
         label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
   ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
   ggplot2::coord_fixed()
-p2 <- Seurat::DimPlot(obj_annotated, reduction = "umap", group.by = "sample", pt.size = .001) +
+p2 <- Seurat::DimPlot(obj_mock_annotated, reduction = "umap", group.by = "sample") +
   #ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::coord_fixed()
 p1 + p2
@@ -487,24 +349,24 @@ p1 + p2
 
 ```{r fig.height=8, fig.width=16}
 p1 <- Seurat::DimPlot(
-        obj_annotated, reduction = "tsne", cols = ident_cols,
+        obj_mock_annotated, reduction = "tsne", cols = ident_cols,
         label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
   ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
   ggplot2::coord_fixed()
-p2 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", group.by = "sample", pt.size = .001) +
+p2 <- Seurat::DimPlot(obj_mock_annotated, reduction = "tsne", group.by = "sample") +
   #ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::coord_fixed()
 p1 + p2
 ```
 
-## 细胞 3D 降维图
+## 8 细胞 3D 降维图 {.tabset}
 
 二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
 
 ```{r message=FALSE, eval=TRUE}
-obj_annotated <- Seurat::RunTSNE(
-  obj_annotated, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
-obj_annotated <- Seurat::RunUMAP(obj_annotated, dims = 1:20, n.components = 3, verbose = FALSE)
+obj_mock_annotated <- Seurat::RunTSNE(
+  obj_mock_annotated, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
+obj_mock_annotated <- Seurat::RunUMAP(obj_mock_annotated, dims = 1:20, n.components = 3, verbose = FALSE)
 
 gg_color_hue <- function(n) {
   hues <- seq(15, 375, length = n + 1)
@@ -528,7 +390,238 @@ Dim3DPlot <- function(obj_annotated, dim_prefix, cols) {
     marker = list(size = 4)
   )
 }
-
-Dim3DPlot(obj_annotated, "UMAP_", cols = ident_cols)
 ```
+
+### UMAP
+
+```{r}
+Dim3DPlot(obj_mock_annotated, "UMAP_", cols = ident_cols)
+```
+
+### t-SNE
+
+```{r}
+Dim3DPlot(obj_mock_annotated, "tSNE_", cols = ident_cols)
+```
+
+
+## 8 细胞类型比例
+
+```{r}
+rhapsodykit::barplot_cluster_abundance(obj_mock_annotated) +
+  ggplot2::scale_fill_discrete(type = ident_cols)
+```
+
+```{r fig.height=7, fig.width=14}
+rhapsodykit::barplot_cluster_abundance(obj_mock_annotated, position = "dodge") +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 16)
+  )
+```
+
+## 9 特征基因的功能法分析
+
+```{r message=FALSE, warning=FALSE, results="hide"}
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+background <- rownames(Seurat::GetAssayData(obj_mock_annotated, assay = "RNA", slot = "count"))
+```
+
+```{r}
+markerlist <- COSG::cosg(
+ obj_mock_annotated,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+
+markerlist <- markerlist$names
+```
+
+```{r}
+performMarkerCompareORA <- function(
+  markerlist, clusters, background,
+  ont = c("BP", "MF", "CC", "ALL"),
+  simplify = TRUE
+) {
+  ont <- match.arg(ont)
+
+  if (is.null(names(clusters)))
+    names(clusters) <- clusters
+
+  compare_df <- purrr::imap(clusters, function(clr, clr_name) {
+    df <- data.frame(
+      gene = markerlist[[clr]],
+      cluster = rep(clr_name, length(markerlist[[clr]]))
+    )
+    df
+  }) %>%
+    dplyr::bind_rows()
+
+  compare_df$cluster <- factor(compare_df$cluster, levels = names(clusters))
+  
+  comp_enr <- clusterProfiler::compareCluster(
+    gene ~ cluster,
+    data = compare_df,
+    fun = "enrichGO",
+    OrgDb = org.Taestivum.iwgsc.db,
+    keyType = "GID",
+    ont = ont,
+    universe = background
+  )
+
+  if (simplify && ont != "ALL")
+    comp_enr <- clusterProfiler::simplify(comp_enr, cutoff = 0.5)
+  
+  comp_enr
+}
+```
+
+```{r}
+print_enrich_table <- function(enr, heading) {
+  df <- enr@compareClusterResult |>
+    dplyr::select(
+      cluster, ID, Description,
+      Count, p.adjust, geneID) |>
+    dplyr::group_by(cluster)
+    
+  df_list <- dplyr::group_split(df)
+  names(df_list) <- dplyr::group_keys(df)$cluster
+
+  for (clr in names(df_list)) {
+    cat(heading, clr, "\n\n")
+    print(
+      htmltools::tagList(
+        reactable::reactable(
+          df_list[[clr]],
+          columns = list(
+            "cluster" = reactable::colDef(maxWidth = 80),
+            "ID" = reactable::colDef(maxWidth = 120),
+            "Description" = reactable::colDef(minWidth = 100),
+            "Count" = reactable::colDef(maxWidth = 80),
+            "p.adjust" = reactable::colDef(
+              maxWidth = 80, format = reactable::colFormat(digits = 2)),
+            "geneID" = reactable::colDef(minWidth = 250)
+          )
+        )
+      )
+    )
+    cat("\n\n")
+  }
+}
+```
+
+
+### 维管束
+
+```{r}
+vascular_clusters <- c(paste0("Va_", 1:4), "MPV", "BS", "CC")
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  vascular_clusters,
+  background
+)
+```
+
+```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 70, offset_tiplab = 30,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+print_enrich_table(enr, "#####")
+```
+
+
+### 叶肉细胞
+
+```{r}
+mesophyll_clusters <- paste0("Me_", 1:5)
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  mesophyll_clusters,
+  background
+)
+```
+
+```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+print_enrich_table(enr, "#####")
+```
+
+
+### 其他细胞
+
+```{r}
+other_clusters <- c("Ep_1", "Ep_2", "Gu")
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  other_clusters,
+  background
+)
+```
+
+```{r fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 40, offset_tiplab = 15,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+print_enrich_table(enr, "#####")
+```
+
 

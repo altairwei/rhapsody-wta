@@ -13,12 +13,20 @@ editor_options:
   - [Find and Remove Doublets](quality_control_of_doublets.html)
   - [Ambient Gene Expressions Correction](quality_control_of_ambient_rna.html)
 - Integration And Annotation
-  - [Integration and Annotation of MOCK Samples](integration_of_mock_samples.html)
-  - [Integration of All Samples](integration_of_stimulating_samples.html)
+  - [Integration by Scanorama](integration_by_scanorama.html)
+  - [Integration by scVI](integration_by_scVI.html)
+  - [Integration by FastMNN](integration_by_FastMNN.html)
+  - [Integration by Seurat v3 RPCA](integration_by_seurat_rpca.html)
+  - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
+  - [Integration of Stimulating Samples](integration_of_stimulating_samples.html)
 - Differential Abundance Analysis
   - [Estimate Cell-Type Proportions Confidence Intervals](compositional_analysis.html)
   - [Identify Differentially Abundant Subpopulation](differential_abundance_subpopulation.html)
   - [Geneset Enrichment for Differential Abundant Subpopulation](diff_abundance_geneset_analysis.html)
+  - [Co-varying Neighborhood Analysis](covarying_neighborhood_analysis.html)
 - Differential State Analysis
   - [Perform Differential State Analysis](differential_state_analysis.html)
   - [Geneset Enrichment Analysis](diff_state_geneset_analysis.html)
+- Trajectory Inference
+  - TODO: Identify the source of stress subpopulation
+  - TODO: GRN of trajectory
