@@ -1,0 +1,152 @@
+---
+title: "Differential Abundance Testing by miloR"
+author: "Altair Wei"
+date: '2022-07-25'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(SingleCellExperiment)
+```
+
+## 算法探索
+
+一些提示：
+
+-   miloR 考虑到了样本间细胞数量的差异，也可以自己检查这个数量差异是否会误导差异丰度分析：<https://github.com/MarioniLab/miloR/issues/208>
+-   关于多元变量的比较：<https://github.com/MarioniLab/miloR/issues/158>
+
+### 数据准备
+
+```{r read-seurat-obj}
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+ 
+```{r}
+obj_1dpi <- subset(obj, subset = group %in% c("3DPI-MOCK", "3DPI-PNR2"))
+sce <- Seurat::as.SingleCellExperiment(obj_1dpi)
+sce$sample <- make.names(sce$sample)
+sce$group <- make.names(sce$group)
+```
+
+```{r}
+scater::plotReducedDim(sce, dimred = "TSNE", colour_by = "group", point_size = .2) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+### 创建对象
+
+```{r}
+milo <- miloR::Milo(sce)
+milo
+```
+
+### 构建 KNN 网络
+
+关于 `k` 参数：This affects the power of DA testing, since we need to have enough cells from each sample represented in a neighbourhood to estimate the variance between replicates. On the other side, increasing k too much might lead to over-smoothing. We suggest to start by using the same value for k used for KNN graph building for clustering and UMAP visualization. We will later use some heuristics to evaluate whether the value of k should be increased.
+
+```{r}
+milo <- miloR::buildGraph(milo, k = 10, d = 30, reduced.dim = "HARMONY")
+```
+
+### 定义代表性领域
+
+关于 `prop` 参数：The proportion of cells to randomly sample to start with. We suggest using `prop=0.1` for datasets of less than 30k cells. For bigger datasets using `prop=0.05` should be sufficient (and makes computation faster).
+
+```{r}
+milo <- miloR::makeNhoods(
+  milo, prop = 0.1, k = 10, d = 30,
+  refined = TRUE, reduced_dims = "HARMONY")
+```
+
+我们需要评估每个领域包含的细胞数量。根据经验，我们希望平均邻域大小超过 5 x N_samples
+
+```{r}
+miloR::plotNhoodSizeHist(milo)
+```
+
+我们的数据集有 20 个样本，所以平均领域尺寸应该大于 5×20=100
+
+```{r}
+summary(Matrix::colSums(miloR::nhoods(milo)))
+```
+
+### 计算领域中各样本细胞数量
+
+```{r}
+milo <- miloR::countCells(milo, meta.data = as.data.frame(colData(milo)), sample = "sample")
+head(miloR::nhoodCounts(milo))
+```
+
+### 定义实验设计
+
+```{r}
+design <- data.frame(colData(milo))[, c("sample", "treatment")]
+design <- dplyr::distinct(design)
+rownames(design) <- design$sample
+design
+```
+
+```{r}
+## Reorder rownames to match columns of nhoodCounts(milo)
+design <- design[colnames(miloR::nhoodCounts(milo)), , drop=FALSE]
+design
+```
+
+### 定义领域连接性
+
+> Milo uses an adaptation of the Spatial FDR correction introduced by `cydar`, which accounts for the overlap between neighbourhoods. Specifically, each hypothesis test P-value is weighted by the reciprocal of the kth nearest neighbour distance. To use this statistic we first need to store the distances between nearest neighbors in the Milo object.
+
+```{r}
+milo <- miloR::calcNhoodDistance(milo, d = 20, reduced.dim = "HARMONY")
+```
+
+### 差异丰度测试
+
+```{r}
+da_results <- miloR::testNhoods(
+  milo, design = ~ treatment,
+  design.df = design, reduced.dim = "HARMONY", fdr.weighting = "graph-overlap")
+```
+
+几个主要的统计量：
+
+-   `logFC`: indicates the log-Fold change in cell numbers between samples from stimulus and samples from control
+
+-   `PValue`: reports P-values before FDR correction
+
+-   `SpatialFDR`: reports P-values corrected for multiple testing accounting for overlap between neighbourhoods
+
+
+```{r}
+da_results %>%
+  dplyr::arrange(SpatialFDR) %>%
+  head()
+```
+
+### 可视化结果
+
+```{r}
+milo <- miloR::buildNhoodGraph(milo)
+```
+
+```{r fig.height=6, fig.width=14}
+p1 <- scater::plotReducedDim(sce, dimred = "TSNE", colour_by = "group", point_size = .2) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+p2 <- miloR::plotNhoodGraphDA(milo, da_results, layout = "TSNE", alpha = 0.1) +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+```{r}
+ggplot2::ggplot(da_results, ggplot2::aes(logFC, -log10(SpatialFDR))) + 
+  ggplot2::geom_point() +
+  ggplot2::geom_hline(yintercept = 1)
+```
+
+

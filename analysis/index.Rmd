@@ -19,8 +19,10 @@ editor_options:
   - [Integration by Seurat v3 RPCA](integration_by_seurat_rpca.html)
   - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
   - [Integration of Stimulating Samples](integration_of_stimulating_samples.html)
+  - [Sample Correlation Analysis](sample_correlation_analysis.html)
 - Differential Abundance Analysis
-  - [Estimate Cell-Type Proportions Confidence Intervals](compositional_analysis.html)
+  - [Compositional Analysis by scDC](compositional_analysis_by_scDC.html)
+  - [Compositional Analysis by scCODA](compositional_analysis_by_scCODA.html)
   - [Identify Differentially Abundant Subpopulation](differential_abundance_subpopulation.html)
   - [Geneset Enrichment for Differential Abundant Subpopulation](diff_abundance_geneset_analysis.html)
   - [Co-varying Neighborhood Analysis](covarying_neighborhood_analysis.html)

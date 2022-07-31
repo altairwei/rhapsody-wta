@@ -1,0 +1,765 @@
+---
+title: "Co-varying Neighborhood Analysis"
+author: "Altair Wei"
+date: "2022/5/15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+library(magrittr)
+library(Matrix)
+library(ggplot2) # Fix {ggtreeExtra} error
+```
+
+## 算法探索
+
+```{r}
+data('rcna_demo', package = "rcna")
+
+str(rcna_demo)
+```
+
+```{r}
+for (var in names(rcna_demo$samplem)) {
+  cat(var, ":\n")
+  print(unique(rcna_demo$samplem[[var]]))
+}
+```
+
+```{r}
+rcna_demo$samplem |>
+  dplyr::group_by(batch, case, male) |>
+  dplyr::count()
+```
+
+`batch` 是一个比 replicates 更大的概念。
+
+我觉得应该将数据集拆分，而不是应用 `isPNR2` 或者 `isTR4` 这种类型的二元变量。
+
+## 加载数据
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+
+```{r message=FALSE, warning=FALSE, results="hide"}
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+```
+
+## 工具函数
+
+```{r}
+coffGeneList <- function(ncorrs, exprs) {
+  ncorrs <- as(matrix(ncorrs, ncol = 1), "dgCMatrix")
+  genes <- qlcMatrix::corSparse(ncorrs, exprs)
+  genes <- structure(as.numeric(genes), names = colnames(exprs))
+  genes <- sort(genes, decreasing = TRUE)
+  genes
+}
+```
+
+```{r}
+runGSEA <- function(x) {
+  rankLists <- x
+  stopifnot(length(rankLists) > 0)
+
+  if (length(rankLists) == 1) {
+    gsea <- clusterProfiler::gseGO(
+      geneList = rankLists[[1]],
+      ont = "BP",
+      OrgDb = org.Taestivum.iwgsc.db,
+      keyType = "GID"
+    )
+  } else {
+    gsea <- clusterProfiler::compareCluster(
+      geneClusters = rankLists,
+      fun = "gseGO",
+      ont = "BP",
+      OrgDb = org.Taestivum.iwgsc.db,
+      keyType = "GID"
+    )
+  }
+
+  gsea <- clusterProfiler::simplify(gsea)
+
+  gsea
+}
+```
+
+```{r}
+gseaTable <- function(gsea) {
+  digits_2 <- reactable::colFormat(digits = 2)
+  gsea@compareClusterResult %>%
+    dplyr::select(Cluster, ID, Description, setSize,
+                  enrichmentScore, NES, pvalue, p.adjust,
+                  qvalues, rank, leading_edge) %>%
+    reactable::reactable(columns = list(
+      "ID" = reactable::colDef(minWidth = 120),
+      "Description" = reactable::colDef(minWidth = 200),
+      "enrichmentScore" = reactable::colDef(format = digits_2, maxWidth = 80),
+      "NES" = reactable::colDef(format = digits_2, maxWidth = 70),
+      "pvalue" = reactable::colDef(format = digits_2, maxWidth = 50),
+      "p.adjust" = reactable::colDef(format = digits_2, maxWidth = 50),
+      "qvalues" = reactable::colDef(format = digits_2, maxWidth = 50)
+    ))
+}
+```
+
+
+## MOCK 发育规律
+
+```{r}
+obj_mock <- subset(obj, subset = group %in% c("0DPI-MOCK", "1DPI-MOCK", "2DPI-MOCK", "3DPI-MOCK"))
+obj_mock$time_val <- as.numeric(factor(obj_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+obj_mock <- Seurat::FindNeighbors(obj_mock)
+
+obj_mock <- rcna::association.Seurat(
+  seurat_object = obj_mock,
+  test_var = "time_val",
+  samplem_key = "sample",
+  graph_use = "RNA_nn",
+  batches = NULL,
+  covs = NULL
+)
+```
+
+### Association results
+
+```{r fig.height=4, fig.width=10}
+p1 <- Seurat::FeaturePlot(obj_mock, reduction = "tsne", features = c('cna_ncorrs_fdr10')) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::DimPlot(obj_mock, reduction = "tsne", group = "group") &
+  ggthemes::scale_color_tableau() &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+```
+
+在上面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。没有通过 FDR 5% 的邻域显示为灰色。
+
+### Neighborhood loadings of NAM PCs
+
+查看源代码可知，`NAM_nbhdXpc` 等于 `NAM_embeddings`，而 `NAM_sampleXpc` 等于 `NAM_loadings` 。
+
+```{r fig.height=8, fig.width=14}
+p <- Seurat::FeaturePlot(
+    obj_mock, reduction = "tsne",
+    features = paste0("NAMPC_", 1:6),
+    ncol = 3, order = TRUE) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p
+```
+### Variance explained by NAM PCs
+
+```{r}
+data.frame(
+  sig2 = obj_mock@reductions$cna@misc$NAM_svs
+          / sum(obj_mock@reductions$cna@misc$NAM_svs)) %>% 
+    tibble::rowid_to_column('PC') %>% 
+    ggplot2::ggplot(ggplot2::aes(PC, sig2)) + 
+        ggplot2::geom_point() + 
+        ggplot2::geom_line() + 
+        ggplot2::theme_classic(base_size = 14) + 
+        ggplot2::labs(y = 'Fraction of variance explained', x = 'NAM PC') + 
+        ggplot2::scale_x_continuous(breaks = 1:20)
+```
+
+### Per-gene correlations to neighborhood coefficient
+
+```{r}
+ncorrs <- as(matrix(obj_mock$cna_ncorrs, ncol = 1), "dgCMatrix")
+genes <- qlcMatrix::corSparse(ncorrs, t(obj_mock@assays$RNA@counts))
+genes <- structure(as.numeric(genes), names = rownames(obj_mock@assays$RNA@counts))
+genes <- sort(genes, decreasing = TRUE)
+```
+
+```{r}
+gsea <- clusterProfiler::gseGO(
+  genes,
+  ont = "BP",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID"
+)
+
+gsea <- clusterProfiler::simplify(gsea)
+```
+
+```{r fig.height=10, fig.width=10}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 20, offset_tiplab = 1,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+从上面的 GO 齿条来看，这确实像是发育程序。
+
+### Sample loadings of NAM PCs
+
+```{r}
+sample_df <- as.data.frame(obj_mock@reductions$cna@feature.loadings[, 1:2])
+sample_df$sample <- stringr::str_extract(rownames(sample_df), "\\dDPI-MOCK")
+
+ggplot2::ggplot(sample_df, ggplot2::aes(NAMPC_1, NAMPC_2, color = sample)) +
+  ggplot2::geom_point()
+```
+
+## 病原菌诱导的总体应激反应
+
+```{r}
+obj$is_pnr2 <- as.numeric(obj$treatment == "PNR2")
+obj$is_tr4 <- as.numeric(obj$treatment == "TR4")
+obj$is_mock <- as.numeric(obj$treatment == "MOCK")
+obj$time_val <- as.numeric(factor(obj$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+
+# Use normalized expression data
+tExprs <- t(obj@assays$RNA@data)
+```
+
+```{r}
+cna_all <- rcna::create_object.Seurat(
+  seurat_object = obj,
+  samplem_key = "sample",
+  samplem_vars = c(
+    "group", "time", "treatment", "time_val",
+    "is_pnr2", "is_tr4", "is_mock"
+  ),
+  graph_use = "RNA_nn"
+)
+
+res_pnr2 <- rcna::association(
+  data = cna_all,
+  y = cna_all$samplem$is_pnr2,
+  covs = "time_val",
+  batches = NULL,
+  return_nam = TRUE
+)
+
+res_tr4 <- rcna::association(
+  data = cna_all,
+  y = cna_all$samplem$is_tr4,
+  covs = "time_val",
+  batches = NULL,
+  return_nam = TRUE
+)
+
+res_mock <- rcna::association(
+  data = cna_all,
+  y = cna_all$samplem$is_mock,
+  covs = "time_val",
+  batches = NULL,
+  return_nam = TRUE
+)
+```
+
+```{r}
+obj$pnr2_cna_ncorrs <- res_pnr2$ncorrs[colnames(obj), , drop=TRUE]
+obj$tr4_cna_ncorrs <- res_tr4$ncorrs[colnames(obj), , drop=TRUE]
+obj$mock_cna_ncorrs <- res_mock$ncorrs[colnames(obj), , drop=TRUE]
+```
+
+### Association results
+
+```{r fig.height=10, fig.width=10}
+p1 <- Seurat::FeaturePlot(obj, reduction = "tsne", features = c('pnr2_cna_ncorrs')) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::FeaturePlot(obj, reduction = "tsne", features = c('tr4_cna_ncorrs')) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p3 <- Seurat::FeaturePlot(obj, reduction = "tsne", features = c('mock_cna_ncorrs')) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p4 <- Seurat::DimPlot(obj, reduction = "tsne", group = "treatment") &
+  ggthemes::scale_color_tableau("Tableau 20") &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2[[1]] + p3[[1]] + p4 + patchwork::plot_layout(nrow = 2)
+```
+
+### Per-gene correlation
+
+```{r}
+genePNR2 <- coffGeneList(res_pnr2$ncorrs, tExprs)
+geneTR4 <- coffGeneList(res_tr4$ncorrs, tExprs)
+geneMOCK <- coffGeneList(res_mock$ncorrs, tExprs)
+```
+
+```{r}
+gsea <- runGSEA(
+  list(
+    PNR2 = genePNR2,
+    TR4  = geneTR4,
+    MOCK = geneMOCK
+  )
+)
+```
+
+```{r fig.height=12, fig.width=8}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 40, offset_tiplab = 15,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+### Top positive correlated genes {.tabset}
+
+#### PNR2
+
+```{r fig.height=8, fig.width=8}
+Seurat::DefaultAssay(obj) <- "RNA"
+Seurat::FeaturePlot(
+    obj,
+    features = names(head(genePNR2, n = 4L)),
+    reduction = "tsne",
+    order = TRUE) &
+  ggplot2::coord_fixed()
+```
+
+#### TR4
+
+```{r fig.height=8, fig.width=8}
+Seurat::DefaultAssay(obj) <- "RNA"
+Seurat::FeaturePlot(
+    obj,
+    features = names(head(geneTR4, n = 4L)),
+    reduction = "tsne",
+    order = TRUE) &
+  ggplot2::coord_fixed()
+```
+
+#### MOCK
+
+```{r fig.height=8, fig.width=8}
+Seurat::DefaultAssay(obj) <- "RNA"
+Seurat::FeaturePlot(
+    obj,
+    features = names(head(geneMOCK, n = 4L)),
+    reduction = "tsne",
+    order = TRUE) &
+  ggplot2::coord_fixed()
+```
+
+### Top negative correlated genes {.tabset}
+
+#### PNR2
+
+```{r fig.height=8, fig.width=8}
+Seurat::DefaultAssay(obj) <- "RNA"
+Seurat::FeaturePlot(
+    obj,
+    features = names(tail(genePNR2, n = 4L)),
+    reduction = "tsne",
+    order = TRUE) &
+  ggplot2::coord_fixed()
+```
+
+#### TR4
+
+```{r fig.height=8, fig.width=8}
+Seurat::DefaultAssay(obj) <- "RNA"
+Seurat::FeaturePlot(
+    obj,
+    features = names(tail(geneTR4, n = 4L)),
+    reduction = "tsne",
+    order = TRUE) &
+  ggplot2::coord_fixed()
+```
+
+#### MOCK
+
+```{r fig.height=8, fig.width=8}
+Seurat::DefaultAssay(obj) <- "RNA"
+Seurat::FeaturePlot(
+    obj,
+    features = names(tail(geneMOCK, n = 4L)),
+    reduction = "tsne",
+    order = TRUE) &
+  ggplot2::coord_fixed()
+```
+
+### Sample loadings of NAM PCs
+
+```{r}
+sample_df <- as.data.frame(res_mock$NAM_loadings[, 1:2])
+sample_df$sample <- cna_all$samplem$sample
+sample_df$treatment <- cna_all$samplem$treatment
+sample_df$time <- cna_all$samplem$time
+
+ggplot2::ggplot(sample_df, ggplot2::aes(PC1, PC2, color = treatment, shape = time)) +
+  ggplot2::geom_point()
+```
+
+### Characterizing PNR2 NAM-PC1
+
+```{r}
+quanitfy_correlation <-function(sel_gene, expr_mat, ncorrs){
+    my_expr = expr_mat[match(sel_gene, rownames(expr_mat)),]
+    my_data = data.frame(ncorrs, my_expr)
+    colnames(my_data) = c("corrs", "expr")
+    new_summary = summary(lm(corrs ~ expr, data = my_data))
+    new_p = new_summary$coefficients[2,4]
+    new_coeff = new_summary$coefficients[2,1]
+    new_corr = cor(my_expr, ncorrs)
+    return(c(new_corr, new_p))
+}
+```
+
+```{r}
+pnr2_pcs <- list(
+  pnr2_pc1_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC1"], tExprs),
+  pnr2_pc2_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC2"], tExprs),
+  pnr2_pc3_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC3"], tExprs),
+  pnr2_pc4_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC4"], tExprs),
+  pnr2_pc5_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC5"], tExprs)
+)
+```
+
+```{r}
+head(pnr2_pcs$pnr2_pc1_corr)
+```
+
+```{r}
+all(rownames(tExprs) == rownames(res_pnr2$NAM_embeddings))
+quanitfy_correlation("TraesCS6D02G389400", obj@assays$RNA@data, res_pnr2$NAM_embeddings[, "PC1"])
+quanitfy_correlation("TraesCS6B02G450000", obj@assays$RNA@data, res_pnr2$NAM_embeddings[, "PC1"])
+```
+
+```{r}
+gsea <- runGSEA(pnr2_pcs)
+```
+
+```{r fig.height=16, fig.width=8}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 40, offset_tiplab = 18,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+
+## 1DPI 分析
+
+```{r}
+obj_sub <- subset(obj, subset = group %in% c("1DPI-MOCK", "1DPI-PNR2", "1DPI-TR4"))
+```
+
+```{r factorize}
+obj_sub <- Seurat::FindNeighbors(obj_sub)
+obj_sub$is_pnr2 <- as.numeric(obj_sub$treatment == "PNR2")
+obj_sub$is_tr4 <- as.numeric(obj_sub$treatment == "TR4")
+obj_sub$is_mock <- as.numeric(obj_sub$treatment == "MOCK")
+# Use normalized expression data
+tExprs <- t(obj_sub@assays$RNA@data)
+```
+
+```{r run-cna, message=FALSE, warning=FALSE}
+cna_all <- rcna::create_object.Seurat(
+  seurat_object = obj_sub,
+  samplem_key = "sample",
+  samplem_vars = c(
+    "group", "time", "treatment",
+    "is_pnr2", "is_tr4", "is_mock"
+  ),
+  graph_use = "RNA_nn"
+)
+
+res_pnr2 <- rcna::association(
+  data = cna_all,
+  y = cna_all$samplem$is_pnr2,
+  covs = NULL,
+  batches = NULL,
+  return_nam = TRUE
+)
+
+res_tr4 <- rcna::association(
+  data = cna_all,
+  y = cna_all$samplem$is_tr4,
+  covs = NULL,
+  batches = NULL,
+  return_nam = TRUE
+)
+
+res_mock <- rcna::association(
+  data = cna_all,
+  y = cna_all$samplem$is_mock,
+  covs = NULL,
+  batches = NULL,
+  return_nam = TRUE
+)
+```
+
+```{r assign-ncorr}
+obj_sub$pnr2_cna_ncorrs <- res_pnr2$ncorrs[colnames(obj_sub), , drop=TRUE]
+obj_sub$tr4_cna_ncorrs <- res_tr4$ncorrs[colnames(obj_sub), , drop=TRUE]
+obj_sub$mock_cna_ncorrs <- res_mock$ncorrs[colnames(obj_sub), , drop=TRUE]
+```
+
+### Association results
+
+```{r asso-results, fig.height=12, fig.width=12, message=FALSE, warning=FALSE}
+p1 <- Seurat::FeaturePlot(obj_sub, reduction = "tsne", features = c('pnr2_cna_ncorrs')) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::FeaturePlot(obj_sub, reduction = "tsne", features = c('tr4_cna_ncorrs')) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p3 <- Seurat::FeaturePlot(obj_sub, reduction = "tsne", features = c('mock_cna_ncorrs')) &
+  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::coord_fixed()
+
+p4 <- Seurat::DimPlot(obj_sub, reduction = "tsne", group = "treatment") &
+  ggthemes::scale_color_tableau("Tableau 20") &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2[[1]] + p3[[1]] + p4 + patchwork::plot_layout(nrow = 2)
+```
+
+### Per-gene correlation
+
+```{r asso-gsea, message=FALSE, warning=FALSE}
+genePNR2 <- coffGeneList(res_pnr2$ncorrs, tExprs)
+geneTR4 <- coffGeneList(res_tr4$ncorrs, tExprs)
+geneMOCK <- coffGeneList(res_mock$ncorrs, tExprs)
+
+gsea <- runGSEA(
+  list(
+    PNR2 = genePNR2,
+    TR4  = geneTR4,
+    MOCK = geneMOCK
+  )
+)
+```
+
+```{r plot-gsea, fig.height=12, fig.width=8, message=FALSE, warning=FALSE}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 40, offset_tiplab = 15,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+```{r}
+all_coff_list <- list(
+  "1DPI-PNR2" = genePNR2,
+  "1DPI-TR4"  = geneTR4,
+  "1DPI-MOCK" = geneMOCK
+)
+```
+
+## 2DPI 分析
+
+```{r}
+obj_sub <- subset(obj, subset = group %in% c("2DPI-MOCK", "2DPI-PNR2", "2DPI-TR4"))
+```
+
+```{r}
+<<factorize>>
+```
+
+```{r, message=FALSE, warning=FALSE}
+<<run-cna>>
+```
+
+```{r}
+<<assign-ncorr>>
+```
+
+### Association results
+
+```{r fig.height=12, fig.width=12, message=FALSE, warning=FALSE}
+<<asso-results>>
+```
+
+### Per-gene correlation
+
+```{r message=FALSE, warning=FALSE}
+<<asso-gsea>>
+```
+
+```{r, fig.height=12, fig.width=8, message=FALSE, warning=FALSE}
+<<plot-gsea>>
+```
+
+```{r}
+all_coff_list[["2DPI-PNR2"]] <- genePNR2
+all_coff_list[["2DPI-TR4"]] <- geneTR4
+all_coff_list[["2DPI-MOCK"]] <- geneMOCK
+```
+
+## 3DPI 分析
+
+```{r, message=FALSE, warning=FALSE}
+obj_sub <- subset(obj, subset = group %in% c("3DPI-MOCK", "3DPI-PNR2", "3DPI-TR4"))
+```
+
+```{r}
+<<factorize>>
+```
+
+```{r, message=FALSE, warning=FALSE}
+<<run-cna>>
+```
+
+```{r}
+<<assign-ncorr>>
+```
+
+### Association results
+
+```{r fig.height=12, fig.width=12, message=FALSE, warning=FALSE}
+<<asso-results>>
+```
+
+### Per-gene correlation
+
+```{r message=FALSE, warning=FALSE}
+<<asso-gsea>>
+```
+
+```{r, fig.height=12, fig.width=8, message=FALSE, warning=FALSE}
+<<plot-gsea>>
+```
+
+```{r}
+all_coff_list[["3DPI-PNR2"]] <- genePNR2
+all_coff_list[["3DPI-TR4"]] <- geneTR4
+all_coff_list[["3DPI-MOCK"]] <- geneMOCK
+```
+
+## 时间线分析 {.tabset}
+
+### PNR2
+
+```{r message=FALSE, warning=FALSE}
+gsea <- runGSEA(all_coff_list[c("1DPI-PNR2", "2DPI-PNR2", "3DPI-PNR2")])
+```
+
+```{r}
+gseaTable(gsea)
+```
+
+```{r fig.height=16, fig.width=10, message=FALSE, warning=FALSE}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+### TR4
+
+```{r message=FALSE, warning=FALSE}
+gsea <- runGSEA(all_coff_list[c("1DPI-TR4", "2DPI-TR4", "3DPI-TR4")])
+```
+
+```{r}
+gseaTable(gsea)
+```
+
+```{r fig.height=16, fig.width=10, message=FALSE, warning=FALSE}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+### MOCK
+
+```{r message=FALSE, warning=FALSE}
+gsea <- runGSEA(all_coff_list[c("1DPI-MOCK", "2DPI-MOCK", "3DPI-MOCK")])
+```
+
+```{r}
+gseaTable(gsea)
+```
+
+```{r fig.height=16, fig.width=10, message=FALSE, warning=FALSE}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+
+## 共同比较
+
+```{r message=FALSE, warning=FALSE}
+gsea <- runGSEA(all_coff_list)
+```
+
+```{r}
+gseaTable(gsea)
+```
+
+```{r fig.height=18, fig.width=10, message=FALSE, warning=FALSE}
+p <- gsea %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+
