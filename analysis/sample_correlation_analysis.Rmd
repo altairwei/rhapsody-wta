@@ -100,7 +100,7 @@ samples <- c(
   "3DPI-MOCK-1",
   "3DPI-MOCK-2",
   "3DPI-PNR2-1",
-  "3DPI-PNR2-2",
+  #"3DPI-PNR2-2",
   "3DPI-PNR2-3",
   "3DPI-TR4-1",
   "3DPI-TR4-2"
@@ -189,7 +189,8 @@ perform_sample_correlation_analysis(
 #### 加载数据
 
 ```{r}
-obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
 
 #### Get cell embeddings of PCA
@@ -233,7 +234,7 @@ min_cells <- min(sapply(expr_list, nrow))
 
 Xref <- xfun::cache_rds(
   file = "sc_xref.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
   hash = list(npc, min_cells),
   expr = DensityMorph::reference_distribution(npc, min_cells*100, min_cells)
 )
@@ -281,24 +282,26 @@ ggplot2::ggplot(data_to_plot, ggplot2::aes(
   NULL
 ```
 
-#### Dim Reduction Plot
-
-```{r fig.height=4, fig.width=9}
-p1 <- Seurat::DimPlot(obj, reduction = "tsne", group.by = "group") +
-  ggplot2::theme(plot.title = ggplot2::element_blank())
-
-p2 <- Seurat::DimPlot(obj, reduction = "pca", group.by = "group") +
-  ggplot2::theme(plot.title = ggplot2::element_blank())
-
-p1 + p2 + patchwork::plot_layout(guides = "collect")
-```
 
 ### 样本整合前
 
 #### Load Seurat Object
 
 ```{r}
-obj_merged <- readRDS("../results/IntegratedAnalysis/All-Sample-Merge/Seurat_Object_Merged.rds")
+obj_list <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_list_transferred_*.rds"))
+
+obj_merged <- merge(
+  x = obj_list[[1]],
+  y = obj_list[-1],
+  add.cell.ids = names(obj_list)
+)
+
+obj_merged <- obj_merged %>%
+  Seurat::NormalizeData(verbose = FALSE) %>%
+  Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>% 
+  Seurat::ScaleData(verbose = FALSE) %>% 
+  Seurat::RunPCA(features = NULL, npcs = 30, verbose = FALSE)
 ```
 
 #### Get cell embeddings of PCA
@@ -368,15 +371,4 @@ ggplot2::ggplot(data_to_plot, ggplot2::aes(
   NULL
 ```
 
-#### Dim Reduction Plot
-
-```{r fig.height=4, fig.width=9}
-p1 <- Seurat::DimPlot(obj_merged, reduction = "tsne", group.by = "group") +
-  ggplot2::theme(plot.title = ggplot2::element_blank())
-
-p2 <- Seurat::DimPlot(obj_merged, reduction = "pca", group.by = "group") +
-  ggplot2::theme(plot.title = ggplot2::element_blank())
-
-p1 + p2 + patchwork::plot_layout(guides = "collect")
-```
 
