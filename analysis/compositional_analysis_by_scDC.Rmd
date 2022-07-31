@@ -1,5 +1,5 @@
 ---
-title: "Compositional Analysis"
+title: "Compositional Analysis by scDC"
 author: "Altair Wei"
 output: html_document
 ---
@@ -91,7 +91,7 @@ table(cond, cellTypes)
 ```{r run-bootstrap}
 ca_res_nonclust <- xfun::cache_rds(
   file = "ca_res_nonclust.rds",
-  rerun = TRUE,
+  rerun = FALSE,
   dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = local({
     res <- scDC::scDC_noClustering(
@@ -126,6 +126,14 @@ str(ca_res_nonclust)
 输出结果中的 `thetastar` 和 `nstar` 是一个矩阵，它有 525 行的细胞群，500 列的 bootstrap 结果。其中 `theta` 是指每个 bootstrap 的细胞群的比例，`n` 是指每个细胞群的细胞数量。
 
 #### 1.2.3 可视化置信区间
+
+```{r}
+treat_colors <- c(
+  "MOCK" = "blue",
+  "PNR2" = "red",
+  "TR4"  = "forestgreen"
+)
+```
 
 以 0DPI~3DPI 为横坐标，以 subject 的 median 为个体，以 cellTypes 为分面，以 MOCK/PNR2/TR4 为分组，绘制折线图。
 
@@ -163,7 +171,8 @@ plot_cell_population_by_time <- function(res, clusters = NULL, ncol = 3) {
     NULL
 }
 
-plot_cell_population_by_time(ca_res_nonclust)
+plot_cell_population_by_time(ca_res_nonclust) +
+  ggplot2::scale_fill_manual(values = treat_colors)
 ```
 
 参考 (Cao, Y. et al., BMC Bioinformatics, 2019) 文章中的 Fig. 5 ，绘制 Cell Proportion Bootstrap Distribution 以及 Average Cell Proportion Across Subjects 。尤其是后者，它让我们可以用折线图来表示 Treatment 模式的变化。
@@ -235,6 +244,7 @@ plot_bootstrap_distribution <- function(
 
 ```{r fig.height=8, fig.width=13, dev="svg"}
 p <- plot_bootstrap_distribution(ca_res_nonclust) +
+  ggplot2::scale_color_manual(values = treat_colors) +
   ggplot2::theme(
     strip.text.x = ggplot2::element_text(size = 16)
   )
@@ -250,8 +260,8 @@ p
 ```{r run-glm, results="hide"}
 ca_res_nonclust_glm <- xfun::cache_rds(
   file = "ca_glm_nonclust.rds",
-  dir = "../output/",
-  rerun = TRUE,
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  rerun = FALSE,
   expr = scDC::fitGLM(
     ca_res_nonclust,
     ca_res_nonclust$info$cond,

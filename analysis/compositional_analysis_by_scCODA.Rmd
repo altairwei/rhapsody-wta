@@ -1,0 +1,167 @@
+---
+title: "Compositional Analysis by scCODA"
+author: "Altair Wei"
+date: '2022-07-20'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 数据准备
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+
+计算细胞类型大小：
+
+```{r}
+df <- rhapsodykit::calculateClusterSize(
+    Seurat::Idents(obj), obj$sample, obj$group)
+df$time <- stringr::str_extract(df$sample_id, "\\dDPI")
+df$treatment <- stringr::str_extract(df$sample_id, "MOCK|PNR2|TR4")
+df <- tidyr::pivot_wider(df, names_from = cluster_id, values_from = size)
+df
+```
+
+## 算法探索
+
+```{python}
+import matplotlib.pyplot as plt
+import sccoda.util.cell_composition_data as dat
+import sccoda.util.data_visualization as viz
+import sccoda.util.comp_ana as mod
+import pandas as pd
+pd.set_option("display.max_rows", None)
+```
+
+```{python}
+data_all = dat.from_pandas(r.df, covariate_columns=[
+  "sample_id", "group_id", "time", "treatment"])
+```
+
+### Grouped boxplots
+
+```{python fig.height=2, fig.width=8}
+viz.boxplots(data_all, feature_name="group_id", add_dots=True, cmap="tab20")
+plt.show()
+```
+
+原来只是两个点的数据分布。。。
+
+### Stacked barplot
+
+```{python}
+viz.stacked_barplot(data_all, feature_name="sample_id")
+plt.show()
+```
+
+### Finding a reference cell type
+
+```{python fig.height=6, fig.width=2}
+viz.rel_abundance_dispersion_plot(
+  data=data_all,
+  abundant_threshold=0.9,
+  figsize = [3, 8]
+)
+plt.show()
+```
+
+### Model setup and inference
+
+> Per default, categorical variables are encoded via full-rank treatment coding. Hereby, the value of the first sample in the dataset is used as the default (control) category. We can select the default level by changing the model formula to `"C(<CovariateName>, Treatment('<ReferenceLevelName>'))"`. 参考： https://patsy.readthedocs.io/en/latest/categorical-coding.html
+
+```{python}
+model = mod.CompositionalAnalysis(data_all, formula="time + treatment", reference_cell_type="Gu")
+```
+
+如果 linux 的 cuda, cudnn 以及 python 的 jax 包没有安装好的话，下面代码会报错：
+
+```{python results='hide'}
+sim_results = model.sample_hmc()
+```
+
+### Result interpretation
+
+> **Model properties**
+>
+> The model has two types of parameters that are relevant for analysis - intercepts and effects. These can be interpreted like in a standard regression model: Intercepts show how the cell types are distributed without any active covariates, effects show ho the covariates influence the cell types.
+>
+> **Intercepts**
+>
+> The first column of the intercept summary shows the parameters determined by the MCMC inference.
+>
+> The "Expected sample" column gives some context to the numerical values. If we had a new sample (with no active covariates) with a total number of cells equal to the mean sampling depth of the dataset, then this distribution over the cell types would be most likely.
+>
+> **Effects**
+>
+> For the effect summary, the first column again shows the inferred parameters for all combinations of covariates and cell types. Most important is the distinctions between zero and non-zero entries. **A value of zero means that no statistically credible effect was detected. For a value other than zero, a credible change was detected. A positive sign indicates an increase, a negative sign a decrease in abundance.**
+>
+> Since the numerical values of the "Final Parameter" column are not straightforward to interpret, the "Expected sample" and "log2-fold change" columns give us an idea on the magnitude of the change. The expected sample is calculated for each covariate separately (covariate value = 1, all other covariates = 0), with the same method as for the intercepts. The log-fold change is then calculated between this expected sample and the expected sample with no active covariates from the intercept section. Since the data is compositional, cell types for which no credible change was detected, can still change in abundance as well, as soon as a credible effect is detected on another cell type due to the sum-to-one constraint. If there are no credible effects for a covariate, its expected sample will be identical to the intercept sample, therefore the log2-fold change is 0.
+
+```{python}
+sim_results.summary()
+```
+
+```{python}
+sim_results.credible_effects()
+```
+
+## 1DPI 分析
+
+```{python}
+def runScCODA(df):
+  data = dat.from_pandas(df, covariate_columns=[
+    "sample_id", "group_id", "time", "treatment"])
+  model = mod.CompositionalAnalysis(data, formula="treatment", reference_cell_type="Gu")
+  sim = model.sample_hmc()
+  return sim
+```
+
+```{r}
+df_1dpi <- dplyr::filter(df, time == "1DPI")
+df_1dpi
+```
+
+```{python results='hide'}
+sim_1dpi = runScCODA(r.df_1dpi)
+```
+
+```{python}
+sim_1dpi.summary()
+```
+
+## 2DPI 分析
+
+```{r}
+df_2dpi <- dplyr::filter(df, time == "2DPI")
+df_2dpi
+```
+
+```{python results='hide'}
+sim_2dpi = runScCODA(r.df_2dpi)
+```
+
+```{python}
+sim_2dpi.summary()
+```
+
+## 3DPI 分析
+
+```{r}
+df_3dpi <- dplyr::filter(df, time == "3DPI")
+df_3dpi
+```
+
+```{python results='hide'}
+sim_3dpi = runScCODA(r.df_3dpi)
+```
+
+```{python}
+sim_3dpi.summary()
+```
+
+
+

@@ -335,7 +335,6 @@ deconvHeatmap(CIBER)
 ### 6.1 从 MOCK 预测细胞类型 {.tabset}
 
 ```{r}
-
 overlap_df <- Seurat::FetchData(obj_merged, vars = c(
                 "ident", "predicted.id",
                 "prediction.score.max")) %>%
