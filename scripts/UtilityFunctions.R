@@ -564,7 +564,7 @@ pseudobulk <- function(seurat,
       as.list(pb@assays@data)
     })
 
-  pb_list <- unlist(pb_list, recursive = FALSE, use.names = TRUE) %>%
+  pb_list <- unlist(pb_list, recursive = FALSE, use.names = TRUE) |>
     purrr::imap(function(mtx, name) {
       colnames(mtx) <- paste(name, colnames(mtx), sep = ".")
       mtx

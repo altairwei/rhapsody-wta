@@ -198,7 +198,7 @@ obj <- readRDS(Sys.glob(
 ```{r}
 npc <- 10
 
-expr_data <- Seurat::Embeddings(obj[["pca"]])[, 1:npc]
+expr_data <- Seurat::Embeddings(obj[["harmony"]])[, 1:npc]
 
 head(expr_data)
 ```

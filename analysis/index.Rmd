@@ -30,5 +30,5 @@ editor_options:
   - [Perform Differential State Analysis](differential_state_analysis.html)
   - [Geneset Enrichment Analysis](diff_state_geneset_analysis.html)
 - Trajectory Inference
-  - TODO: Identify the source of stress subpopulation
+  - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - TODO: GRN of trajectory

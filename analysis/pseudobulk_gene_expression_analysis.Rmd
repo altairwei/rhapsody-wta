@@ -1,0 +1,479 @@
+---
+title: "Pseudobulk Gene Expression Analysis"
+author: "Altair Wei"
+date: '2022-08-03'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/UtilityFunctions.R")
+```
+
+## 生成 Pseudobulk 数据
+
+```{r}
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+
+```{r}
+expr <- xfun::cache_rds(
+  file = "pseudobulk_cpm_mean.rds",
+  dir = "../results/ObjectCache/Pseudobulk/",
+  expr = pseudobulk(obj, type = "cpm", fun = "mean")
+)
+```
+
+```{r}
+df <- xfun::cache_rds(
+  file = "pseudobulk_df_cpm_mean.rds",
+  dir = "../results/ObjectCache/Pseudobulk/",
+  expr = as.data.frame(expr) |>
+    tibble::rownames_to_column("Gene") |>
+    tidyr::pivot_longer(-Gene, names_to = "bulk", values_to = "CPM") |>
+    tidyr::separate(bulk, sep = "\\.", into = c("treatment", "time", "cellType"))
+)
+```
+
+## 氧化磷酸化通路
+
+将 0DPI 的数据为三份：
+
+```{r}
+df <- dplyr::bind_rows(
+  df,
+  df |>
+    dplyr::filter(time == "0DPI") |>
+    dplyr::mutate(treatment = "PNR2"),
+  df |>
+    dplyr::filter(time == "0DPI") |>
+    dplyr::mutate(treatment = "TR4")
+)
+```
+
+```{r}
+KO00190 <- c(
+  "TraesCS1A02G038300",
+  "TraesCS1A02G113000",
+  "TraesCS1A02G140100",
+  "TraesCS1A02G258300",
+  "TraesCS1A02G273500",
+  "TraesCS1A02G282900",
+  "TraesCS1A02G379000",
+  "TraesCS1B02G049200",
+  "TraesCS1B02G268800",
+  "TraesCS1B02G283300",
+  "TraesCS1B02G291800",
+  "TraesCS1B02G400300",
+  "TraesCS1B02G405100",
+  "TraesCS1B02G405200",
+  "TraesCS1B02G412900",
+  "TraesCS1D02G040000",
+  "TraesCS1D02G070400",
+  "TraesCS1D02G136000",
+  "TraesCS1D02G137400",
+  "TraesCS1D02G171700",
+  "TraesCS1D02G181000",
+  "TraesCS1D02G181600",
+  "TraesCS1D02G193400",
+  "TraesCS1D02G193600",
+  "TraesCS1D02G196100",
+  "TraesCS1D02G257600",
+  "TraesCS1D02G273500",
+  "TraesCS1D02G282100",
+  "TraesCS1D02G344800",
+  "TraesCS2A02G138300",
+  "TraesCS2A02G154100",
+  "TraesCS2A02G255100",
+  "TraesCS2A02G288200",
+  "TraesCS2A02G502400",
+  "TraesCS2A02G547200",
+  "TraesCS2A02G576400",
+  "TraesCS2B02G179400",
+  "TraesCS2B02G265500",
+  "TraesCS2B02G283000",
+  "TraesCS2B02G305000",
+  "TraesCS2B02G530500",
+  "TraesCS2B02G611000",
+  "TraesCS2D02G089900",
+  "TraesCS2D02G141300",
+  "TraesCS2D02G159600",
+  "TraesCS2D02G230000",
+  "TraesCS2D02G230100",
+  "TraesCS2D02G255500",
+  "TraesCS2D02G284400",
+  "TraesCS2D02G286500",
+  "TraesCS2D02G503000",
+  "TraesCS2D02G584400",
+  "TraesCS2D02G587100",
+  "TraesCS3A02G080400",
+  "TraesCS3A02G250500",
+  "TraesCS3A02G264700",
+  "TraesCS3A02G534500",
+  "TraesCS3A02G534700",
+  "TraesCS3B02G077900",
+  "TraesCS3B02G173600",
+  "TraesCS3B02G186000",
+  "TraesCS3B02G280000",
+  "TraesCS3B02G298000",
+  "TraesCS3B02G364300",
+  "TraesCS3B02G512400",
+  "TraesCS3B02G611600",
+  "TraesCS3B02G611800",
+  "TraesCS3D02G226800",
+  "TraesCS3D02G226900",
+  "TraesCS3D02G250900",
+  "TraesCS3D02G264800",
+  "TraesCS3D02G338500",
+  "TraesCS3D02G539900",
+  "TraesCS3D02G540100",
+  "TraesCS4A02G005000",
+  "TraesCS4A02G151900",
+  "TraesCS4A02G282900",
+  "TraesCS4B02G031000",
+  "TraesCS4B02G146500",
+  "TraesCS4B02G146800",
+  "TraesCS4B02G147000",
+  "TraesCS4B02G270900",
+  "TraesCS4B02G376400",
+  "TraesCS4D02G027900",
+  "TraesCS4D02G042900",
+  "TraesCS4D02G137800",
+  "TraesCS5A02G004200",
+  "TraesCS5A02G004300",
+  "TraesCS5A02G019900",
+  "TraesCS5A02G020100",
+  "TraesCS5A02G207900",
+  "TraesCS5A02G411200",
+  "TraesCS5A02G470200",
+  "TraesCS5A02G543300",
+  "TraesCS5B02G388400",
+  "TraesCS5B02G414900",
+  "TraesCS5D02G010300",
+  "TraesCS5D02G011000",
+  "TraesCS5D02G013100",
+  "TraesCS5D02G077500",
+  "TraesCS5D02G079500",
+  "TraesCS5D02G079700",
+  "TraesCS5D02G106200",
+  "TraesCS5D02G420100",
+  "TraesCS5D02G458900",
+  "TraesCS5D02G459400",
+  "TraesCS6A02G076300",
+  "TraesCS6A02G161000",
+  "TraesCS6A02G186300",
+  "TraesCS6A02G202900",
+  "TraesCS6A02G272300",
+  "TraesCS6A02G329500",
+  "TraesCS6B02G218100",
+  "TraesCS6B02G229200",
+  "TraesCS6B02G299800",
+  "TraesCS6B02G360300",
+  "TraesCS6D02G173400",
+  "TraesCS6D02G181900",
+  "TraesCS6D02G182000",
+  "TraesCS6D02G187400",
+  "TraesCS6D02G252400",
+  "TraesCS6D02G261600",
+  "TraesCS6D02G261800",
+  "TraesCS6D02G308400",
+  "TraesCS7A02G098100",
+  "TraesCS7A02G098300",
+  "TraesCS7A02G098500",
+  "TraesCS7A02G145400",
+  "TraesCS7A02G164800",
+  "TraesCS7A02G237800",
+  "TraesCS7A02G314000",
+  "TraesCS7A02G362000",
+  "TraesCS7A02G489500",
+  "TraesCS7B02G047600",
+  "TraesCS7B02G151800",
+  "TraesCS7B02G176000",
+  "TraesCS7B02G214900",
+  "TraesCS7B02G265500",
+  "TraesCS7B02G392600",
+  "TraesCS7B02G395800",
+  "TraesCS7B02G456800",
+  "TraesCS7D02G311200",
+  "TraesCS7D02G361000",
+  "TraesCS7D02G475900",
+  "TraesCSU02G073200",
+  "TraesCSU02G151300",
+  "TraesCSU02G158700",
+  "TraesCSU02G174100",
+  "TraesCSU02G234000",
+  "TraesCSU02G248800"
+)
+```
+
+```{r}
+df_to_plot <- dplyr::filter(df, Gene %in% KO00190, CPM > 0)
+```
+
+```{r fig.height=8, fig.width=10}
+p <- ggplot2::ggplot(df_to_plot,
+    ggplot2::aes(x = time, y = CPM, color = treatment)) +
+  ggplot2::geom_boxplot(
+    width = 0.2, outlier.shape = 19, outlier.size = .2,
+    position = ggplot2::position_dodge(width = 0.4)) +
+  ggplot2::geom_line(
+    mapping = ggplot2::aes(group = treatment),
+    stat = "summary", fun = median,
+    position = ggplot2::position_dodge(width = 0.4)) +
+  ggplot2::scale_y_continuous(breaks = c(1, 10, 100, 1000)) +
+  ggplot2::coord_trans(y = "log10") +
+  ggplot2::facet_wrap(~ cellType, drop = FALSE) +
+  ggplot2::theme_bw() +
+  NULL
+
+p
+```
+
+## 光系统通路
+
+### KO00196
+
+```{r}
+KO00196 <- c(
+  "TraesCS1A02G306600",
+  "TraesCS1A02G403300",
+  "TraesCS1A02G403800",
+  "TraesCS1B02G388200",
+  "TraesCS1B02G388300",
+  "TraesCS1B02G388500",
+  "TraesCS1B02G432700",
+  "TraesCS1B02G433300",
+  "TraesCS1B02G451100",
+  "TraesCS1D02G306200",
+  "TraesCS1D02G374900",
+  "TraesCS1D02G375100",
+  "TraesCS1D02G411300",
+  "TraesCS1D02G411600",
+  "TraesCS1D02G428200",
+  "TraesCS2A02G187200",
+  "TraesCS2A02G204800",
+  "TraesCS2A02G206200",
+  "TraesCS2A02G342600",
+  "TraesCS2B02G233400",
+  "TraesCS2B02G340300",
+  "TraesCS2D02G200700",
+  "TraesCS2D02G209900",
+  "TraesCS2D02G320900",
+  "TraesCS4A02G226900",
+  "TraesCS4B02G089500",
+  "TraesCS4D02G086400",
+  "TraesCS5A02G177700",
+  "TraesCS5A02G213000",
+  "TraesCS5A02G229300",
+  "TraesCS5A02G322500",
+  "TraesCS5A02G454200",
+  "TraesCS5A02G454300",
+  "TraesCS5B02G175000",
+  "TraesCS5B02G227900",
+  "TraesCS5B02G322900",
+  "TraesCS5B02G353200",
+  "TraesCS5B02G462800",
+  "TraesCS5B02G463000",
+  "TraesCS5B02G463100",
+  "TraesCS5D02G182000",
+  "TraesCS5D02G219100",
+  "TraesCS5D02G238300",
+  "TraesCS5D02G329200",
+  "TraesCS5D02G357600",
+  "TraesCS5D02G464700",
+  "TraesCS5D02G464800",
+  "TraesCS5D02G464900",
+  "TraesCS6A02G093700",
+  "TraesCS6A02G094100",
+  "TraesCS6A02G094200",
+  "TraesCS6A02G094300",
+  "TraesCS6A02G159800",
+  "TraesCS6A02G319700",
+  "TraesCS6B02G122800",
+  "TraesCS6B02G191500",
+  "TraesCS6B02G350500",
+  "TraesCS6D02G088800",
+  "TraesCS6D02G299200",
+  "TraesCS7A02G238400",
+  "TraesCS7B02G103300",
+  "TraesCS7B02G103400",
+  "TraesCS7B02G192500",
+  "TraesCS7D02G199400",
+  "TraesCS7D02G227300",
+  "TraesCS7D02G276300",
+  "TraesCSU02G167700",
+  "TraesCSU02G250000"
+)
+```
+
+```{r}
+df_to_plot <- dplyr::filter(df, Gene %in% KO00196, CPM > 0)
+```
+
+```{r fig.height=8, fig.width=10}
+p <- ggplot2::ggplot(df_to_plot,
+    ggplot2::aes(x = time, y = CPM, color = treatment)) +
+  ggplot2::geom_boxplot(
+    width = 0.2, outlier.shape = 19, outlier.size = .2,
+    position = ggplot2::position_dodge(width = 0.4)) +
+  ggplot2::geom_line(
+    mapping = ggplot2::aes(group = treatment),
+    stat = "summary", fun = median,
+    position = ggplot2::position_dodge(width = 0.4)) +
+  ggplot2::facet_wrap(~ cellType, drop = FALSE) +
+  ggplot2::theme_bw() +
+  NULL
+
+p
+```
+
+```{r fig.height=8, fig.width=10}
+p + ggplot2::scale_y_continuous(breaks = c(1, 10, 100, 1000, 3000)) +
+  ggplot2::coord_trans(y = "log10")
+```
+
+### KO00195
+
+```{r}
+KO00195 <- c(
+  "TraesCS1A02G326100",
+  "TraesCS1A02G392000",
+  "TraesCS1B02G339500",
+  "TraesCS1B02G420100",
+  "TraesCS1D02G179900",
+  "TraesCS1D02G181000",
+  "TraesCS1D02G275800",
+  "TraesCS1D02G328000",
+  "TraesCS1D02G400100",
+  "TraesCS2A02G114400",
+  "TraesCS2A02G207900",
+  "TraesCS2A02G223600",
+  "TraesCS2A02G247300",
+  "TraesCS2A02G252600",
+  "TraesCS2A02G252800",
+  "TraesCS2A02G296400",
+  "TraesCS2A02G344400",
+  "TraesCS2A02G378900",
+  "TraesCS2B02G133500",
+  "TraesCS2B02G234500",
+  "TraesCS2B02G240000",
+  "TraesCS2B02G267500",
+  "TraesCS2B02G270300",
+  "TraesCS2B02G272300",
+  "TraesCS2B02G272900",
+  "TraesCS2B02G273900",
+  "TraesCS2B02G311100",
+  "TraesCS2B02G312600",
+  "TraesCS2B02G342000",
+  "TraesCS2B02G395900",
+  "TraesCS2D02G115200",
+  "TraesCS2D02G213400",
+  "TraesCS2D02G220800",
+  "TraesCS2D02G229600",
+  "TraesCS2D02G253200",
+  "TraesCS2D02G253400",
+  "TraesCS2D02G253900",
+  "TraesCS2D02G255100",
+  "TraesCS2D02G284400",
+  "TraesCS2D02G292400",
+  "TraesCS2D02G294300",
+  "TraesCS2D02G322700",
+  "TraesCS3A02G052700",
+  "TraesCS3A02G321900",
+  "TraesCS3A02G381000",
+  "TraesCS3B02G061700",
+  "TraesCS3B02G344200",
+  "TraesCS3B02G392800",
+  "TraesCS3B02G406100",
+  "TraesCS3B02G413700",
+  "TraesCS3D02G051800",
+  "TraesCS3D02G309400",
+  "TraesCS3D02G354300",
+  "TraesCS3D02G366600",
+  "TraesCS3D02G374200",
+  "TraesCS4A02G099800",
+  "TraesCS4A02G134100",
+  "TraesCS4A02G152500",
+  "TraesCS4A02G286700",
+  "TraesCS4A02G297900",
+  "TraesCS4A02G310600",
+  "TraesCS4A02G355600",
+  "TraesCS4A02G472500",
+  "TraesCS4B02G003600",
+  "TraesCS4B02G015800",
+  "TraesCS4B02G028100",
+  "TraesCS4B02G170800",
+  "TraesCS4B02G204500",
+  "TraesCS4D02G003600",
+  "TraesCS4D02G014200",
+  "TraesCS4D02G025700",
+  "TraesCS4D02G031100",
+  "TraesCS4D02G045400",
+  "TraesCS4D02G205400",
+  "TraesCS5A02G414400",
+  "TraesCS5A02G423000",
+  "TraesCS5A02G457500",
+  "TraesCS5A02G482800",
+  "TraesCS5B02G417400",
+  "TraesCS5B02G424900",
+  "TraesCS5B02G466700",
+  "TraesCS5B02G496000",
+  "TraesCS5B02G516600",
+  "TraesCS5D02G265500",
+  "TraesCS5D02G431300",
+  "TraesCS5D02G458900",
+  "TraesCS5D02G468400",
+  "TraesCS5D02G474200",
+  "TraesCS5D02G496400",
+  "TraesCS5D02G516700",
+  "TraesCS6A02G009200",
+  "TraesCS6A02G206600",
+  "TraesCS6A02G358100",
+  "TraesCS6A02G374400",
+  "TraesCS6B02G015000",
+  "TraesCS6B02G390600",
+  "TraesCS6B02G412100",
+  "TraesCS6D02G012200",
+  "TraesCS6D02G079500",
+  "TraesCS6D02G187800",
+  "TraesCS6D02G283300",
+  "TraesCS6D02G358900",
+  "TraesCS7A02G020500",
+  "TraesCS7A02G325400",
+  "TraesCS7A02G325500",
+  "TraesCS7B02G226100",
+  "TraesCS7B02G226200",
+  "TraesCS7D02G000300",
+  "TraesCS7D02G016800",
+  "TraesCS7D02G322000",
+  "TraesCS7D02G322100",
+  "TraesCSU02G263400"
+)
+```
+
+```{r}
+df_to_plot <- dplyr::filter(df, Gene %in% KO00195, CPM > 0)
+```
+
+```{r fig.height=8, fig.width=10}
+p <- ggplot2::ggplot(df_to_plot,
+    ggplot2::aes(x = time, y = CPM, color = treatment)) +
+  ggplot2::geom_boxplot(
+    width = 0.2, outlier.shape = 19, outlier.size = .2,
+    position = ggplot2::position_dodge(width = 0.4)) +
+  ggplot2::geom_line(
+    mapping = ggplot2::aes(group = treatment),
+    stat = "summary", fun = median,
+    position = ggplot2::position_dodge(width = 0.4)) +
+  ggplot2::facet_wrap(~ cellType, drop = FALSE) +
+  ggplot2::theme_bw() +
+  NULL
+
+p
+```
+
+```{r fig.height=8, fig.width=10}
+p + ggplot2::scale_y_continuous(breaks = c(1, 10, 100, 1000, 3000)) +
+  ggplot2::coord_trans(y = "log10")
+```
