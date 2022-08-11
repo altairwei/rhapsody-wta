@@ -57,8 +57,8 @@ ipykernel==6.13.0
 ipython==8.4.0
 ipython-genutils==0.2.0
 ipywidgets==7.7.0
-jax==0.3.14
-jaxlib==0.3.14+cuda11.cudnn82
+jax==0.3.15
+jaxlib==0.3.15
 jedi==0.18.1
 Jinja2==3.1.2
 joblib==1.1.0

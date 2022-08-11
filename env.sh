@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -e "${BASH_SOURCE[0]}")")" && pwd)" || d
 
 export PATH="${SCRIPT_DIR}/bin:${SCRIPT_DIR}/scripts:$PATH"
 export PYTHONPATH="${SCRIPT_DIR}/docker/rhapsody_1.8/mist/src:$PYTHONPATH"
+source renv/python/virtualenvs/renv-python-3.8/bin/activate
 
 function proj_dir {
 	mkdir -p ${SCRIPT_DIR}/data/reads
