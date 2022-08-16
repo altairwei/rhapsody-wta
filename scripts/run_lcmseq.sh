@@ -19,7 +19,6 @@ snakemake \
     --jobscript "workflow/lcm_seq/profile/pbs-torque/pbs-jobscript.sh" \
     --jobs 5000 \
     --latency-wait 10 \
-    --verbose \
     --notemp \
     --snakefile workflow/lcm_seq/Snakemake \
     "$@"

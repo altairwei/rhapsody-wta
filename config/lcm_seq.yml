@@ -8,6 +8,12 @@ Samples:
   - MC_1
   - MC_2
   - MC_3
+  - EC_1
+  - EC_2
+  - EC_3
+  - MC3_1
+  - MC3_2
+  - MC3_3
 
 Reference_Genome:
  Index: "data/reference_indexes"
