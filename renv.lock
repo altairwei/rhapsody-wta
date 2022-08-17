@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.2.0",
+    "Version": "4.2.1",
     "Repositories": [
       {
         "Name": "BioCsoft",
@@ -801,10 +801,10 @@
     },
     "Rcpp": {
       "Package": "Rcpp",
-      "Version": "1.0.7",
+      "Version": "1.0.9",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "dab19adae4440ae55aa8a9d238b246bb",
+      "Hash": "e9c08b94391e9f3f97355841229124f2",
       "Requirements": []
     },
     "RcppAnnoy": {
@@ -819,10 +819,10 @@
     },
     "RcppArmadillo": {
       "Package": "RcppArmadillo",
-      "Version": "0.10.7.3.0",
+      "Version": "0.11.2.0.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "82b411caa086a4f007ec43a288fba990",
+      "Hash": "1d3c02a90401734e893954c7f8f92f3e",
       "Requirements": [
         "Rcpp"
       ]
@@ -1031,16 +1031,16 @@
     },
     "SeuratDisk": {
       "Package": "SeuratDisk",
-      "Version": "0.0.0.9019",
+      "Version": "0.0.0.9020",
       "Source": "GitHub",
-      "RemoteType": "github",
       "Remotes": "satijalab/seurat-data",
+      "RemoteType": "github",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "seurat-disk",
-      "RemoteUsername": "altairwei",
-      "RemoteRef": "fetch-data",
-      "RemoteSha": "46982e71e568145518c5b37567589e9b48a20d17",
-      "Hash": "fb3737a7d786680dcbb3483aecec62a8",
+      "RemoteUsername": "mojaveazure",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "9b89970eac2a3bd770e744f63c7763419486b14c",
+      "Hash": "18d5d212bad69ae88d2e531c4edb496a",
       "Requirements": [
         "Matrix",
         "R6",
@@ -1065,6 +1065,30 @@
         "Rcpp",
         "RcppEigen",
         "rlang"
+      ]
+    },
+    "SeuratWrappers": {
+      "Package": "SeuratWrappers",
+      "Version": "0.3.0",
+      "Source": "GitHub",
+      "Remotes": "welch-lab/liger, hms-dbmi/conos, immunogenomics/harmony,\n        immunogenomics/presto, satijalab/seurat-data,\n        velocyto-team/velocyto.R, SaskiaFreytag/schex@031320d,\n        cole-trapnell-lab/monocle3, mojaveazure/seurat-disk,\n        powellgenomicslab/Nebulosa, atakanekiz/CIPR-Package,\n        prabhakarlab/Banksy",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "seurat-wrappers",
+      "RemoteUsername": "satijalab",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "9652bddba522d2f00ec5f8f0f8227761b9a6afd2",
+      "Hash": "559f9bb7ba418a6fe48d1709512503c2",
+      "Requirements": [
+        "BiocManager",
+        "Matrix",
+        "Seurat",
+        "cowplot",
+        "ggplot2",
+        "igraph",
+        "remotes",
+        "rlang",
+        "rsvd"
       ]
     },
     "SingleCellExperiment": {
@@ -5183,10 +5207,10 @@
     },
     "survival": {
       "Package": "survival",
-      "Version": "3.2-13",
+      "Version": "3.4-0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "6f0a0fadc63bc6570fe172770f15bbc4",
+      "Hash": "04411ae66ab4659230c067c32966fc20",
       "Requirements": [
         "Matrix"
       ]
