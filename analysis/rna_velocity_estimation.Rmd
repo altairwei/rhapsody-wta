@@ -1,0 +1,181 @@
+---
+title: "RNA Velocity Estimation"
+author: "Altair Wei"
+date: '2022-08-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+```
+
+## 数据处理
+
+### 合并 velocyto 数据集
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "1DPI-PNR2-1",
+  "1DPI-PNR2-2",
+  "1DPI-TR4-1",
+  "1DPI-TR4-2",
+
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "2DPI-PNR2-1",
+  "2DPI-PNR2-2",
+  "2DPI-TR4-1",
+  "2DPI-TR4-2",
+
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2",
+  "3DPI-PNR2-1",
+  "3DPI-PNR2-3",
+  "3DPI-TR4-1",
+  "3DPI-TR4-2"
+)
+
+data_folders <- structure(
+  paste0("../results/RawOutput/", samples), names = samples)
+
+data_list <- xfun::cache_rds(
+  file = "velocity_data_list.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = lapply(data_folders, function(base_dir) {
+    loom_file = paste0(base_dir, "/Velocyto/", basename(base_dir), ".loom")
+    SeuratWrappers::ReadVelocity(loom_file)
+   })
+)
+```
+
+```{r}
+fixCellNames <- function(mtx_list) {
+  lapply(mtx_list, function(mtx) {
+    colnames(mtx) <- colnames(mtx) |>
+      stringr::str_sub(end = -2L) |>
+      stringr::str_replace(stringr::fixed(":"), "_")
+    mtx
+  })
+}
+
+spliced <- xfun::cache_rds(
+  file = "velocity_mtx_spliced.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = do.call(cbind, fixCellNames(lapply(data_list, "[[", "spliced")))
+)
+
+unspliced <- xfun::cache_rds(
+  file = "velocity_mtx_unspliced.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = do.call(cbind, fixCellNames(lapply(data_list, "[[", "unspliced")))
+)
+
+ambiguous <- xfun::cache_rds(
+  file = "velocity_mtx_ambiguous.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = do.call(cbind, fixCellNames(lapply(data_list, "[[", "ambiguous")))
+)
+```
+
+
+### 添加到 Seurat 对象
+
+```{r}
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+
+```{r}
+cell_names <- colnames(obj)
+gene_names <- rownames(obj)
+obj[["spliced"]] <- SeuratObject::CreateAssayObject(counts = spliced[gene_names, cell_names])
+obj[["unspliced"]] <- SeuratObject::CreateAssayObject(counts = unspliced[gene_names, cell_names])
+```
+
+```{r}
+rm(data_list, spliced, unspliced, ambiguous)
+gc()
+```
+
+```{r}
+obj_1dpi <- subset(obj, subset = time == "1DPI")
+```
+
+## Velocyto 算法
+
+直接计算所有样本的 velocity 内存 64G 是不足的。
+
+```{r eval=FALSE}
+obj_1dpi <- SeuratWrappers::RunVelocity(
+  obj_1dpi, reduction = "harmony",
+  deltaT = 1, kCells = 25, fit.quantile = 0.02)
+```
+
+通过 Velocyto.R 绘制 RNA 速率图太耗时间和内存了，不采取这个犯法。
+
+```{r eval=FALSE}
+ident.colors <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_1dpi))), palette = NULL)
+names(ident.colors) <- levels(obj_1dpi)
+cell.colors <- ident.colors[Seurat::Idents(obj_1dpi)]
+names(cell.colors) <- colnames(obj_1dpi)
+
+velocyto.R::show.velocity.on.embedding.cor(
+  emb = Seurat::Embeddings(
+    object = obj_1dpi,
+    reduction = "tsne"),
+  vel = Seurat::Tool(
+    object = obj_1dpi,
+    slot = "SeuratWrappers::RunVelocity"),
+  n = 100,
+  scale = "sqrt",
+  cell.colors = velocyto.R::ac(
+    x = cell.colors, alpha = 0.5),
+  cex = 0.8,
+  arrow.scale = 3,
+  show.grid.flow = TRUE,
+  min.grid.cell.mass = 0.5,
+  grid.n = 40,
+  arrow.lwd = 1,
+  do.par = FALSE,
+  cell.border.alpha = 0.1
+)
+```
+
+
+## scVelo 算法
+
+转换成 Python 数据：
+
+```{r}
+h5SeuratFile <- "../results/ObjectCache/TrajectoryInference/obj_1dpi_unspliced.h5Seurat"
+h5adFile <- "../results/ObjectCache/TrajectoryInference/obj_1dpi_unspliced.h5ad"
+# Remove scale.data of RNA assay
+obj_1dpi@assays$RNA@scale.data <- obj_1dpi@assays$spliced@scale.data
+SeuratDisk::SaveH5Seurat(obj_1dpi, filename = h5SeuratFile, overwrite = TRUE)
+SeuratDisk::Convert(h5SeuratFile, dest = "h5ad", overwrite = TRUE)
+```
+
+```{python}
+import scvelo as scv
+adata = scv.read(r.h5adFile)
+adata
+```
+
+是否需要设置 `use_rep="X_harmony"` 呢？
+
+```{python}
+scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+```
+
+```{python}
+scv.tl.velocity(adata)
+scv.tl.velocity_graph(adata)
+scv.pl.velocity_embedding_stream(adata, basis="tsne", color="seurat_clusters")
+```
+
+

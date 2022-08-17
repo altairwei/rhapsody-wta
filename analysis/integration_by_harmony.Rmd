@@ -121,7 +121,7 @@ library(clustree)
 
 obj_mock_combined <- xfun::cache_rds(
   file = "obj_mock_harmony_clustree.rds",
-  rerun = TRUE,
+  rerun = FALSE,
   dir = "../results/ObjectCache/IntegrationAndAnnotation/",
   expr = local({
     obj_mock_combined <- Seurat::FindClusters(
@@ -259,7 +259,13 @@ LCM_design <- c(
   "CC_3" = "cortex",
   "MC_1" = "mesophyll",
   "MC_2" = "mesophyll",
-  "MC_3" = "mesophyll"
+  "MC_3" = "mesophyll",
+  "EC_1" = "epidermis",
+  "EC_2" = "epidermis",
+  "EC_3" = "epidermis",
+  "MC3_1" = "collenchyma",
+  "MC3_2" = "collenchyma",
+  "MC3_3" = "collenchyma"
 )
 
 CIBER <- deconvLCM(
@@ -287,7 +293,7 @@ deconvHeatmap(CIBER)
 obj_mock_annotated <- xfun::cache_rds(
   file = "obj_mock_annotated.rds",
   dir = "../results/ObjectCache/IntegrationAndAnnotation/",
-  rerun = TRUE,
+  rerun = FALSE,
   expr = local({
     Seurat::DefaultAssay(obj_mock_combined) <- "RNA"
     obj_mock_combined <- Seurat::RenameIdents(

@@ -64,7 +64,7 @@ obj_list <- lapply(data_folders, function(base_dir) {
       seurat_obj
     })
   )
-})
+ })
 ```
 
 线粒体和叶绿体基因列表：

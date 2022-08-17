@@ -498,7 +498,8 @@ deconvScatter <- function(CIBER, design) {
     ggplot2::facet_wrap(~ CellType, scales = "free_y") +
     ggplot2::theme_bw(base_size=12) +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 90),
+      axis.text.x = ggplot2::element_text(
+        angle = 90, hjust = 1, vjust = 0.5),
       panel.grid = ggplot2::element_blank()
     ) +
     ggplot2::guides(color = "none") +
