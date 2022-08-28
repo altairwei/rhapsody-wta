@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 source("../scripts/UtilityFunctions.R")
+source("../scripts/EnrichmentUtilities.R")
 
 library(reactable)
 # setup reactable HTML dependencies
@@ -446,80 +447,6 @@ markerlist <- COSG::cosg(
 markerlist <- markerlist$names
 ```
 
-```{r}
-performMarkerCompareORA <- function(
-  markerlist, clusters, background,
-  ont = c("BP", "MF", "CC", "ALL"),
-  simplify = TRUE
-) {
-  ont <- match.arg(ont)
-
-  if (is.null(names(clusters)))
-    names(clusters) <- clusters
-
-  compare_df <- purrr::imap(clusters, function(clr, clr_name) {
-    df <- data.frame(
-      gene = markerlist[[clr]],
-      cluster = rep(clr_name, length(markerlist[[clr]]))
-    )
-    df
-  }) %>%
-    dplyr::bind_rows()
-
-  compare_df$cluster <- factor(compare_df$cluster, levels = names(clusters))
-  
-  comp_enr <- clusterProfiler::compareCluster(
-    gene ~ cluster,
-    data = compare_df,
-    fun = "enrichGO",
-    OrgDb = org.Taestivum.iwgsc.db,
-    keyType = "GID",
-    ont = ont,
-    universe = background
-  )
-
-  if (simplify && ont != "ALL")
-    comp_enr <- clusterProfiler::simplify(comp_enr, cutoff = 0.5)
-  
-  comp_enr
-}
-```
-
-```{r}
-print_enrich_table <- function(enr, heading) {
-  df <- enr@compareClusterResult |>
-    dplyr::select(
-      cluster, ID, Description,
-      Count, p.adjust, geneID) |>
-    dplyr::group_by(cluster)
-    
-  df_list <- dplyr::group_split(df)
-  names(df_list) <- dplyr::group_keys(df)$cluster
-
-  for (clr in names(df_list)) {
-    cat(heading, clr, "\n\n")
-    print(
-      htmltools::tagList(
-        reactable::reactable(
-          df_list[[clr]],
-          columns = list(
-            "cluster" = reactable::colDef(maxWidth = 80),
-            "ID" = reactable::colDef(maxWidth = 120),
-            "Description" = reactable::colDef(minWidth = 100),
-            "Count" = reactable::colDef(maxWidth = 80),
-            "p.adjust" = reactable::colDef(
-              maxWidth = 80, format = reactable::colFormat(digits = 2)),
-            "geneID" = reactable::colDef(minWidth = 250)
-          )
-        )
-      )
-    )
-    cat("\n\n")
-  }
-}
-```
-
-
 ### 维管束
 
 ```{r}
@@ -592,7 +519,6 @@ p
 ```{r results='asis'}
 print_enrich_table(enr, "#####")
 ```
-
 
 ### 其他细胞
 

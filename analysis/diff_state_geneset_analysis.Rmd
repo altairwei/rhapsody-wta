@@ -9,6 +9,7 @@ library(magrittr)
 library(patchwork)
 knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 source("../scripts/UtilityFunctions.R")
+source("../scripts/EnrichmentUtilities.R")
 ```
 
 # 1 差异状态基因集的富集分析
