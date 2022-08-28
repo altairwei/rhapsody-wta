@@ -11,37 +11,37 @@ library(magrittr)
 library(Matrix)
 library(patchwork)
 library(SingleCellExperiment)
+library(TrajectoryUtils)
+source("../scripts/TrajectoryUtilities.R")
 ```
 
 ## 使用 {TSCAN} 推断全局结构
 
 ### 数据准备
 
-加载 Suerat 对象：
-
-```{r}
-obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
-```
-
 首先我们需要将 Seurat 对象转换 SingleCellExperiment 对象：
 
 ```{r}
-sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = FALSE)
+sce <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_spliced_*.rds"))
 ```
 
-### 结构推断
+### MOCK 样本结构推断
+
+```{r}
+sce_mock <- sce[, sce$treatment == "MOCK"]
+```
 
 预先计算：
 
 ```{r}
-by.cluster <- scater::aggregateAcrossCells(sce, ids = sce$cluster_id)
-centroids <- SingleCellExperiment::reducedDim(by.cluster, "PCA")
+by.cluster <- scater::aggregateAcrossCells(sce_mock, ids = sce_mock$cluster_id)
+centroids <- reducedDim(by.cluster, "HARMONY")
 ```
 
 获得 MST ：
 
 ```{r}
-mst <- TSCAN::createClusterMST(centroids, clusters = NULL, outgroup = TRUE)
+mst <- TSCAN::createClusterMST(centroids, clusters = NULL, outgroup = FALSE)
 ```
 
 绘制：
@@ -50,271 +50,642 @@ mst <- TSCAN::createClusterMST(centroids, clusters = NULL, outgroup = TRUE)
 plot(mst)
 ```
 
-几个细胞世系：
-
-* MCs_1/MCs_2/Un_1/Un_2，结合 LCM-Seq 来看 MCs_2 有很强的皮层和叶肉细胞倾向。
-* VCs_2/CCs_6/Un_2，结合 LCM-Seq 看 VCs_2 有很强的皮层倾向。
-* MCs_5/VCs_5/CCs_3/CCs_7/MCs_3/Un_2，大多是皮层和叶肉倾向。UMAP 中间一溜。
-* CCs_1/CCs_5/CCs_2/CCs_8/CCs_4/Un_2，皮层或维管束。在 UMAP 左侧一大坨。
-
-## 使用 {Slingshot} 算法推断轨迹
+## 1DPI 差异拟时序分析
 
 ```{r}
-quickSlingshot <- function(sce) {
-  dataset <- dynwrap::wrap_expression(
-    expression = t(assay(sce, "logcounts")),
-    counts = t(assay(sce, "counts"))
+sce_1dpi <- sce[, sce$time == "1DPI"]
+```
+
+```{r fig.height=8, fig.width=16}
+p1 <- scater::plotReducedDim(sce_1dpi, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "RNA_snn_res.1.6",
+    text_by = "RNA_snn_res.1.6") +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce$RNA_snn_res.1.6)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+p2 <- scater::plotReducedDim(sce_1dpi, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "RNA_snn_res.1.6",
+    text_by = "RNA_snn_res.1.6") +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce$RNA_snn_res.1.6)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+```{r}
+rm(sce_1dpi)
+gc()
+```
+
+> The question is: should we fit a separate trajectory for each condition? We might expect the trajectory itself to be changed by the treatment if the treatment effect is systematically large. Otherwise, the treatment may impact the expression profile of some genes but the overall trajectory will be preserved.
+>
+> While it may seem reasonable to perform trajectory inference separately on cells from our different conditions, this is problematic for two reasons: 1) inferred trajectories will be less stable, as they would use only a subset of the available data, and 2) there would be no straightforward method for combining these results
+
+### 叶肉细胞 1DPI 应激态亚群
+
+```{r}
+cells_chosen <- sce$time == "1DPI" & sce$RNA_snn_res.1.6 %in% c("14", "5", "15", "16")
+sce_me_da_1dpi <- sce[, cells_chosen]
+sce_me_da_1dpi$cluster_id <- sce_me_da_1dpi$RNA_snn_res.1.6
+```
+
+#### 模型推断
+
+```{r}
+sce_me_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_me_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_me_da_1dpi, reduction = "HARMONY", omega = TRUE)
+)
+```
+
+```{r}
+sce_me_da_1dpi <- scater::runUMAP(sce_me_da_1dpi, dimred = "HARMONY")
+sce_me_da_1dpi <- scater::runTSNE(sce_me_da_1dpi, dimred = "HARMONY")
+sce_me_da_1dpi <- runDiffusionMap(sce_me_da_1dpi, dimred = "HARMONY")
+sce_me_da_1dpi <- runPHATE(sce_me_da_1dpi, dimred = "HARMONY", knn = 20, decay = 10)
+```
+
+感觉 Slingshot 的 pseudotime 计算的不好，头部和尾部的细胞分布太少了。
+
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_me_da_1dpi, heading = "####")
+```
+
+#### 差异表达
+
+##### 特征选择
+
+`tradeSeq::fitGAM` 运行时间太长了而且内存需求也太大了，我们需要对 `r nrow(sce_me_da_1dpi)` 个基因取子集才行。参考此问题 [statOmics/tradeSeq#150](https://github.com/statOmics/tradeSeq/issues/150) 。我觉得应该将 deviance-based filtering 和 variance-based filtering 结合起来过滤基因。
+
+```{r}
+sce_me_da_1dpi <- sce_me_da_1dpi[Matrix::rowSums(counts(sce_me_da_1dpi) > 0) > 0,]
+sce_me_da_1dpi <- scry::devianceFeatureSelection(sce_me_da_1dpi, assay = "logcounts", sorted = FALSE)
+```
+
+```{r}
+rowData(sce_me_da_1dpi)$geneVar <- scran::modelGeneVar(sce_me_da_1dpi)
+hvg.vars <- scran::getTopHVGs(rowData(sce_me_da_1dpi)$geneVar, n = 5000)
+```
+
+```{r}
+sorted <- sort(rowData(sce_me_da_1dpi)$binomial_deviance, decreasing = TRUE)
+hvg.dev <- names(sorted)[1:5000]
+
+plot(
+  sorted,
+  type = "l",
+  xlab = "ranked genes",
+  ylab = "binomial deviance",
+  main = "Feature Selection with Deviance")
+abline(v = 10000, lty = 2, col = "red")
+```
+
+```{r}
+hvg <- union(hvg.dev, hvg.vars)
+length(hvg)
+```
+
+
+##### knots 优化
+
+```{r}
+icMat <- tradeSeq::evaluateK(sce_me_da_1dpi, k = 3:10)
+```
+
+##### 模型拟合
+
+查看 `tradeSeq::fitGAM` 源代码，发现它使用 `counts = SingleCellExperiment::counts(counts)`，以及 `slingshot::SlingshotDataSet(counts)` 。
+
+```{r}
+tradeSeqSce <- tradeSeq::fitGAM(
+  counts = counts(sce_me_da_1dpi),
+  pseudotime = altExp(sce_me_da_1dpi, "scvelo")$velocity_pseudotime,
+  cellWeights = rep(1, ncol(sce_me_da_1dpi)),
+  conditions = factor(sce_me_da_1dpi$treatment),
+  nknots = 7, verbose = TRUE,
+  genes = hvg, sce = TRUE
+)
+
+altExp(sce_me_da_1dpi, "tradeSeq") <- tradeSeqSce
+```
+
+##### 谱系内部的比较
+
+> To assess significant changes in gene expression as a function of pseudotime within each lineage, we use the `associationTest`, which tests the null hypothesis that gene expression is not a function of pseudotime, i.e., whether the estimated smoothers are significantly varying as a function of pseudotime within each lineage.
+
+```{r}
+rowData(tradeSeqSce)$assocRes <- tradeSeq::associationTest(
+  tradeSeqSce, lineages = TRUE, l2fc = log2(2))
+```
+
+```{r}
+assocRes <- rowData(tradeSeqSce)$assocRes
+
+mockGenes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage1_conditionMOCK, "fdr") <= 0.05)
+]
+
+pnr2Genes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage1_conditionPNR2, "fdr") <= 0.05)
+]
+
+tr4Genes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage1_conditionTR4, "fdr") <= 0.05)
+]
+
+UpSetR::upset(
+  data = UpSetR::fromList(list(
+    MOCK = mockGenes, PNR2 = pnr2Genes, TR4 = tr4Genes)),
+  keep.order = TRUE)
+```
+
+关于 `tradeSeq::predictSmooth()` 的参数：
+
+> `nPoints`: The number of points used to create the grid along the smoother for each lineage. 
+
+```{r}
+diffGenes <- Reduce(union, list(mockGenes, pnr2Genes, tr4Genes))
+yhatSmooth <- tradeSeq::predictSmooth(tradeSeqSce, gene = diffGenes, nPoints = 100, tidy = FALSE)
+
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+
+plotPseudotimeHeatmap(
+  yhatSmoothScaled,
+  palette = colorRamps::matlab.like,
+  show_row_names = FALSE,
+  show_column_names = FALSE,
+  column_split = stringr::str_match(
+    colnames(yhatSmoothScaled), "_condition(.*)_")[, 2],
+)
+```
+
+##### 条件差异基因
+
+> To test differential expression between conditions, we use the `conditionTest` function implemented in `tradeSeq`. This function tests the null hypothesis that genes have identical expression patterns in each condition
+
+```{r}
+rowData(tradeSeqSce)$condRes <- tradeSeq::conditionTest(tradeSeqSce, l2fc = log2(2))
+```
+
+```{r}
+condRes <- rowData(tradeSeqSce)$condRes
+condRes$padj <- p.adjust(condRes$pvalue, "fdr")
+mean(condRes$padj <= 0.05, na.rm = TRUE)
+```
+
+```{r}
+sum(condRes$padj <= 0.05, na.rm = TRUE)
+```
+
+```{r}
+conditionGenes <- rownames(condRes)[condRes$padj <= 0.05]
+conditionGenes <- conditionGenes[!is.na(conditionGenes)]
+```
+
+```{r fig.height=4, fig.width=10}
+# plot genes
+oo <- order(condRes$waldStat, decreasing = TRUE, na.last = NA)
+
+# most significant gene
+p1 <- tradeSeq::plotSmoothers(
+  tradeSeqSce, assays(tradeSeqSce)$counts,
+  gene = rownames(assays(tradeSeqSce)$counts)[oo[1]],
+  alpha = 1, border = TRUE)
+
+# least significant gene
+p2 <- tradeSeq::plotSmoothers(
+  tradeSeqSce, assays(tradeSeqSce)$counts,
+  gene = rownames(assays(tradeSeqSce)$counts)[oo[length(oo)]],
+  alpha = 1, border = TRUE)
+
+p1 + p2 + patchwork::plot_layout(guides = "collect")
+```
+
+```{r}
+### based on mean smoother
+yhatSmooth <- tradeSeq::predictSmooth(
+  tradeSeqSce, gene = conditionGenes, nPoints = 300, tidy = FALSE)
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+
+plotPseudotimeHeatmap(
+  yhatSmoothScaled,
+  palette = colorRamps::matlab.like,
+  show_row_names = TRUE,
+  show_column_names = FALSE,
+  column_split = stringr::str_match(
+    colnames(yhatSmoothScaled), "_condition(.*)_")[, 2]
+)
+```
+
+```{r}
+tradeSeq::plotSmoothers(tradeSeqSce, counts(tradeSeqSce), gene = "TraesCS5D02G226900")
+```
+
+
+### 原维管束细胞 1DPI 应激态亚群
+
+```{r}
+sce_mpv_da_1dpi <- sce[, sce$time ==- "1DPI"
+  & sce$RNA_snn_res.1.6 %in% c("19", "8", "10")]
+sce_mpv_da_1dpi$cluster_id <- sce_mpv_da_1dpi$RNA_snn_res.1.6
+```
+
+#### 轨迹推断
+
+```{r}
+sce_mpv_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_mpv_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_mpv_da_1dpi, reduction = "HARMONY", start.clus = "19")
+)
+```
+
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_mpv_da_1dpi, heading = "####")
+```
+
+### 维管束 Va_2 应激态
+
+```{r}
+sce_va2_da_1dpi <- sce[, sce$time == "1DPI"
+  & sce$RNA_snn_res.1.6 %in% c("3", "7", "7")]
+sce_va2_da_1dpi$cluster_id <- sce_va2_da_1dpi$RNA_snn_res.1.6
+```
+
+#### 轨迹推断
+
+```{r}
+sce_va2_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_va2_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_va2_da_1dpi, reduction = "HARMONY", start.clus = "3")
+)
+```
+
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_va2_da_1dpi, heading = "####")
+```
+
+### 表皮细胞 1DPI 应激态亚群
+
+```{r}
+sce_ep_da_1dpi <- sce[, sce$time == "1DPI"
+  & sce$cluster_id %in% c("Ep_1", "Ep_2")]
+```
+
+#### 轨迹推断
+
+```{r}
+sce_ep_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_ep_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_ep_da_1dpi, reduction = "HARMONY", start.clus = "Ep_1")
+)
+```
+
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_ep_da_1dpi, heading = "####")
+```
+
+### 伴胞 1DPI 应激态
+
+```{r}
+sce_cc_da_1dpi <- sce[, sce$time == "1DPI"
+  & sce$RNA_snn_res.1.6 %in% c("25", "29")]
+sce_cc_da_1dpi$cluster_id <- sce_cc_da_1dpi$RNA_snn_res.1.6
+```
+
+#### 轨迹推断
+
+```{r}
+sce_cc_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_cc_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_cc_da_1dpi, reduction = "HARMONY", start.clus = "29")
+)
+```
+
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_cc_da_1dpi, heading = "####")
+```
+
+### 维管束鞘 1DPI 应激态
+
+```{r}
+sce_bs_da_1dpi <- sce[, sce$time == "1DPI"
+  & sce$RNA_snn_res.1.6 %in% c("6")]
+sce_bs_da_1dpi$cluster_id <- sce_bs_da_1dpi$RNA_snn_res.1.6
+```
+
+#### 轨迹推断
+
+```{r}
+sce_bs_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_bs_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_bs_da_1dpi, reduction = "HARMONY")
+)
+```
+
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_bs_da_1dpi, heading = "####")
+```
+
+
+### 维管束应激态
+
+```{r}
+sce_vastress_da_1dpi <- sce[, sce$time == "1DPI"
+  & sce$cluster_id %in% paste0("Va_", 5:7)]
+```
+
+#### 轨迹推断
+
+```{r}
+sce_vastress_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_vastress_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_vastress_da_1dpi, reduction = "HARMONY", start.clus = "Va_7")
+)
+```
+
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_vastress_da_1dpi, heading = "####")
+```
+
+
+## 2DPI 差异拟时序分析
+
+```{r}
+sce_2dpi <- sce[, sce$time == "2DPI"]
+```
+
+```{r fig.height=8, fig.width=16}
+p1 <- scater::plotReducedDim(sce_2dpi, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "RNA_snn_res.1.6",
+    text_by = "RNA_snn_res.1.6") +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce$RNA_snn_res.1.6)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+p2 <- scater::plotReducedDim(sce_2dpi, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "RNA_snn_res.1.6",
+    text_by = "RNA_snn_res.1.6") +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce$RNA_snn_res.1.6)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+```{r}
+rm(sce_2dpi)
+gc()
+```
+
+
+### 维管束应激态
+
+```{r}
+sce_vastress_da_2dpi <- sce[, sce$time == "2DPI"
+  & sce$cluster_id %in% c(paste0("Va_", 2:7))]
+```
+
+#### 轨迹推断
+
+```{r}
+sce_vastress_da_2dpi <- xfun::cache_rds(
+  file = "slingshot_vastress_da_2dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_vastress_da_2dpi,
+    reduction = "HARMONY",
+    start.clus = "Va_7"
   )
+)
+```
 
-  dataset <- dynwrap::add_grouping(
-    dataset,
-    sce$cluster_id
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_vastress_da_2dpi, heading = "####")
+```
+
+### 叶肉应激态
+
+```{r}
+sce_mestress_da_2dpi <- sce[, sce$time == "2DPI"
+  & sce$RNA_snn_res.1.6 %in% c("2", "0", "4")]
+sce_mestress_da_2dpi$cluster_id <- sce_mestress_da_2dpi$RNA_snn_res.1.6
+```
+
+#### 轨迹推断
+
+```{r}
+sce_mestress_da_2dpi <- xfun::cache_rds(
+  file = "slingshot_vastress_da_2dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_mestress_da_2dpi,
+    reduction = "HARMONY",
+    start.clus = "2"
   )
+)
+```
 
-  dataset <- dynwrap::add_prior_information(
-    dataset,
-    dimred = reducedDim(sce, "PCA")
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_mestress_da_2dpi, heading = "####")
+```
+
+### 原维管束
+
+```{r}
+sce_mpv_da_2dpi <- sce[, sce$time == "2DPI"
+  & sce$RNA_snn_res.1.6 %in% c("8", "10", "19")]
+sce_mpv_da_2dpi$cluster_id <- sce_mpv_da_2dpi$RNA_snn_res.1.6
+```
+
+#### 轨迹推断
+
+```{r}
+sce_mpv_da_2dpi <- xfun::cache_rds(
+  file = "slingshot_mpv_da_2dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_mpv_da_2dpi,
+    reduction = "HARMONY",
+    start.clus = "19"
   )
+)
+```
 
-  model <- dynwrap::infer_trajectory(
-    dataset,
-    dynmethods::ti_slingshot(),
-    give_priors = c("dimred"),
-    verbose = TRUE
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_mpv_da_2dpi, heading = "####")
+```
+
+### 叶肉免疫相关的应激态
+
+```{r}
+sce_meimmune_da_2dpi <- sce[, sce$time == "2DPI"
+  & sce$RNA_snn_res.1.6 %in% c("14", "5", "15", "16", "27")]
+sce_meimmune_da_2dpi$cluster_id <- sce_meimmune_da_2dpi$RNA_snn_res.1.6
+```
+
+#### 轨迹推断
+
+```{r}
+sce_meimmune_da_2dpi <- xfun::cache_rds(
+  file = "slingshot_meimmune_da_2dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_meimmune_da_2dpi,
+    reduction = "HARMONY",
+    start.clus = "14"
   )
+)
+```
 
-  model
-}
+#### 差异进程
 
-plot_dyno <- function(sce, model) {
-  g <- ggplot2::guides(
-    color = ggplot2::guide_legend(
-      override.aes = list(alpha = 1, size = 2)
-    )
+```{r results='asis'}
+printDiffTrajectoryReport(sce_meimmune_da_2dpi, heading = "####")
+```
+
+## 3DPI 差异拟时序
+
+### 表皮细胞
+
+```{r}
+sce_ep_da_3dpi <- sce[, sce$time == "3DPI"
+  & sce$cluster_id %in% c("Ep_1", "Ep_2")]
+```
+
+#### 轨迹推断
+
+```{r}
+sce_ep_da_3dpi <- xfun::cache_rds(
+  file = "slingshot_ep_da_3dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_ep_da_3dpi,
+    reduction = "HARMONY"
   )
-  
-  p1 <- dynplot::plot_dendro(
-    model,
-    color_cells = "grouping",
-    grouping = sce$cluster_id,
-    alpha_cells = 1,
-    size_cells = .1
-  ) + g
-
-  p2 <- dynplot::plot_dimred(
-    model,
-    color_cells = "grouping",
-    grouping = sce$cluster_id
-  ) + ggplot2::coord_fixed()
-
-  p3 <- dynplot::plot_dimred(
-    model,
-    dimred = reducedDim(sce, "UMAP"),
-    color_cells = "grouping",
-    grouping = sce$cluster_id
-  ) + ggplot2::coord_fixed()
-
-  p4 <- dynplot::plot_dendro(
-    model,
-    color_cells = "grouping",
-    grouping = stringr::str_extract(sce$group_id, "\\dDPI"),
-    alpha_cells = 1,
-    size_cells = .1
-  ) + g
-  
-  p5 <- dynplot::plot_dendro(
-    model,
-    color_cells = "grouping",
-    grouping = stringr::str_extract(sce$group_id, "(MOCK|TR4|PNR2)"),
-    alpha_cells = 1,
-    size_cells = .1
-  ) + g
-    
-  print(p1/p4/p5)
-  print(p2 + p3)
-}
-```
-
-dynwrap 使用的是 purrr::map ，并不能并行计算。
-
-### 世系0：表皮细胞
-
-```{r}
-sce_ep <- sce[, sce$cluster_id %in% c("ECs_1", "ECs_2", "ECs_3")]
-```
-
-```{r}
-model <- xfun::cache_rds(
-  file = "ti_dyno_ep_model_slingshot.rds",
-  dir = "../output/",
-  expr = local({
-    t_start = Sys.time()
-    model <- quickSlingshot(sce_ep)
-    t_end = Sys.time()
-    print(t_end - t_start)
-
-    model
-  })
 )
 ```
 
-```{r}
-model <- dynwrap::add_root(model, root_milestone_id = "1")
-dynplot::plot_dendro(
-  model,
-  color_cells = "grouping",
-  grouping = dynwrap::group_onto_nearest_milestones(model),
-  alpha_cells = 0.1,
-  size_cells = 2.5
-) + ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(alpha = 1)))
+#### 差异进程
 
-dynplot::plot_dendro(
-  model,
-  color_cells = "grouping",
-  grouping = stringr::str_extract(sce_ep$group_id, "\\dDPI"),
-  alpha_cells = 1,
-  size_cells = 1.5
-)
-
-dynplot::plot_dendro(
-  model,
-  color_cells = "grouping",
-  grouping = stringr::str_extract(sce_ep$group_id, "(MOCK|TR4|PNR2)"),
-  alpha_cells = 1,
-  size_cells = 1.5
-)
+```{r results='asis'}
+printDiffTrajectoryReport(sce_ep_da_3dpi, heading = "####")
 ```
 
+### 气孔
+
 ```{r}
-plot_dyno(sce_ep, model)
+sce_gu_da_3dpi <- sce[, sce$time == "3DPI" & sce$cluster_id == "Gu"]
 ```
 
-
-### 世系1：叶肉细胞
-
-```{r}
-sce_me_1 <- sce[, sce$cluster_id %in% c("MCs_1", "MCs_2", "Un_1", "Un_2")]
-```
+#### 轨迹推断
 
 ```{r}
-model_me_1 <- xfun::cache_rds(
-  file = "ti_dyno_me_1_model_slingshot.rds",
-  dir = "../output/",
-  expr = local({
-    t_start = Sys.time()
-    model <- quickSlingshot(sce_me_1)
-    t_end = Sys.time()
-    print(t_end - t_start)
-
-    model
-  })
+sce_gu_da_3dpi <- xfun::cache_rds(
+  file = "slingshot_gu_da_3dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_gu_da_3dpi,
+    reduction = "HARMONY"
+  )
 )
 ```
 
-```{r}
-plot_dyno(sce_me_1, model_me_1)
+#### 差异进程
+
+```{r results='asis'}
+printDiffTrajectoryReport(sce_gu_da_3dpi, heading = "####")
 ```
 
-### 世系2：维管束
+### 维管束应激态
 
 ```{r}
-sce_va_1 <- sce[, sce$cluster_id %in% c("VCs_2", "CCs_6", "VCs_6", "MCs_4", "Un_2", "VCs_3")]
+sce_vastress_da_3dpi <- sce[, sce$time == "3DPI"
+  & sce$cluster_id %in% c(paste0("Va_", 2:7))]
 ```
 
-```{r}
-model_va_1 <- xfun::cache_rds(
-  file = "ti_dyno_va_1_model_slingshot.rds",
-  dir = "../output/",
-  expr = local({
-    t_start = Sys.time()
-    model <- quickSlingshot(sce_va_1)
-    t_end = Sys.time()
-    print(t_end - t_start)
+#### 轨迹推断
 
-    model
-  })
+```{r}
+sce_vastress_da_3dpi <- xfun::cache_rds(
+  file = "slingshot_vastress_da_3dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  #rerun = TRUE,
+  expr = runSlingshotAndVelocity(
+    sce_vastress_da_3dpi,
+    reduction = "HARMONY",
+    start.clus = "Va_7"
+  )
 )
 ```
 
-```{r}
-plot_dyno(sce_va_1, model_va_1)
-```
+#### 差异进程
 
-### 世系3：叶肉细胞
-
-```{r}
-sce_me_2 <- sce[, sce$cluster_id %in% c("MCs_5", "VCs_5", "CCs_3", "CCs_7", "MCs_3", "VCs_3", "Un_2")]
-```
-
-
-```{r}
-model_me_2 <- xfun::cache_rds(
-  file = "ti_dyno_me_2_model_slingshot.rds",
-  dir = "../output/",
-  expr = local({
-    t_start = Sys.time()
-    model <- quickSlingshot(sce_me_2)
-    t_end = Sys.time()
-    print(t_end - t_start)
-
-    model
-  })
-)
-```
-
-```{r}
-plot_dyno(sce_me_2, model_me_2)
-```
-
-### 世系4： 皮层
-
-```{r}
-sce_co_1 <- sce[, sce$cluster_id %in% c("CCs_1", "CCs_5", "CCs_2", "CCs_8", "CCs_4", "Un_2")]
-```
-
-```{r}
-model_co_1 <- xfun::cache_rds(
-  file = "ti_dyno_co_1_model_slingshot.rds",
-  dir = "../output/",
-  expr = local({
-    t_start = Sys.time()
-    model <- quickSlingshot(sce_co_1)
-    t_end = Sys.time()
-    print(t_end - t_start)
-
-    model
-  })
-)
-```
-
-```{r}
-plot_dyno(sce_co_1, model_co_1)
-```
-
-### 世系2&3
-
-```{r}
-sce_mix_1 <- sce[, sce$cluster_id %in% c(
-  "VCs_2", "CCs_6", "VCs_6", "MCs_4", "Un_2",
-  "MCs_5", "VCs_5", "CCs_3", "CCs_7", "MCs_3", "VCs_3")]
-```
-
-```{r}
-model_mix_1 <- xfun::cache_rds(
-  file = "ti_dyno_mix_1_model_slingshot.rds",
-  dir = "../output/",
-  expr = local({
-    t_start = Sys.time()
-    model <- quickSlingshot(sce_mix_1)
-    t_end = Sys.time()
-    print(t_end - t_start)
-
-    model
-  })
-)
-```
-
-```{r}
-plot_dyno(sce_mix_1, model_mix_1)
+```{r results='asis'}
+printDiffTrajectoryReport(sce_vastress_da_3dpi, heading = "####")
 ```
 

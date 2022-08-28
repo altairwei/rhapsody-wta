@@ -7,9 +7,10 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+library(SingleCellExperiment)
 ```
 
-## 数据处理
+## 1 数据处理
 
 ### 合并 velocyto 数据集
 
@@ -82,19 +83,50 @@ ambiguous <- xfun::cache_rds(
 )
 ```
 
-
-### 添加到 Seurat 对象
-
 ```{r}
 obj <- readRDS(Sys.glob(
   "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
 
+### 添加到 SingleCellExperiment 对象
+
+```{r}
+sce <- xfun::cache_rds(
+  file = "sce_spliced.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = local({
+    obj$cellType <- Seurat::Idents(obj)
+    sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+    sce <- muscat::prepSCE(sce,
+      kid = "ident", # subpopulation assignments
+      gid = "group", # group IDs (ctrl/stim)
+      sid = "sample", # sample IDs (ctrl/stim.1234)
+      drop = FALSE
+    )
+
+    cell_names <- colnames(sce)
+    gene_names <- rownames(sce)
+    assay(sce, "spliced") <- spliced[gene_names, cell_names]
+    assay(sce, "unspliced") <- unspliced[gene_names, cell_names]
+
+    sce
+  })
+)
+```
+
+### 添加到 Seurat 对象
+
+```{r}
+obj$cellType <- as.character(Seurat::Idents(obj))
+```
+
 ```{r}
 cell_names <- colnames(obj)
 gene_names <- rownames(obj)
-obj[["spliced"]] <- SeuratObject::CreateAssayObject(counts = spliced[gene_names, cell_names])
-obj[["unspliced"]] <- SeuratObject::CreateAssayObject(counts = unspliced[gene_names, cell_names])
+obj[["spliced"]] <- SeuratObject::CreateAssayObject(
+  counts = spliced[gene_names, cell_names])
+obj[["unspliced"]] <- SeuratObject::CreateAssayObject(
+  counts = unspliced[gene_names, cell_names])
 ```
 
 ```{r}
@@ -102,13 +134,9 @@ rm(data_list, spliced, unspliced, ambiguous)
 gc()
 ```
 
-```{r}
-obj_1dpi <- subset(obj, subset = time == "1DPI")
-```
+## 2 Velocyto 算法
 
-## Velocyto 算法
-
-直接计算所有样本的 velocity 内存 64G 是不足的。
+直接计算所有样本的 velocity 内存 64G 是不足的。我怀疑是没有经过 HVGs 选择，导致矩阵非常大。
 
 ```{r eval=FALSE}
 obj_1dpi <- SeuratWrappers::RunVelocity(
@@ -147,35 +175,435 @@ velocyto.R::show.velocity.on.embedding.cor(
 ```
 
 
-## scVelo 算法
+## 3 scVelo 算法
+
+### 3.1 1DPI 样品分析
+
+#### 读取数据
 
 转换成 Python 数据：
 
 ```{r}
-h5SeuratFile <- "../results/ObjectCache/TrajectoryInference/obj_1dpi_unspliced.h5Seurat"
-h5adFile <- "../results/ObjectCache/TrajectoryInference/obj_1dpi_unspliced.h5ad"
-# Remove scale.data of RNA assay
-obj_1dpi@assays$RNA@scale.data <- obj_1dpi@assays$spliced@scale.data
-SeuratDisk::SaveH5Seurat(obj_1dpi, filename = h5SeuratFile, overwrite = TRUE)
-SeuratDisk::Convert(h5SeuratFile, dest = "h5ad", overwrite = TRUE)
+h5adFile <- xfun::cache_rds(
+  file = "h5adFile.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = local({
+    h5SeuratFile <- "../results/ObjectCache/TrajectoryInference/obj_velocity.h5Seurat"
+    # Remove scale.data of RNA assay
+    obj@assays$RNA@scale.data <- obj@assays$spliced@scale.data
+    SeuratDisk::SaveH5Seurat(obj, filename = h5SeuratFile, overwrite = TRUE)
+    SeuratDisk::Convert(h5SeuratFile, dest = "h5ad", overwrite = TRUE)
+    paste0(substr(h5SeuratFile, 1, nchar(h5SeuratFile) - 8), "h5ad")
+  })
+)
+
+rm(obj)
+```
+
+```{python}
+h5adFile=r.h5adFile
 ```
 
 ```{python}
 import scvelo as scv
-adata = scv.read(r.h5adFile)
+```
+
+```{python}
+adata_all = scv.read(r.h5adFile)
+adata_all.obs["cellType"] = adata_all.obs["cellType"].astype('category')
+adata_all
+```
+
+```{python}
+adata = adata_all[adata_all.obs["time"] == "1DPI"]
+```
+
+> Here, the proportions of spliced/unspliced counts are displayed. Depending on the protocol used (Drop-Seq, Smart-Seq), we typically have between 10%-25% of unspliced molecules containing intronic sequences. We also advice you to examine the variations on cluster level to verify consistency in splicing efficiency. 
+
+```{python}
+scv.pl.proportions(adata, groupby="cellType", figsize = (8, 4))
+```
+
+#### 预处理
+
+```{python}
+scv.pp.filter_and_normalize(adata, min_shared_counts=20, n_top_genes=2000)
+```
+
+#### 速率估计
+
+是否需要设置 `use_rep="X_harmony"` 呢？我感觉应该需要，否则 scVelo 会基于 PCA 来计算 neighbors
+
+> Further, we need the first and second order moments (means and uncentered variances) computed among nearest neighbors in PCA space, summarized in `scv.pp.moments`, which internally computes `scv.pp.pca` and `scv.pp.neighbors`. First order is needed for deterministic velocity estimation, while stochastic estimation also requires second order moments.
+
+```{python}
+scv.pp.moments(adata, n_pcs=30, n_neighbors=30, use_rep="X_harmony")
+```
+
+RNA 速度是基因表达空间中的矢量，代表单个细胞的运动方向和速度。正的 RNA 速度表示一个基因是上调的，在一些细胞中该基因的未成熟 mRNA 的丰度高于稳定状态下的预期值。反之，负的速度表示一个基因是下调的。
+
+> Velocities are vectors in gene expression space and represent the direction and speed of movement of the individual cells. The velocities are obtained by modeling transcriptional dynamics of splicing kinetics, either stochastically (default) or deterministically (by setting `mode='deterministic'`). For each gene, a steady-state-ratio of pre-mature (unspliced) and mature (spliced) mRNA counts is fitted, which constitutes a constant transcriptional state. Velocities are then obtained as residuals from this ratio. Positive velocity indicates that a gene is up-regulated, which occurs for cells that show higher abundance of unspliced mRNA for that gene than expected in steady state. Conversely, negative velocity indicates that a gene is down-regulated.
+
+```{python}
+scv.tl.velocity(adata, mode='stochastic')
+```
+
+> The combination of velocities across genes can then be used to estimate the future state of an individual cell. In order to project the velocities into a lower-dimensional embedding, transition probabilities of cell-to-cell transitions are estimated. That is, for each velocity vector we find the likely cell transitions that are accordance with that direction. The transition probabilities are computed using cosine correlation between the potential cell-to-cell transitions and the velocity vector, and are stored in a matrix denoted as velocity graph.
+
+```{python}
+scv.tl.velocity_graph(adata)
+```
+
+#### 速率流线 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata, basis="tsne", color="cellType",
+  figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata, basis="umap", color="cellType",
+  figsize=(7, 7))
+```
+
+#### 速率网格 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata, basis="tsne", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata, basis="umap", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+#### 速率细胞 {.tabset}
+
+##### t-SNE
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata, basis="tsne", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+##### UMAP
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata, basis="umap", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+### 3.2 2DPI 样本分析
+
+```{python}
+def runScVelo(data):
+  scv.pp.filter_and_normalize(data, min_shared_counts=20, n_top_genes=2000)
+  scv.pp.moments(data, n_pcs=30, n_neighbors=30, use_rep="X_harmony")
+  scv.tl.velocity(data, mode='stochastic')
+  scv.tl.velocity_graph(data)
+```
+
+```{python}
+adata_2dpi = adata_all[adata_all.obs["time"] == "2DPI"]
+runScVelo(adata_2dpi)
+```
+
+```{python}
+scv.pl.proportions(adata_2dpi, groupby="cellType", figsize = (8, 4))
+```
+
+#### 速率流线 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata_2dpi, basis="tsne", color="cellType",
+  figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata_2dpi, basis="umap", color="cellType",
+  figsize=(7, 7))
+```
+
+#### 速率网格 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata_2dpi, basis="tsne", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata_2dpi, basis="umap", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+#### 速率细胞 {.tabset}
+
+##### t-SNE
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata_2dpi, basis="tsne", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+##### UMAP
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata_2dpi, basis="umap", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+### 3.2 3DPI 样本分析
+
+```{python}
+adata_3dpi = adata_all[adata_all.obs["time"] == "3DPI"]
+runScVelo(adata_3dpi)
+```
+
+```{python}
+scv.pl.proportions(adata_3dpi, groupby="cellType", figsize = (8, 4))
+```
+
+#### 速率流线 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata_3dpi, basis="tsne", color="cellType",
+  figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata_3dpi, basis="umap", color="cellType",
+  figsize=(7, 7))
+```
+
+#### 速率网格 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata_3dpi, basis="tsne", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata_3dpi, basis="umap", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+#### 速率细胞 {.tabset}
+
+##### t-SNE
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata_3dpi, basis="tsne", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+##### UMAP
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata_3dpi, basis="umap", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+### 3.2 MOCK 样本分析
+
+```{python}
+adata_mock = adata_all[adata_all.obs["treatment"] == "MOCK"]
+runScVelo(adata_mock)
+```
+
+#### 速率流线 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata_mock, basis="tsne", color="cellType",
+  figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_stream(
+  adata_mock, basis="umap", color="cellType",
+  figsize=(7, 7))
+```
+
+#### 速率网格 {.tabset}
+
+##### t-SNE
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata_mock, basis="tsne", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+##### UMAP
+
+```{python}
+scv.pl.velocity_embedding_grid(
+  adata_mock, basis="umap", color="cellType",
+  arrow_length=3, arrow_size=1, figsize=(7, 7))
+```
+
+#### 速率细胞 {.tabset}
+
+##### t-SNE
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata_3dpi, basis="tsne", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+##### UMAP
+
+```{python fig.height=6, fig.width=6}
+scv.pl.velocity_embedding(
+  adata_mock, basis="umap", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+## 4 velociraptor 封装的 scvelo 算法
+
+### 4.1 1DPI 样品分析
+
+```{r}
+sce_1dpi <- sce[, sce$time == "1DPI"]
+```
+
+```{r}
+velo.out <- velociraptor::scvelo(
+  sce_1dpi,
+  mode = "stochastic",
+  use.theirs = TRUE,
+  use.dimred = "HARMONY",
+  scvelo.params = list(
+    filter_and_normalize = list(
+      min_shared_counts = 20L, n_top_genes = 2000L),
+    moments = list(n_pcs = 30L, n_neighbors = 30L)
+  ))
+```
+
+```{r}
+velo.out
+```
+
+```{r}
+embedded <- velociraptor::embedVelocity(reducedDim(sce_1dpi, "TSNE"), velo.out)
+grid.df <- velociraptor::gridVectors(reducedDim(sce_1dpi, "TSNE"), embedded, resolution = 80)
+sce_1dpi$velocity_pseudotime <- velo.out$velocity_pseudotime
+```
+
+```{r fig.height=4, fig.width=4}
+scater::plotReducedDim(sce_1dpi,
+    colour_by = "cluster_id",
+    dimred = "TSNE", point_size = .1) +
+  ggplot2::geom_segment(
+    data = grid.df,
+    mapping = ggplot2::aes(
+      x = start.tSNE_1, y = start.tSNE_2, 
+      xend = end.tSNE_1, yend = end.tSNE_2),
+    arrow = grid::arrow(
+      length = grid::unit(0.02, "inches"),
+      type = "closed"),
+    size = 0.2) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+## 5 dynamo 算法
+
+```{r}
+knitr::knit_exit()
+```
+
+### 4.1 读取数据
+
+dynamo 模块的导入很成问题，首先它会清除当前 python 环境，然后第一次导入还不成功，要导入第二次。
+
+```{python}
+import dynamo as dyn
+```
+
+```{python}
+h5adFile = "../results/ObjectCache/TrajectoryInference/obj_velocity.h5ad"
+adata_all = dyn.read_h5ad(h5adFile)
+adata = adata_all[adata_all.obs["time"] == "1DPI"].copy()
 adata
 ```
 
-是否需要设置 `use_rep="X_harmony"` 呢？
+### 4.2 预处理
 
 ```{python}
-scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+dyn.pp.recipe_monocle(adata,
+  experiment_type="conventional")
+```
+
+### 4.3 速率评估
+
+```{python}
+dyn.tl.dynamics(adata)
 ```
 
 ```{python}
-scv.tl.velocity(adata)
-scv.tl.velocity_graph(adata)
-scv.pl.velocity_embedding_stream(adata, basis="tsne", color="seurat_clusters")
+dyn.tl.cell_velocities(adata, method='pearson', other_kernels_dict={'transform': 'sqrt'})
 ```
 
+### 4.4 速率流线
+
+```{python fig.height=4, fig.width=4}
+dyn.pl.streamline_plot(
+  adata, color=['cellType'], basis='tsne',
+  figsize = [7, 7], show_legend="on data",
+  show_arrowed_spines=False)
+```
 
