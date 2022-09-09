@@ -653,7 +653,7 @@ xfun::cache_rds(
         sub, results_1dpi[[name]],
         method = "COSG", top_n = 500)
     })
-)
+) |> invisible()
 ```
 
 ### 2.4 2DPI 样本的分析
@@ -720,7 +720,7 @@ xfun::cache_rds(
         sub, results_2dpi[[name]],
         method = "COSG", top_n = 500)
     })
-)
+) |> invisible()
 ```
 
 ### 2.5 3DPI 样本的分析
@@ -786,6 +786,6 @@ xfun::cache_rds(
         sub, results_3dpi[[name]],
         method = "COSG", top_n = 500)
     })
-)
+) |> invisible()
 ```
 

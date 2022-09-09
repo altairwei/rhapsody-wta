@@ -1,38 +1,4 @@
-plotSlingshotCurveOnReduc <- function(sce, reduction = "UMAP", ...) {
-  if (!is.null(colnames(reducedDim(sce, reduction))))
-    colnames(reducedDim(sce, reduction)) <- NULL
-
-  pseudo.paths <- slingshot::slingPseudotime(sce)
-  
-  # Taking the rowMeans just gives us a single pseudo-time for all cells. Cells
-  # in segments that are shared across paths have similar pseudo-time values in 
-  # all paths anyway, so taking the rowMeans is not particularly controversial.
-  shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
-  
-  # Need to loop over the paths and add each one separately.
-  embedded <- slingshot::embedCurves(sce, reduction)
-  embedded <- slingshot::slingCurves(embedded)
-  curve_data <- lapply(embedded, function(path) data.frame(path$s[path$ord,]))
-  
-  if (is.data.frame(curve_data))
-    curve_list <- list(curve_data)
-  else if (is.list(curve_data) && all(sapply(curve_data, is.data.frame)))
-    curve_list <- curve_data
-  else
-    curve_list <- list()
-  
-  p <- scater::plotReducedDim(
-    sce, reduction, colour_by = I(shared.pseudo), ...) +
-    ggplot2::coord_fixed()
-
-  for (curve in curve_list)
-    p <- p + ggplot2::geom_path(
-      data = curve,
-      mapping = ggplot2::aes(x = Dim.1, y = Dim.2),
-      size = 1.2)
-  
-  p
-}
+suppressMessages(library(SingleCellExperiment))
 
 quickDynSlingshot <- function(sce, reduction = "PCA") {
   dataset <- dynwrap::wrap_expression(
@@ -60,12 +26,26 @@ quickDynSlingshot <- function(sce, reduction = "PCA") {
   model
 }
 
+runUpstream <- function(sce, ...) {
+  hvgs <- scran::getTopHVGs(sce, n = 2000)
+  sce <- scran::fixedPCA(sce, subset.row = hvgs)
+  sce$sample <- as.character(sce$sample_id)
+  sce <- harmony::RunHarmony(
+    sce,
+    ...,
+    kmeans_init_nstart=20, kmeans_init_iter_max=1000,
+    epsilon.cluster=-Inf, epsilon.harmony=-Inf,
+    plot_convergence = TRUE, verbose = FALSE)
+  sce
+}
+
 runSlingshotAndVelocity <- function(sce, reduction = "PCA", ...) {
   sce <- slingshot::slingshot(
     sce,
     clusterLabels = sce$cluster_id,
     reducedDim = reduction, ...)
 
+  basilisk::setBasiliskShared(FALSE)
   altExp(sce, "scvelo") <- velociraptor::scvelo(
     sce,
     mode = "stochastic",
@@ -78,6 +58,58 @@ runSlingshotAndVelocity <- function(sce, reduction = "PCA", ...) {
     ))
 
   sce
+}
+
+runTradeSeq <- function(sce, subset_row = NULL, nknots = 6, ...) {
+  altExp(sce, "tradeSeq") <- tradeSeq::fitGAM(
+    # fitGAM needs counts rather than logcounts, see
+    # the source code of SCE-version fitGAM.
+    counts = sce,
+    conditions = factor(sce$treatment),
+    nknots = nknots,
+    sce = TRUE, verbose = TRUE,
+    genes = if (!is.null(subset_row))
+      subset_row else seq_len(nrow(sce)),
+    ...
+  )
+
+  sce
+}
+
+plotSlingshotCurveOnReduc <- function(sce, reduction = "UMAP", ...) {
+  if (!is.null(colnames(reducedDim(sce, reduction))))
+    colnames(reducedDim(sce, reduction)) <- NULL
+  
+  pseudo.paths <- slingshot::slingPseudotime(sce)
+  
+  # Taking the rowMeans just gives us a single pseudo-time for all cells. Cells
+  # in segments that are shared across paths have similar pseudo-time values in 
+  # all paths anyway, so taking the rowMeans is not particularly controversial.
+  shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
+  
+  # Need to loop over the paths and add each one separately.
+  embedded <- slingshot::embedCurves(sce, reduction)
+  embedded <- slingshot::slingCurves(embedded)
+  curve_data <- lapply(embedded, function(path) data.frame(path$s[path$ord,]))
+  
+  if (is.data.frame(curve_data))
+    curve_list <- list(curve_data)
+  else if (is.list(curve_data) && all(sapply(curve_data, is.data.frame)))
+    curve_list <- curve_data
+  else
+    curve_list <- list()
+  
+  p <- scater::plotReducedDim(
+    sce, reduction, colour_by = I(shared.pseudo), ...) +
+    ggplot2::coord_fixed()
+  
+  for (curve in curve_list)
+    p <- p + ggplot2::geom_path(
+      data = curve,
+      mapping = ggplot2::aes(x = Dim.1, y = Dim.2),
+      size = 1.2)
+  
+  p
 }
 
 plotVelocityArrow <- function(sce, reduction, ...) {
@@ -105,7 +137,7 @@ plotVelocityArrow <- function(sce, reduction, ...) {
 
 #' @param sce Slingshot should have been executed.
 printDiffTrajectoryReport <- function(sce, heading) {
-  # Treatment imbalance
+  cat(heading, "Treatment imbalance\n\n")
   scores <- condiments::imbalance_score(
     Object = reducedDim(sce, "TSNE"),
     conditions = sce$treatment)
@@ -117,22 +149,25 @@ printDiffTrajectoryReport <- function(sce, heading) {
     as.data.frame()
   colnames(df_to_plot) <- c("TSNE_1", "TSNE_2")
   df_to_plot$scores <- sce$imbalance_scaled_scores
-  pi <- ggplot2::ggplot(df_to_plot,
-          ggplot2::aes(x = TSNE_1, y = TSNE_2, col = scores)) +
-    ggplot2::geom_point() +
-    ggplot2::scale_color_viridis_c(option = "C") +
-    ggplot2::coord_fixed() +
-    cowplot::theme_cowplot() +
-    ggplot2::ggtitle("imbalance score")
-  ps <- scater::plotReducedDim(sce, dimred = "TSNE", colour_by = "group_id") +
-    ggplot2::coord_fixed()
+  pi <- suppressWarnings(
+      ggplot2::ggplot(df_to_plot,
+            ggplot2::aes(x = TSNE_1, y = TSNE_2, col = scores)) +
+      ggplot2::geom_point() +
+      ggplot2::scale_color_viridis_c(option = "C") +
+      ggplot2::coord_fixed() +
+      cowplot::theme_cowplot() +
+      ggplot2::ggtitle("imbalance score")
+  )
+  ps <- suppressWarnings(
+      scater::plotReducedDim(sce, dimred = "TSNE", colour_by = "group_id") +
+        ggplot2::coord_fixed()
+  )
 
-  old_opts <- knitr::opts_chunk$get()
-  knitr::opts_chunk$set(fig.height=7, fig.width=7)
-  knitr::knit_print(pi + ps)
-  knitr::opts_chunk$restore(old_opts)
+  print(pi + ps)
 
-  # Slingshot and velocity
+  cat("\n\n")
+
+  cat(heading, "Slingshot and velocity {.tabset}\n\n")
   psts <- slingshot::slingPseudotime(sce$slingshot) %>%
     as.data.frame() %>%
     dplyr::mutate(
@@ -142,39 +177,24 @@ printDiffTrajectoryReport <- function(sce, heading) {
                         values_to = "pseudotime", names_to = "lineages")
 
   for (reduc in c("TSNE", "UMAP", "DiffusionMap", "PHATE")) {
-    colnames(reducedDim(sce, reduc)) <- NULL
-    p1 <- plotSlingshotCurveOnReduc(sce, reduction = reduc) +
-      ggplot2::coord_fixed()
-    p2 <- plotVelocityArrow(sce, reduction = reduc) +
-      ggplot2::coord_fixed()
+    cat(paste0(heading, "#"), reduc, "\n\n")
 
-    old_opts <- knitr::opts_chunk$get()
-    knitr::opts_chunk$set(fig.height=6, fig.width=12)
-    knitr::knit_print(p1 + p2)
-    knitr::opts_chunk$restore(old_opts)
+    colnames(reducedDim(sce, reduc)) <- NULL
+    p1 <- suppressMessages(
+      plotSlingshotCurveOnReduc(sce, reduction = reduc) +
+      ggplot2::coord_fixed()
+    )
+    p2 <- suppressMessages(
+      plotVelocityArrow(sce, reduction = reduc) +
+      ggplot2::coord_fixed()
+    )
+
+    print(p1 + p2)
+
+    cat("\n\n")
   }
 
-  # Pseudotime distribution
-  cat("Kolmogorov-Smirnov Test:")
-
-  MOCK <- dplyr::filter(psts, conditions == "MOCK") |> dplyr::pull(pseudotime)
-  PNR2 <- dplyr::filter(psts, conditions == "PNR2") |> dplyr::pull(pseudotime)
-  TR4 <- dplyr::filter(psts, conditions == "TR4") |> dplyr::pull(pseudotime)
-
-  cat("\n\n```\n")
-  res <- suppressWarnings(ks.test(MOCK, PNR2))
-  print(res)
-  cat("\n```\n\n")
-
-  cat("\n\n```\n")
-  res <- suppressWarnings(ks.test(MOCK, TR4))
-  print(res)
-  cat("\n```\n\n")
-
-  prog_res <- condiments::progressionTest(
-    sce$slingshot, conditions = sce$treatment,
-    global = TRUE, lineages = TRUE)
-  knitr::kable(prog_res)
+  cat(heading, "Pseudotime distribution\n\n")
 
   velo.out <- altExp(sce, "scvelo")
   sce$velocity_pseudotime <- velo.out$velocity_pseudotime
@@ -198,10 +218,32 @@ printDiffTrajectoryReport <- function(sce, heading) {
       strip.background = ggplot2::element_rect(fill = "white")
     )
 
-  old_opts <- knitr::opts_chunk$get()
-  knitr::opts_chunk$set(fig.height=6, fig.width=12)
-  knitr::knit_print(p1 / p2)
-  knitr::opts_chunk$restore(old_opts)
+  print(p1 / p2)
+
+  cat("\n\n")
+
+  cat("Kolmogorov-Smirnov Test:")
+  
+  MOCK <- dplyr::filter(psts, conditions == "MOCK") |> dplyr::pull(pseudotime)
+  PNR2 <- dplyr::filter(psts, conditions == "PNR2") |> dplyr::pull(pseudotime)
+  TR4 <- dplyr::filter(psts, conditions == "TR4") |> dplyr::pull(pseudotime)
+  
+  cat("\n\n```\n")
+  res <- suppressWarnings(ks.test(MOCK, PNR2))
+  print(res)
+  cat("\n```\n\n")
+  
+  cat("\n\n```\n")
+  res <- suppressWarnings(ks.test(MOCK, TR4))
+  print(res)
+  cat("\n```\n\n")
+
+  prog_res <- suppressMessages(
+    condiments::progressionTest(
+      sce$slingshot, conditions = sce$treatment,
+      global = TRUE, lineages = TRUE)
+  )
+  print(knitr::kable(prog_res))
 }
 
 blue2white2red <- function(n) {
@@ -233,7 +275,6 @@ plotPseudotimeHeatmap <- function(mtx,
     mtx,
     col = col_fun,
     cluster_columns = FALSE,
-    use_raster = TRUE,
     heatmap_legend_param = list(
       title = NULL,
       legend_direction = "vertical",
@@ -300,4 +341,64 @@ runPHATE <- function(x, ..., altexp=NULL, name="PHATE") {
   }
   reducedDim(x, name) <- calculatePHATE(y, ...)
   x 
+}
+
+wrapSlingshotToDynverse <- function(sds) {
+  cluster <- slingshot::slingClusterLabels(sds)
+  start_cell <- apply(slingshot::slingPseudotime(sds), 1, min) %>%
+    sort() %>% head(1) %>% names()
+  start.clus <- names(which(cluster[start_cell,] == 1))
+
+  # satisfy r cmd check
+  from <- to <- NULL
+
+  # collect milestone network
+  lineages <- slingshot::slingLineages(sds)
+  dist <- igraph::distances(slingshot::slingMST(sds))
+  cluster_network <- lineages %>%
+    purrr:::map_df(~ tibble::tibble(from = .[-length(.)], to = .[-1])) %>%
+    unique() %>%
+    dplyr:::mutate(
+      length = dist[cbind(from, to)],
+      directed = TRUE
+    )
+
+  # collect dimred
+  dimred <- slingshot::slingReducedDim(sds)
+
+  # collect progressions
+  lin_assign <- apply(slingshot::slingCurveWeights(sds), 1, which.max)
+
+  progressions <- purrr::map_df(seq_along(lineages), function(l) {
+    ind <- lin_assign == l
+    lin <- lineages[[l]]
+    pst.full <- slingshot::slingPseudotime(sds, na = FALSE)[,l]
+    pst <- pst.full[ind]
+    means <- sapply(lin, function(clID){
+      stats::weighted.mean(pst.full, cluster[,clID])
+    })
+    non_ends <- means[-c(1,length(means))]
+    edgeID.l <- as.numeric(cut(pst, breaks = c(-Inf, non_ends, Inf)))
+    from.l <- lineages[[l]][edgeID.l]
+    to.l <- lineages[[l]][edgeID.l + 1]
+    m.from <- means[from.l]
+    m.to <- means[to.l]
+
+    pct <- (pst - m.from) / (m.to - m.from)
+    pct[pct < 0] <- 0
+    pct[pct > 1] <- 1
+
+    tibble::tibble(cell_id = names(which(ind)), from = from.l, to = to.l, percentage = pct)
+  })
+
+  output <-
+    dynwrap::wrap_data(
+      cell_ids = rownames(sds)) %>%
+    dynwrap::add_trajectory(
+      milestone_network = cluster_network,
+      progressions = progressions) %>%
+    dynwrap::add_dimred(
+      dimred = dimred)
+
+  output
 }

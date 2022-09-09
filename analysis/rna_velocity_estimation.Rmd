@@ -134,6 +134,80 @@ rm(data_list, spliced, unspliced, ambiguous)
 gc()
 ```
 
+转换成 Python 数据：
+
+```{r}
+h5adFile <- xfun::cache_rds(
+  file = "h5adFile.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = local({
+    h5SeuratFile <- "../results/ObjectCache/TrajectoryInference/obj_velocity.h5Seurat"
+    # Remove scale.data of RNA assay
+    obj@assays$RNA@scale.data <- obj@assays$spliced@scale.data
+    SeuratDisk::SaveH5Seurat(obj, filename = h5SeuratFile, overwrite = TRUE)
+    SeuratDisk::Convert(h5SeuratFile, dest = "h5ad", overwrite = TRUE)
+    paste0(substr(h5SeuratFile, 1, nchar(h5SeuratFile) - 8), "h5ad")
+  })
+)
+
+rm(obj)
+```
+
+```{python}
+h5adFile=r.h5adFile
+```
+
+## 6 UniTVelo 算法
+
+```{python}
+h5adFile=r.h5adFile
+```
+
+```{python}
+import scvelo as scv
+import unitvelo as utv
+```
+
+```{python}
+adata_all = scv.read(r.h5adFile)
+adata_all.obs["cellType"] = adata_all.obs["cellType"].astype('category')
+adata_all
+```
+
+```{python}
+adata = adata_all[adata_all.obs["time"] == "1DPI"]
+adata.obsm["X_pca"] = adata.obsm["X_harmony"]
+```
+
+```{python}
+import gc
+del adata_all
+gc.collect()
+```
+
+```{python}
+velo = utv.config.Configuration()
+velo.R2_ADJUST = True
+velo.IROOT = None
+velo.FIT_OPTION = '1'
+velo.GPU = -1 # CPU mode
+velo.BASIS = "pca"
+```
+
+UniTVelo 接口设计不好，没有接受 cell embedding 的地方。除非构建一个简化的 anndata，将 X_harmony 命名成 X_pca
+
+```{python}
+adata = utv.run_model(adata, label="cellType", config_file=velo)
+```
+
+```{python}
+scv.pl.velocity_embedding_stream(adata, basis="tsne", color="cellType", figsize=(7, 7), show=True)
+```
+
+```{r}
+knitr::knit_exit()
+```
+
 ## 2 Velocyto 算法
 
 直接计算所有样本的 velocity 内存 64G 是不足的。我怀疑是没有经过 HVGs 选择，导致矩阵非常大。
@@ -174,35 +248,11 @@ velocyto.R::show.velocity.on.embedding.cor(
 )
 ```
 
-
 ## 3 scVelo 算法
 
 ### 3.1 1DPI 样品分析
 
 #### 读取数据
-
-转换成 Python 数据：
-
-```{r}
-h5adFile <- xfun::cache_rds(
-  file = "h5adFile.rds",
-  dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = local({
-    h5SeuratFile <- "../results/ObjectCache/TrajectoryInference/obj_velocity.h5Seurat"
-    # Remove scale.data of RNA assay
-    obj@assays$RNA@scale.data <- obj@assays$spliced@scale.data
-    SeuratDisk::SaveH5Seurat(obj, filename = h5SeuratFile, overwrite = TRUE)
-    SeuratDisk::Convert(h5SeuratFile, dest = "h5ad", overwrite = TRUE)
-    paste0(substr(h5SeuratFile, 1, nchar(h5SeuratFile) - 8), "h5ad")
-  })
-)
-
-rm(obj)
-```
-
-```{python}
-h5adFile=r.h5adFile
-```
 
 ```{python}
 import scvelo as scv
@@ -245,7 +295,8 @@ RNA 速度是基因表达空间中的矢量，代表单个细胞的运动方向�
 > Velocities are vectors in gene expression space and represent the direction and speed of movement of the individual cells. The velocities are obtained by modeling transcriptional dynamics of splicing kinetics, either stochastically (default) or deterministically (by setting `mode='deterministic'`). For each gene, a steady-state-ratio of pre-mature (unspliced) and mature (spliced) mRNA counts is fitted, which constitutes a constant transcriptional state. Velocities are then obtained as residuals from this ratio. Positive velocity indicates that a gene is up-regulated, which occurs for cells that show higher abundance of unspliced mRNA for that gene than expected in steady state. Conversely, negative velocity indicates that a gene is down-regulated.
 
 ```{python}
-scv.tl.velocity(adata, mode='stochastic')
+scv.tl.recover_dynamics(adata)
+scv.tl.velocity(adata, mode='dynamical')
 ```
 
 > The combination of velocities across genes can then be used to estimate the future state of an individual cell. In order to project the velocities into a lower-dimensional embedding, transition probabilities of cell-to-cell transitions are estimated. That is, for each velocity vector we find the likely cell transitions that are accordance with that direction. The transition probabilities are computed using cosine correlation between the potential cell-to-cell transitions and the velocity vector, and are stored in a matrix denoted as velocity graph.
@@ -306,6 +357,10 @@ scv.pl.velocity_embedding(
 scv.pl.velocity_embedding(
   adata, basis="umap", color="cellType", figsize=(12, 12),
   arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```
+
+```{r}
+knitr::knit_exit()
 ```
 
 ### 3.2 2DPI 样本分析

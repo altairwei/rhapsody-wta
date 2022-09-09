@@ -20,6 +20,7 @@ editor_options:
   - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
   - [Integration of Stimulating Samples](integration_of_stimulating_samples.html)
   - [Sample Correlation Analysis](sample_correlation_analysis.html)
+  - [Analysis of Integrated Mock Samples](analysis_of_mock_samples.html)
 - Differential Abundance Analysis
   - [Compositional Analysis by scDC](compositional_analysis_by_scDC.html)
   - [Compositional Analysis by scCODA](compositional_analysis_by_scCODA.html)

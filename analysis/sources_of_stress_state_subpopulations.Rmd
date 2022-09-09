@@ -50,7 +50,7 @@ mst <- TSCAN::createClusterMST(centroids, clusters = NULL, outgroup = FALSE)
 plot(mst)
 ```
 
-## 1DPI 差异拟时序分析
+### 1DPI 差异拟时序分析
 
 ```{r}
 sce_1dpi <- sce[, sce$time == "1DPI"]
@@ -91,23 +91,86 @@ gc()
 >
 > While it may seem reasonable to perform trajectory inference separately on cells from our different conditions, this is problematic for two reasons: 1) inferred trajectories will be less stable, as they would use only a subset of the available data, and 2) there would be no straightforward method for combining these results
 
-### 叶肉细胞 1DPI 应激态亚群
+## 叶肉细胞应激态亚群
 
 ```{r}
 cells_chosen <- sce$time == "1DPI" & sce$RNA_snn_res.1.6 %in% c("14", "5", "15", "16")
 sce_me_da_1dpi <- sce[, cells_chosen]
 sce_me_da_1dpi$cluster_id <- sce_me_da_1dpi$RNA_snn_res.1.6
+sce_me_da_1dpi <- sce_me_da_1dpi[Matrix::rowSums(counts(sce_me_da_1dpi) > 0) > 10, ]
 ```
 
-#### 模型推断
+### 特征选择
+
+```{r}
+ggplot2::quickplot(
+    x = Matrix::rowSums(counts(sce_me_da_1dpi) > 0),
+    geom = "histogram", bins = 100) +
+  ggplot2::scale_x_log10()
+```
+
+```{r}
+# Fit GAM for all genes will take too much memory. So
+# we select features based on two different methods. See
+# https://github.com/statOmics/tradeSeq/issues/150
+sce_me_da_1dpi <- scry::devianceFeatureSelection(sce_me_da_1dpi, assay = "logcounts", sorted = FALSE)
+rowData(sce_me_da_1dpi)$geneVar <- scran::modelGeneVar(sce_me_da_1dpi, density.weights = FALSE)
+hvg.vars <- scran::getTopHVGs(rowData(sce_me_da_1dpi)$geneVar, n = 10000)
+sorted <- sort(rowData(sce_me_da_1dpi)$binomial_deviance, decreasing = TRUE)
+hvg.dev <- names(sorted)[1:10000]
+hvgs <- union(hvg.dev, hvg.vars)
+```
+
+> At any given abundance, we assume that the variation in expression for most genes is driven by uninteresting processes like sampling noise. Under this assumption, the fitted value of the trend at any given gene’s abundance represents an estimate of its uninteresting variation, which we call the technical component. We then define the biological component for each gene as the difference between its total variance and the technical component. This biological component represents the “interesting” variation for each gene and can be used as the metric for HVG selection.
+>
+> Strictly speaking, the interpretation of the fitted trend as the technical component assumes that the expression profiles of most genes are dominated by random technical noise. In practice, all expressed genes will exhibit some non-zero level of biological variability due to events like transcriptional bursting. Thus, it would be more appropriate to consider these estimates as technical noise plus “uninteresting” biological variation, under the assumption that most genes do not participate in the processes driving interesting heterogeneity across the population.
+
+```{r}
+fit.var <- metadata(rowData(sce_me_da_1dpi)$geneVar)
+plot(fit.var$mean, fit.var$var, xlab = "Mean of log-expression",
+    ylab = "Variance of log-expression")
+points(fit.var$mean[hvg.dev], fit.var$var[hvg.dev], col = "red", pch = 16, cex = 0.5)
+curve(fit.var$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
+```
+
+
+```{r}
+selected <- sorted * NA
+selected[hvg.vars] <- sorted[hvg.vars]
+plot(sorted, type="l", xlab="ranked genes",
+     ylab="binomial deviance", main="Feature Selection with Deviance")
+segments(
+  x0 = seq_along(selected), y0 = 0,
+  x1 = seq_along(selected), y1 = selected,
+  lty = 1, lwd = 0.03)
+abline(v = 10000, lty = 2, col = "red")
+```
+
+### 参数优化
+
+```{r eval=FALSE}
+icMat <- tradeSeq::evaluateK(sce_me_da_1dpi, k = 3:10)
+```
+
+### 模型推断
 
 ```{r}
 sce_me_da_1dpi <- xfun::cache_rds(
   file = "slingshot_me_da_1dpi.rds",
   dir = "../results/ObjectCache/TrajectoryInference/",
   #rerun = TRUE,
-  expr = runSlingshotAndVelocity(
-    sce_me_da_1dpi, reduction = "HARMONY", omega = TRUE)
+  expr = local({
+    sce <- runSlingshotAndVelocity(
+      sce_me_da_1dpi, reduction = "HARMONY",
+      start.clus = "14", approx_points = FALSE)
+
+    sce <- runTradeSeq(
+      sce, subset_row = hvgs,
+      nknots = 7
+    )
+
+    sce
+  })
 )
 ```
 
@@ -115,87 +178,31 @@ sce_me_da_1dpi <- xfun::cache_rds(
 sce_me_da_1dpi <- scater::runUMAP(sce_me_da_1dpi, dimred = "HARMONY")
 sce_me_da_1dpi <- scater::runTSNE(sce_me_da_1dpi, dimred = "HARMONY")
 sce_me_da_1dpi <- runDiffusionMap(sce_me_da_1dpi, dimred = "HARMONY")
-sce_me_da_1dpi <- runPHATE(sce_me_da_1dpi, dimred = "HARMONY", knn = 20, decay = 10)
+sce_me_da_1dpi <- runPHATE(sce_me_da_1dpi, dimred = "HARMONY", knn = 15, decay = 10)
 ```
 
 感觉 Slingshot 的 pseudotime 计算的不好，头部和尾部的细胞分布太少了。
 
-#### 差异进程
+### 差异进程
 
-```{r results='asis'}
+```{r fig.height=7, fig.width=14, results='asis'}
 printDiffTrajectoryReport(sce_me_da_1dpi, heading = "####")
 ```
 
-#### 差异表达
+### 差异表达
 
-##### 特征选择
-
-`tradeSeq::fitGAM` 运行时间太长了而且内存需求也太大了，我们需要对 `r nrow(sce_me_da_1dpi)` 个基因取子集才行。参考此问题 [statOmics/tradeSeq#150](https://github.com/statOmics/tradeSeq/issues/150) 。我觉得应该将 deviance-based filtering 和 variance-based filtering 结合起来过滤基因。
-
-```{r}
-sce_me_da_1dpi <- sce_me_da_1dpi[Matrix::rowSums(counts(sce_me_da_1dpi) > 0) > 0,]
-sce_me_da_1dpi <- scry::devianceFeatureSelection(sce_me_da_1dpi, assay = "logcounts", sorted = FALSE)
-```
-
-```{r}
-rowData(sce_me_da_1dpi)$geneVar <- scran::modelGeneVar(sce_me_da_1dpi)
-hvg.vars <- scran::getTopHVGs(rowData(sce_me_da_1dpi)$geneVar, n = 5000)
-```
-
-```{r}
-sorted <- sort(rowData(sce_me_da_1dpi)$binomial_deviance, decreasing = TRUE)
-hvg.dev <- names(sorted)[1:5000]
-
-plot(
-  sorted,
-  type = "l",
-  xlab = "ranked genes",
-  ylab = "binomial deviance",
-  main = "Feature Selection with Deviance")
-abline(v = 10000, lty = 2, col = "red")
-```
-
-```{r}
-hvg <- union(hvg.dev, hvg.vars)
-length(hvg)
-```
-
-
-##### knots 优化
-
-```{r}
-icMat <- tradeSeq::evaluateK(sce_me_da_1dpi, k = 3:10)
-```
-
-##### 模型拟合
-
-查看 `tradeSeq::fitGAM` 源代码，发现它使用 `counts = SingleCellExperiment::counts(counts)`，以及 `slingshot::SlingshotDataSet(counts)` 。
-
-```{r}
-tradeSeqSce <- tradeSeq::fitGAM(
-  counts = counts(sce_me_da_1dpi),
-  pseudotime = altExp(sce_me_da_1dpi, "scvelo")$velocity_pseudotime,
-  cellWeights = rep(1, ncol(sce_me_da_1dpi)),
-  conditions = factor(sce_me_da_1dpi$treatment),
-  nknots = 7, verbose = TRUE,
-  genes = hvg, sce = TRUE
-)
-
-altExp(sce_me_da_1dpi, "tradeSeq") <- tradeSeqSce
-```
-
-##### 谱系内部的比较
+#### 谱系内的比较
 
 > To assess significant changes in gene expression as a function of pseudotime within each lineage, we use the `associationTest`, which tests the null hypothesis that gene expression is not a function of pseudotime, i.e., whether the estimated smoothers are significantly varying as a function of pseudotime within each lineage.
 
 ```{r}
-rowData(tradeSeqSce)$assocRes <- tradeSeq::associationTest(
-  tradeSeqSce, lineages = TRUE, l2fc = log2(2))
+tradeSeqSce <- altExp(sce_me_da_1dpi, "tradeSeq")
+
+assocRes <- tradeSeq::associationTest(tradeSeqSce, lineages = TRUE)
+rowData(tradeSeqSce)$assocRes <- assocRes
 ```
 
 ```{r}
-assocRes <- rowData(tradeSeqSce)$assocRes
-
 mockGenes <- rownames(assocRes)[
   which(p.adjust(assocRes$pvalue_lineage1_conditionMOCK, "fdr") <= 0.05)
 ]
@@ -221,7 +228,6 @@ UpSetR::upset(
 ```{r}
 diffGenes <- Reduce(union, list(mockGenes, pnr2Genes, tr4Genes))
 yhatSmooth <- tradeSeq::predictSmooth(tradeSeqSce, gene = diffGenes, nPoints = 100, tidy = FALSE)
-
 yhatSmoothScaled <- t(scale(t(yhatSmooth)))
 
 plotPseudotimeHeatmap(
@@ -234,46 +240,68 @@ plotPseudotimeHeatmap(
 )
 ```
 
-##### 条件差异基因
+```{r fig.height=4, fig.width=8}
+oof <-
+  dplyr::filter(assocRes,
+    !is.na(waldStat)
+      | !is.na(waldStat_lineage1_conditionMOCK)
+      | !is.na(waldStat_lineage1_conditionPNR2)
+      | !is.na(waldStat_lineage1_conditionTR4)) |>
+  dplyr::arrange(
+    dplyr::desc(waldStat),
+    dplyr::desc(waldStat_lineage1_conditionMOCK),
+    dplyr::desc(waldStat_lineage1_conditionPNR2),
+    dplyr::desc(waldStat_lineage1_conditionTR4)) 
+
+p1 <- tradeSeq::plotSmoothers(
+  tradeSeqSce, assays(tradeSeqSce)$counts,
+  gene = rownames(oof)[10],
+  alpha = 1, border = TRUE)
+
+p2 <- tradeSeq::plotSmoothers(
+  tradeSeqSce, assays(tradeSeqSce)$counts,
+  gene = rownames(oof)[nrow(oof)],
+  alpha = 1, border = TRUE)
+
+p1 + p2
+```
+
+```{r}
+scater::plotReducedDim(sce_me_da_1dpi, dimred = "DiffusionMap", colour_by = rownames(oof)[10])
+```
+
+#### 谱系间的比较
 
 > To test differential expression between conditions, we use the `conditionTest` function implemented in `tradeSeq`. This function tests the null hypothesis that genes have identical expression patterns in each condition
 
+可以探索下 `pairwise` 和 `lineages` 两个参数。
+
 ```{r}
-rowData(tradeSeqSce)$condRes <- tradeSeq::conditionTest(tradeSeqSce, l2fc = log2(2))
+rowData(tradeSeqSce)$condRes <- tradeSeq::conditionTest(tradeSeqSce, l2fc = log2(1), pairwise = TRUE)
 ```
 
 ```{r}
 condRes <- rowData(tradeSeqSce)$condRes
-condRes$padj <- p.adjust(condRes$pvalue, "fdr")
-mean(condRes$padj <= 0.05, na.rm = TRUE)
+conds1vs2Genes <- rownames(condRes)[
+  which(p.adjust(condRes$pvalue_conds1vs2, "fdr") <= 0.01)
+]
+
+conds1vs3Genes <- rownames(condRes)[
+  which(p.adjust(condRes$pvalue_conds1vs3, "fdr") <= 0.01)
+]
+
+conds2vs3Genes <- rownames(condRes)[
+  which(p.adjust(condRes$pvalue_conds2vs3, "fdr") <= 0.01)
+]
+
+UpSetR::upset(
+  data = UpSetR::fromList(list(
+    `1 vs. 2` = conds1vs2Genes, `1 vs. 3` = conds1vs3Genes, `2 vs. 3` = conds2vs3Genes)),
+  keep.order = TRUE)
 ```
 
 ```{r}
-sum(condRes$padj <= 0.05, na.rm = TRUE)
-```
-
-```{r}
-conditionGenes <- rownames(condRes)[condRes$padj <= 0.05]
-conditionGenes <- conditionGenes[!is.na(conditionGenes)]
-```
-
-```{r fig.height=4, fig.width=10}
-# plot genes
-oo <- order(condRes$waldStat, decreasing = TRUE, na.last = NA)
-
-# most significant gene
-p1 <- tradeSeq::plotSmoothers(
-  tradeSeqSce, assays(tradeSeqSce)$counts,
-  gene = rownames(assays(tradeSeqSce)$counts)[oo[1]],
-  alpha = 1, border = TRUE)
-
-# least significant gene
-p2 <- tradeSeq::plotSmoothers(
-  tradeSeqSce, assays(tradeSeqSce)$counts,
-  gene = rownames(assays(tradeSeqSce)$counts)[oo[length(oo)]],
-  alpha = 1, border = TRUE)
-
-p1 + p2 + patchwork::plot_layout(guides = "collect")
+conditionGenes <- Reduce(union, list(conds1vs2Genes, conds1vs3Genes, conds2vs3Genes))
 ```
 
 ```{r}
@@ -285,7 +313,8 @@ yhatSmoothScaled <- t(scale(t(yhatSmooth)))
 plotPseudotimeHeatmap(
   yhatSmoothScaled,
   palette = colorRamps::matlab.like,
-  show_row_names = TRUE,
+  show_row_names = FALSE,
+  row_split = 12,
   show_column_names = FALSE,
   column_split = stringr::str_match(
     colnames(yhatSmoothScaled), "_condition(.*)_")[, 2]
@@ -293,9 +322,237 @@ plotPseudotimeHeatmap(
 ```
 
 ```{r}
-tradeSeq::plotSmoothers(tradeSeqSce, counts(tradeSeqSce), gene = "TraesCS5D02G226900")
+nPointsClus <- 30
+clusPat <- tradeSeq::clusterExpressionPatterns(
+  tradeSeqSce, nPoints = nPointsClus, genes = conditionGenes,
+  reduceMethod = "none", ncores = 4)
 ```
 
+```{r}
+clusterLabels <- clusterExperiment::primaryCluster(clusPat$rsec)
+unique(clusterLabels)
+```
+
+```{r}
+cUniq <- unique(clusterLabels)
+cUniq <- cUniq[!cUniq == -1] # remove unclustered genes
+
+for (xx in cUniq) {
+  cId <- which(clusterLabels == xx)
+  p <- ggplot2::ggplot(
+        data = data.frame(
+          x = 1:nPointsClus,
+          y = rep(range(clusPat$yhatScaled[cId, ]), nPointsClus / 2)
+        ),
+        mapping = ggplot2::aes(x = x, y = y)) +
+    ggplot2::geom_point(alpha = 0) +
+    ggplot2::labs(title = paste0("Cluster ", xx),  x = "Pseudotime", y = "Normalized expression") +
+    ggplot2::theme_classic() +
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
+
+  for (ii in 1:length(cId)) {
+    geneId <- rownames(clusPat$yhatScaled)[cId[ii]]
+    p <- p + ggplot2::geom_line(
+      data = data.frame(
+        x = rep(1:nPointsClus, 3),
+        y = clusPat$yhatScaled[geneId, ],
+        lineage = rep(0:2, each = nPointsClus)),
+      mapping = ggplot2::aes(col = as.character(lineage), group = lineage),
+      lwd = 1.5)
+  }
+
+  p <- p + ggplot2::guides(color = "none") +
+    ggplot2::scale_color_manual(
+      values = c("orange", "darkseagreen3", "lightblue"),
+      breaks = c("0", "1", "2"))
+  print(p)
+}
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+### 差异表达的模型选择
+
+> The overall strategy is to fit a model to the per-gene expression with respect to pseudotime, allowing us to obtain inferences about the significance of any association. We can then prioritize interesting genes as those with low  
+p-values for further investigation.
+
+#### TSCAN + ANOVA
+
+logcounts 对 pseudotime 的线性模型。
+
+> We use the `testPseudotime()` utility to fit a natural spline to the expression of each gene, allowing us to model a range of non-linear relationships in the data. We then perform an analysis of variance (ANOVA) to determine if any of the spline coefficients are significantly non-zero, i.e., there is some significant trend with respect to pseudotime.
+
+```{r}
+pseudotime <- altExp(sce_me_da_1dpi, "scvelo")$velocity_pseudotime
+sce_me_da_1dpi$velocity_pseudotime <- pseudotime
+pseudo <- TSCAN::testPseudotime(sce_me_da_1dpi, pseudotime = pseudotime)
+sorted <- pseudo[order(pseudo$p.value),]
+sorted
+```
+
+```{r}
+up.left <- sorted[sorted$logFC < 0,]
+head(up.left, 10)
+```
+
+```{r}
+best <- c(head(rownames(up.left), 1), tail(rownames(up.left), 1))
+scater::plotExpression(sce_me_da_1dpi, features=best, x=I(pseudotime), colour_by=I(pseudotime))
+```
+
+
+```{r}
+up.right <- sorted[sorted$logFC > 0,]
+head(up.right, 10)
+```
+
+```{r}
+best <- c(head(rownames(up.right), 1), tail(rownames(up.right), 1))
+scater::plotExpression(sce_me_da_1dpi, features=best, x=I(pseudotime), colour_by=I(pseudotime))
+```
+
+```{r}
+sig.genes <- sorted[abs(sorted$logFC) > 1,]
+yhatSmooth <- tradeSeq::predictSmooth(
+  tradeSeqSce, gene = rownames(sig.genes), nPoints = 300, tidy = FALSE)
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+
+plotPseudotimeHeatmap(
+  yhatSmoothScaled,
+  palette = colorRamps::matlab.like,
+  show_row_names = FALSE,
+  show_column_names = FALSE,
+  column_split = stringr::str_match(
+    colnames(yhatSmoothScaled), "_condition(.*)_")[, 2]
+)
+```
+
+更复杂的模型：
+
+> The previous sections have focused on a very simple and efficient - but largely effective - approach to trend fitting. Alternatively, we can use more complex strategies that involve various generalizations to the concept of linear models. For example, generalized additive models (GAMs) are quite popular for pseudotime-based DE analyses as they are able to handle non-normal noise distributions and a greater diversity of non-linear trends. We demonstrate the use of the GAM implementation from the `tradeSeq` package on the Nestorowa dataset below. From a statistical perspective, the GAM is superior to linear models as the former uses the raw counts.
+>
+> When a trajectory consists of a series of clusters (as in the Nestorowa dataset), pseudotime-based DE tests can be considered a continuous generalization of cluster-based marker detection. One would expect to identify similar genes by performing an ANOVA on the per-cluster expression values, and indeed, this may be a more interpretable approach as it avoids imposing the assumption that a trajectory exists at all. The main benefit of pseudotime-based tests is that they encourage expression to be a smooth function of pseudotime, assuming that the degrees of freedom in the trend fit prevents overfitting. This smoothness reflects an expectation that changes in expression along a trajectory should be gradual.
+
+#### dynfeature
+
+官方文档没有说明使用什么模型来拟合 pseudotime 的。
+
+```{r}
+dynomodel <- wrapSlingshotToDynverse(sce_me_da_1dpi$slingshot)
+dynomodel <- dynwrap::add_pseudotime(
+  dynomodel, dynwrap::calculate_pseudotime(dynomodel))
+```
+
+```{r fig.height=3, fig.width=7}
+p1 <- dynplot::plot_dendro(dynomodel, color_cells = "pseudotime")
+p2 <- dynplot::plot_dendro(dynomodel, color_cells = "grouping", grouping = sce_me_da_1dpi$cluster_id)
+p1 / p2
+```
+
+dynwrap 计算 pseudotime 应该是基于 milestone 来的，这可能跟 MST 的计算方式一致。而 slingshot 是利用 `TrajectoryUtils::averagePseudotime` 计算的。调查一下 pseudotime 计算方式的差别。对比了一下 TSCAN ，pseudotime 的计算很相似。
+
+```{r}
+data.frame(conditions = sce_me_da_1dpi$treatment, pseudotime = dynomodel$pseudotime) |>
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+    ggplot2::geom_density(alpha = .5) +
+    ggplot2::scale_fill_brewer(type = "qual") +
+    #ggplot2::facet_wrap(~lineages) +
+    cowplot::theme_cowplot() +
+    ggplot2::theme(
+      strip.background = ggplot2::element_rect(fill = "white")
+    )
+```
+
+
+```{r}
+p1 <- dynplot::plot_dimred(dynomodel,
+                           dimred = reducedDim(sce_me_da_1dpi, "DiffusionMap"),
+                           grouping = sce_me_da_1dpi$cluster_id)
+p2 <- dynplot::plot_dimred(dynomodel, color_cells = "pseudotime",
+                           dimred = reducedDim(sce_me_da_1dpi, "DiffusionMap"))
+p1 + p2
+```
+
+## 维管束应激态亚群
+
+```{r}
+cells_chosen <- sce$RNA_snn_res.1.6 %in% c("28", "22", "18", "30", "17", "9")
+sce_va_da_1dpi <- sce[, cells_chosen]
+sce_me_da_1dpi$cluster_id <- sce_me_da_1dpi$RNA_snn_res.1.6
+sce_va_da_1dpi <- sce_va_da_1dpi[Matrix::rowSums(counts(sce_va_da_1dpi) > 0) > 10, ]
+```
+
+### 特征选择
+
+```{r}
+# Fit GAM for all genes will take too much memory. So
+# we select features based on two different methods. See
+# https://github.com/statOmics/tradeSeq/issues/150
+sce_va_da_1dpi <- scry::devianceFeatureSelection(sce_va_da_1dpi, assay = "logcounts", sorted = FALSE)
+rowData(sce_va_da_1dpi)$geneVar <- scran::modelGeneVar(sce_va_da_1dpi, density.weights = FALSE)
+hvg.vars <- scran::getTopHVGs(rowData(sce_va_da_1dpi)$geneVar, n = 10000)
+sorted <- sort(rowData(sce_va_da_1dpi)$binomial_deviance, decreasing = TRUE)
+hvg.dev <- names(sorted)[1:10000]
+hvgs <- union(hvg.dev, hvg.vars)
+```
+
+```{r}
+fit.var <- metadata(rowData(sce_va_da_1dpi)$geneVar)
+plot(fit.var$mean, fit.var$var, xlab = "Mean of log-expression",
+    ylab = "Variance of log-expression")
+points(fit.var$mean[hvg.dev], fit.var$var[hvg.dev], col = "red", pch = 16, cex = 0.5)
+curve(fit.var$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
+```
+
+```{r}
+selected <- sorted * NA
+selected[hvg.vars] <- sorted[hvg.vars]
+plot(sorted, type="l", xlab="ranked genes",
+     ylab="binomial deviance", main="Feature Selection with Deviance")
+segments(
+  x0 = seq_along(selected), y0 = 0,
+  x1 = seq_along(selected), y1 = selected,
+  lty = 1, lwd = 0.03)
+abline(v = 10000, lty = 2, col = "red")
+```
+
+### 模型推断
+
+```{r}
+sce_va_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_va_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  rerun = TRUE,
+  expr = local({
+    sce <- runSlingshotAndVelocity(
+      sce_va_da_1dpi, reduction = "HARMONY",
+      start.clus = "Va_7", approx_points = FALSE)
+    sce
+  })
+)
+```
+
+### 参数优化
+
+```{r eval=FALSE}
+icMat <- tradeSeq::evaluateK(sce_va_da_1dpi, k = 3:10)
+```
+```{r}
+sce_va_da_1dpi <- scater::runUMAP(sce_va_da_1dpi, dimred = "HARMONY")
+sce_va_da_1dpi <- scater::runTSNE(sce_va_da_1dpi, dimred = "HARMONY")
+sce_va_da_1dpi <- runDiffusionMap(sce_va_da_1dpi, dimred = "HARMONY")
+sce_va_da_1dpi <- runPHATE(sce_va_da_1dpi, dimred = "HARMONY", knn = 15, decay = 10)
+```
+
+### 差异进程
+
+```{r fig.height=7, fig.width=14, results='asis'}
+printDiffTrajectoryReport(sce_va_da_1dpi, heading = "####")
+```
+
+## 其他
 
 ### 原维管束细胞 1DPI 应激态亚群
 
@@ -689,3 +946,96 @@ sce_vastress_da_3dpi <- xfun::cache_rds(
 printDiffTrajectoryReport(sce_vastress_da_3dpi, heading = "####")
 ```
 
+
+
+## psupertime 应用
+
+```{r}
+cells_chosen <- sce$RNA_snn_res.1.6 %in% c("14", "5", "15", "16")
+sce_me_1 <- sce[, cells_chosen]
+sce_me_1$cluster_id <- sce_me_1$RNA_snn_res.1.6
+sce_me_1$time <- factor(sce_me_1$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+```
+
+### 时间序列分析
+
+```{r}
+mt_genes <- readLines("../data/Ta_mt_gene_list.txt")
+cp_genes <- readLines("../data/Ta_cp_gene_list.txt")
+sce_me_1 <- sce_me_1[!rownames(sce_me_1) %in% union(mt_genes, cp_genes), ]
+```
+
+```{r}
+psuper_obj <- psupertime::psupertime(
+  sce_me_1, sce_me_1$time, sel_genes = "all")
+```
+
+```{r}
+psupertime::plot_train_results(psuper_obj)
+```
+
+{psupertime} 是基于表达空间来推断时序的，这些数据未经整合，所以与 Harmony 相关的下游流程不匹配。如果以未经整合的 PCA 来绘制下游的降维图，就能很好得与 psupertime 相匹配。
+
+```{r}
+p1 <- psupertime::plot_labels_over_psupertime(psuper_obj, label_name = "Time")
+p2 <- data.frame(
+    pseudotime = psuper_obj$proj_dt$psuper,
+    treatment = sce_me_1$treatment) |>
+  ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = treatment, color = treatment)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::scale_color_brewer(type = "qual") +
+  ggplot2::theme_bw()
+
+p1 / p2
+```
+
+```{r}
+psupertime::plot_identified_gene_coefficients(psuper_obj)
+```
+
+```{r}
+psupertime::plot_identified_genes_over_psupertime(psuper_obj, label_name = "Time")
+```
+
+### 拟时序及 RNA 速率
+
+```{r}
+sce_me_1 <- runSlingshotAndVelocity(
+    sce_me_1, reduction = "HARMONY",
+    start.clus = "14", approx_points = FALSE)
+```
+
+```{r}
+sce_me_1 <- scater::runUMAP(sce_me_1, dimred = "HARMONY")
+sce_me_1 <- scater::runTSNE(sce_me_1, dimred = "HARMONY")
+sce_me_1 <- runDiffusionMap(sce_me_1, dimred = "HARMONY")
+sce_me_1 <- runPHATE(sce_me_1, dimred = "HARMONY", knn = 15, decay = 10)
+```
+
+```{r fig.height=7, fig.width=14, results='asis'}
+colnames(reducedDim(sce_me_1, "DiffusionMap")) <- NULL
+p1 <- scater::plotReducedDim(sce_me_1, dimred = "DiffusionMap", colour_by = I(psuper_obj$proj_dt$psuper)) +
+  ggplot2::coord_fixed()
+p2 <- plotVelocityArrow(sce_me_1, reduction = "DiffusionMap") +
+  ggplot2::coord_fixed()
+p1 + p2
+```
+
+```{r}
+psts <- slingshot::slingPseudotime(sce_me_1$slingshot) %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    cells = rownames(.),
+    Time = sce_me_1$time) %>%
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      values_to = "pseudotime", names_to = "lineages")
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = Time)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::facet_wrap(~lineages) +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white")
+  )
+```
