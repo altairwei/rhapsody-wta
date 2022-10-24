@@ -183,18 +183,14 @@ https://github.com/swolock/scrublet
 
 ### 设置 python 运行环境
 
-```{r}
-reticulate::use_virtualenv()
-```
-
 ```{python}
 import scrublet as scr
 import scipy.io
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import matplotlib
-matplotlib.use("Agg", force = True)
+#import matplotlib
+#matplotlib.use("Agg", force = True)
 ```
 
 ### 转换数据

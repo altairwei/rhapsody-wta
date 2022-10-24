@@ -77,7 +77,7 @@ obj_mock_combined <- merge(
 obj_mock_combined <- obj_mock_combined %>%
   Seurat::NormalizeData(verbose = FALSE) %>%
   Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>% 
-  Seurat::ScaleData(verbose = FALSE) %>% 
+  Seurat::ScaleData(verbose = FALSE) %>%
   Seurat::RunPCA(features = NULL, npcs = 20, verbose = FALSE)
 ```
 
@@ -252,21 +252,21 @@ markers_df <- Seurat::FindAllMarkers(
 
 ```{r}
 LCM_design <- c(
-  "VC_1" = "vascular",
-  "VC_2" = "vascular",
-  "VC_3" = "vascular",
-  "CC_1" = "cortex",
-  "CC_2" = "cortex",
-  "CC_3" = "cortex",
+  "VC_1" = "vascular bundle",
+  "VC_2" = "vascular bundle",
+  "VC_3" = "vascular bundle",
+  "CC_1" = "parenchyma",
+  "CC_2" = "parenchyma",
+  "CC_3" = "parenchyma",
+  "MC3_1" = "chlorenchyma",
+  "MC3_2" = "chlorenchyma",
+  "MC3_3" = "chlorenchyma",
   "MC_1" = "mesophyll",
   "MC_2" = "mesophyll",
   "MC_3" = "mesophyll",
   "EC_1" = "epidermis",
   "EC_2" = "epidermis",
-  "EC_3" = "epidermis",
-  "MC3_1" = "collenchyma",
-  "MC3_2" = "collenchyma",
-  "MC3_3" = "collenchyma"
+  "EC_3" = "epidermis"
 )
 
 CIBER <- deconvLCM(
@@ -304,21 +304,21 @@ obj_mock_annotated <- xfun::cache_rds(
       `10` = "CC",    # Companion Cells
       `7`  = "BS",    # Bundle Sheath
       `6`  = "MPV",   # Midvein Provascular Cells
-      `5`  = "Va_1",
-      `12` = "Va_2",  # Sieve
-      `9`  = "Va_3",
-      `2`  = "Va_4",
+      `5`  = "Va_α",
+      `12` = "Va_β",  # Sieve
+      `9`  = "Va_γ",
+      `2`  = "Va_δ",
 
       # Mesophyll Cells
-      `3`  = "Me_1",
-      `4`  = "Me_2",
-      `0`  = "Me_3",
-      `1`  = "Me_4",
-      `8`  = "Me_5",
+      `3`  = "Me_α",
+      `4`  = "Me_β",
+      `0`  = "Me_γ",
+      `1`  = "Me_δ",
+      `8`  = "Me_ε",
 
       # Epidermal Cells
-      `11` = "Ep_1",
-      `13` = "Ep_2",
+      `11` = "Ep_α",
+      `13` = "Ep_β",
 
       # Guardian Cells
       `14` = "Gu"
@@ -366,7 +366,472 @@ p2 <- Seurat::DimPlot(obj_mock_annotated, reduction = "tsne", group.by = "sample
 p1 + p2
 ```
 
-## 8 细胞 3D 降维图 {.tabset}
+
+## 8 细胞类型比例
+
+```{r}
+rhapsodykit::barplot_cluster_abundance(obj_mock_annotated) +
+  ggplot2::scale_fill_discrete(type = ident_cols)
+```
+
+```{r fig.height=7, fig.width=14}
+rhapsodykit::barplot_cluster_abundance(obj_mock_annotated, position = "dodge") +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 16)
+  )
+```
+
+## 9 新标志基因选定
+
+### 计算标志基因
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj_mock_annotated,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+```{r eval=FALSE}
+markers_df <- xfun::cache_rds(
+  file = "mock_seurat_markers.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindAllMarkers(
+    obj_mock_annotated, only.pos = TRUE, min.pct = 0.25,
+    logfc.threshold = 0.25, verbose = TRUE)
+)
+```
+
+### 挑选标志基因 {.tabset}
+
+#### Va_β
+
+```{r}
+Va_β_genes <- marker_cosg$names$Va_β[1:9]
+Va_β_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Va_β_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Va_β_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Me_γ
+
+```{r}
+Me_γ_genes <- marker_cosg$names$Me_γ[1:9]
+Me_γ_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Me_γ_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Me_γ_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Me_ε
+
+```{r}
+Me_ε_genes <- marker_cosg$names$Me_ε[1:9]
+Me_ε_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Me_ε_genes, ncol = 3, order = TRUE)
+```
+
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Me_ε_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Me_β
+
+```{r}
+Me_β_genes <- marker_cosg$names$Me_β[1:9]
+Me_β_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Me_β_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Me_β_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Me_α
+
+```{r}
+Me_α_genes <- marker_cosg$names$Me_α[1:9]
+Me_α_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Me_α_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Me_α_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### MPV
+
+```{r}
+MPV_genes <- marker_cosg$names$MPV[1:9]
+MPV_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = MPV_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = MPV_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Va_δ
+
+```{r}
+Va_δ_genes <- marker_cosg$names$Va_δ[1:9]
+Va_δ_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Va_δ_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Va_δ_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### CC
+
+```{r}
+CC_genes <- marker_cosg$names$CC[1:9]
+CC_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = CC_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = CC_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Ep_α
+
+```{r}
+Ep_α_genes <- marker_cosg$names$Ep_α[1:9]
+Ep_α_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Ep_α_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Ep_α_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Ep_β
+
+```{r}
+Ep_β_genes <- marker_cosg$names$Ep_β[1:9]
+Ep_β_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Ep_β_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Ep_β_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### BS
+
+```{r}
+BS_genes <- marker_cosg$names$BS[1:9]
+BS_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = BS_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = BS_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Va_α
+
+```{r}
+Va_α_genes <- marker_cosg$names$Va_α[1:9]
+Va_α_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Va_α_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Va_α_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Va_γ
+
+```{r}
+Va_γ_genes <- marker_cosg$names$Va_γ[1:9]
+Va_γ_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Va_γ_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Va_γ_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Me_δ
+
+```{r}
+Me_δ_genes <- marker_cosg$names$Me_δ[1:9]
+Me_δ_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Me_δ_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Me_δ_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+#### Gu
+
+```{r}
+Gu_genes <- marker_cosg$names$Gu[1:9]
+Gu_genes
+```
+
+```{r fig.height=9, fig.width=9}
+Seurat::FeaturePlot(obj_mock_annotated, reduction = "umap", features = Gu_genes, ncol = 3, order = TRUE)
+```
+
+```{r}
+Seurat::DotPlot(obj_mock_annotated, features = Gu_genes) +
+  ggplot2::coord_flip() +
+  ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1)
+    )
+```
+
+## 10 特征基因的功能法分析
+
+```{r message=FALSE, warning=FALSE, results="hide"}
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+background <- rownames(Seurat::GetAssayData(obj_mock_annotated, assay = "RNA", slot = "count"))
+```
+
+```{r}
+markerlist <- marker_cosg$names
+```
+
+### 维管束
+
+```{r}
+vascular_clusters <- c(paste0("Va_", c("α", "β", "γ", "δ")), "MPV", "BS", "CC")
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  vascular_clusters,
+  background
+)
+```
+
+```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 70, offset_tiplab = 30,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+print_enrich_table(enr, "#####")
+```
+
+
+### 叶肉细胞
+
+```{r}
+mesophyll_clusters <- paste0("Me_", c("α", "β", "γ", "δ", "ε"))
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  mesophyll_clusters,
+  background
+)
+```
+
+```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+print_enrich_table(enr, "#####")
+```
+
+### 其他细胞
+
+```{r}
+other_clusters <- c("Ep_α", "Ep_β", "Gu")
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  other_clusters,
+  background
+)
+```
+
+```{r fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 40, offset_tiplab = 15,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+print_enrich_table(enr, "#####")
+```
+
+## 11 LCM 注释图
+
+```{r}
+CIBER <- deconvLCM(
+  seurat = obj_mock_annotated,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
+  design = LCM_design,
+  mc.cores = 4
+)
+```
+
+```{r fig.height=6, fig.width=8, message=FALSE, warning=FALSE, dev='svglite'}
+deconvScatter(CIBER, LCM_design)
+```
+
+## 12 细胞 3D 降维图 {.tabset}
 
 二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
 
@@ -410,150 +875,4 @@ Dim3DPlot(obj_mock_annotated, "UMAP_", cols = ident_cols)
 ```{r}
 Dim3DPlot(obj_mock_annotated, "tSNE_", cols = ident_cols)
 ```
-
-
-## 8 细胞类型比例
-
-```{r}
-rhapsodykit::barplot_cluster_abundance(obj_mock_annotated) +
-  ggplot2::scale_fill_discrete(type = ident_cols)
-```
-
-```{r fig.height=7, fig.width=14}
-rhapsodykit::barplot_cluster_abundance(obj_mock_annotated, position = "dodge") +
-  ggplot2::theme(
-    strip.text.x = ggplot2::element_text(size = 16)
-  )
-```
-
-## 9 特征基因的功能法分析
-
-```{r message=FALSE, warning=FALSE, results="hide"}
-library(org.Taestivum.iwgsc.db)
-orgdb <- org.Taestivum.iwgsc.db
-background <- rownames(Seurat::GetAssayData(obj_mock_annotated, assay = "RNA", slot = "count"))
-```
-
-```{r}
-markerlist <- COSG::cosg(
- obj_mock_annotated,
- groups = 'all',
- assay = 'RNA',
- slot = 'data',
- mu = 1,
- n_genes_user = 300
-)
-
-markerlist <- markerlist$names
-```
-
-### 维管束
-
-```{r}
-vascular_clusters <- c(paste0("Va_", 1:4), "MPV", "BS", "CC")
-```
-
-#### 富集分析
-
-```{r}
-enr <- performMarkerCompareORA(
-  markerlist,
-  vascular_clusters,
-  background
-)
-```
-
-```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
-p <- enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    size = "count",
-    offset = 70, offset_tiplab = 30,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
-  ggplot2::coord_cartesian()
-p
-```
-
-#### 标志基因表格 {.tabset}
-
-```{r results='asis'}
-print_enrich_table(enr, "#####")
-```
-
-
-### 叶肉细胞
-
-```{r}
-mesophyll_clusters <- paste0("Me_", 1:5)
-```
-
-#### 富集分析
-
-```{r}
-enr <- performMarkerCompareORA(
-  markerlist,
-  mesophyll_clusters,
-  background
-)
-```
-
-```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
-p <- enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    size = "count",
-    offset = 40, offset_tiplab = 20,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
-  ggplot2::coord_cartesian()
-p
-```
-
-#### 标志基因表格 {.tabset}
-
-```{r results='asis'}
-print_enrich_table(enr, "#####")
-```
-
-### 其他细胞
-
-```{r}
-other_clusters <- c("Ep_1", "Ep_2", "Gu")
-```
-
-#### 富集分析
-
-```{r}
-enr <- performMarkerCompareORA(
-  markerlist,
-  other_clusters,
-  background
-)
-```
-
-```{r fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
-p <- enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    size = "count",
-    offset = 40, offset_tiplab = 15,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
-  ggplot2::coord_cartesian()
-p
-```
-
-#### 标志基因表格 {.tabset}
-
-```{r results='asis'}
-print_enrich_table(enr, "#####")
-```
-
 

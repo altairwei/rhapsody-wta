@@ -57,6 +57,7 @@ obj_list <- lapply(samples, function(sample) readRDS(
 obj_mock_combined <- readRDS(Sys.glob(
   "../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
 obj_mock_combined$cellType <- as.character(Seurat::Idents(obj_mock_combined))
+mock_celltype_levels <- levels(Seurat::Idents(obj_mock_combined))
 ```
 
 ## 1 细胞类型标签转移
@@ -302,15 +303,21 @@ marker_cosg <- COSG::cosg(
 
 ```{r}
 LCM_design <- c(
-  "VC_1" = "vascular",
-  "VC_2" = "vascular",
-  "VC_3" = "vascular",
-  "CC_1" = "cortex",
-  "CC_2" = "cortex",
-  "CC_3" = "cortex",
+  "VC_1" = "vascular bundle",
+  "VC_2" = "vascular bundle",
+  "VC_3" = "vascular bundle",
+  "CC_1" = "parenchyma",
+  "CC_2" = "parenchyma",
+  "CC_3" = "parenchyma",
+  "MC3_1" = "chlorenchyma",
+  "MC3_2" = "chlorenchyma",
+  "MC3_3" = "chlorenchyma",
   "MC_1" = "mesophyll",
   "MC_2" = "mesophyll",
-  "MC_3" = "mesophyll"
+  "MC_3" = "mesophyll",
+  "EC_1" = "epidermis",
+  "EC_2" = "epidermis",
+  "EC_3" = "epidermis"
 )
 
 CIBER <- deconvLCM(
@@ -331,6 +338,11 @@ deconvHeatmap(CIBER)
 ```
 
 ## 6 细胞类型注释
+
+```{r}
+obj_merged$predicted.id <- factor(
+  obj_merged$predicted.id, levels = mock_celltype_levels)
+```
 
 ### 6.1 从 MOCK 预测细胞类型 {.tabset}
 
@@ -386,7 +398,6 @@ p2 <- Seurat::FeaturePlot(
 p1 + p2
 ```
 
-
 ### 6.2 注释
 
 ```{r}
@@ -404,18 +415,18 @@ obj_annotated <- xfun::cache_rds(
       `8`  = "BS",    # Bundle Sheath
       `14` = "MPV_1", # Midvein Provascular Cells
       `4`  = "MPV_2", # Midvein Provascular Cells
-      `3`  = "Va_1",
-      `2`  = "Va_2",  # MOCK 注释的 Me_3 很可能是错的，其标志基因中有 9 个是 phenylpropanoid metabolic process
-      `5`  = "Va_3",
-      `9`  = "Va_4",
-      `7`  = "Va_5",
-      `10` = "Va_6",
-      `12` = "Va_7",
+      `3`  = "Va_1",  # Va_α
+      `7`  = "Va_2",  # Va_β
+      `10` = "Va_3",  # Va_β
+      `12` = "Va_4",  # Va_β
 
       # Mesophyll Cells
-      `0`  = "Me_1",
-      `6`  = "Me_2",
-      `1`  = "Me_3",
+      `0`  = "Me_1",  # Me_β, Me_α
+      `6`  = "Me_2",  # Me_ε
+      `1`  = "Me_3",  # Me_δ, Va_δ
+      `2`  = "Me_4",  # Me_γ
+      `5`  = "Me_5",  # Me_γ, Va_δ
+      `9`  = "Me_6",  # Me_γ
 
       # Epidermal Cells
       `11` = "Ep_1",
@@ -460,7 +471,78 @@ p2 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", group.by = "sample") +
 p1 + p2
 ```
 
-### 6.4 3D 降维图 {.tabset}
+## 7 细胞注释检查
+
+### 7.1 重新计算标识基因
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj_annotated,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+### 7.2 同源标识基因
+
+```{r fig.width=15, fig.height=7}
+plot_markers(obj_annotated, cluster.idents = TRUE)
+```
+
+### 7.3 激光显微切割注释
+
+```{r}
+CIBER <- deconvLCM(
+  seurat = obj_annotated,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
+  design = LCM_design,
+  mc.cores = 4
+)
+```
+
+```{r fig.height=6, fig.width=8, message=FALSE, warning=FALSE, dev='svglite'}
+deconvScatter(CIBER, LCM_design)
+```
+
+### 7.4 细胞类型预测检查
+
+```{r}
+overlap_df <- Seurat::FetchData(obj_annotated, vars = c(
+                "ident", "predicted.id",
+                "prediction.score.max")) %>%
+  dplyr::select(ident, predicted.id, prediction.score.max) %>%
+  dplyr::group_by(ident, predicted.id) %>%
+  dplyr::summarise(
+    n = length(predicted.id),
+    mean = mean(prediction.score.max),
+    median = median(prediction.score.max)
+  )
+
+ggplot2::ggplot(overlap_df, ggplot2::aes(
+    x = ident, y = predicted.id, color = mean, size = n)) +
+  ggplot2::geom_point() +
+  ggplot2::scale_color_gradientn(colours = c("white", "blue"))
+```
+
+## 8 细胞类型比例
+
+```{r}
+rhapsodykit::barplot_cluster_abundance(obj_annotated) +
+  ggplot2::scale_fill_discrete(type = ident_cols)
+```
+
+```{r fig.height=7, fig.width=14}
+rhapsodykit::barplot_cluster_abundance(obj_annotated, position = "dodge") +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 16)
+  )
+```
+
+## 9 3D 降维图 {.tabset}
 
 二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
 
@@ -493,29 +575,14 @@ Dim3DPlot <- function(obj_annotated, dim_prefix, cols) {
 }
 ```
 
-#### UMAP
+### UMAP
 
 ```{r}
 Dim3DPlot(obj_annotated, "UMAP_", cols = ident_cols)
 ```
 
-#### t-SNE
+### t-SNE
 
 ```{r}
 Dim3DPlot(obj_annotated, "tSNE_", cols = ident_cols)
 ```
-
-## 8 细胞类型比例
-
-```{r}
-rhapsodykit::barplot_cluster_abundance(obj_annotated) +
-  ggplot2::scale_fill_discrete(type = ident_cols)
-```
-
-```{r fig.height=7, fig.width=14}
-rhapsodykit::barplot_cluster_abundance(obj_annotated, position = "dodge") +
-  ggplot2::theme(
-    strip.text.x = ggplot2::element_text(size = 16)
-  )
-```
-
