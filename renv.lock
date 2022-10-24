@@ -3601,14 +3601,9 @@
     "harmony": {
       "Package": "harmony",
       "Version": "0.1.0",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteRepo": "harmony",
-      "RemoteUsername": "immunogenomics",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "6866e01e4d7e1729b46e98303ac7c38be1036248",
-      "Hash": "7b3fc69ae68a0591a1f42c3e418228e9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "0b62cc8289d7941fedefeb5d4894bbe2",
       "Requirements": [
         "Matrix",
         "Rcpp",
@@ -5256,10 +5251,10 @@
     },
     "reticulate": {
       "Package": "reticulate",
-      "Version": "1.25",
+      "Version": "1.26",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "786b311743eb8cd347491f8f0a571941",
+      "Hash": "91c176c84a2e3558572d2cbaddc08bd4",
       "Requirements": [
         "Matrix",
         "Rcpp",

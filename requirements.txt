@@ -3,6 +3,7 @@ aiohttp==3.8.1
 aiosignal==1.2.0
 algopy==0.5.7
 anndata==0.7.5
+anndata2ri==1.0.6
 annoy==1.17.0
 argon2-cffi==21.3.0
 argon2-cffi-bindings==21.2.0
@@ -17,7 +18,7 @@ beautifulsoup4==4.11.1
 bleach==5.0.0
 cachetools==5.2.0
 certifi==2022.5.18.1
-cffi==1.15.0
+cffi==1.15.1
 cfgv==3.3.1
 cftime==1.6.1
 charset-normalizer==2.0.12
@@ -94,6 +95,7 @@ kiwisolver==1.4.2
 libclang==14.0.1
 llvmlite==0.38.1
 loompy==3.0.7
+louvain==0.7.1
 Markdown==3.3.7
 MarkupSafe==2.1.1
 matplotlib==3.5.2
@@ -153,6 +155,7 @@ pyasn1-modules==0.2.8
 pycparser==2.21
 pyct==0.4.8
 pyDeprecate==0.3.1
+pydot==1.4.2
 Pygments==2.12.0
 PyGSP==0.5.1
 pymdown-extensions==9.5
@@ -176,7 +179,7 @@ QtPy==2.2.0
 requests==2.27.1
 requests-oauthlib==1.3.1
 rich==12.4.4
-rpy2==3.5.2
+rpy2==3.4.2
 rsa==4.8
 s-gd2==1.8
 scanorama==1.7.2
@@ -184,6 +187,7 @@ scanpy==1.9.1
 scCODA==0.1.8
 scikit-image==0.19.3
 scikit-learn==1.1.1
+scikit-misc==0.1.4
 scipy==1.8.1
 scprep==1.2.0
 scrublet==0.2.3
@@ -237,5 +241,6 @@ widgetsnbextension==3.6.0
 wrapt==1.14.1
 xarray==2022.3.0
 xarray-einstats==0.3.0
+xcffib==0.11.1
 yarl==1.7.2
 zipp==3.8.0
