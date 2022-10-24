@@ -208,20 +208,6 @@ plot_markers <- function(obj, ...) {
         "TraesCS6B02G050700",
         "TraesCS6D02G041700",
         "TraesCS6A02G036100"
-      ),
-      
-      # Cortex Cells
-      "AT1G62510" = c(
-        "TraesCS2A02G424800",
-        "TraesCS2B02G444500",
-        #"TraesCS2D02G422700",
-        #"TraesCS2D02G422800",
-        "TraesCS2A02G424861"
-      ),
-      # Bulliform
-      "PFA-DSP2" = c(
-        "TraesCS5B02G163200",
-        "TraesCS5D02G170400"
       )
     ),
     ...

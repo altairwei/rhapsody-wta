@@ -46,6 +46,8 @@ runSlingshotAndVelocity <- function(sce, reduction = "PCA", ...) {
     reducedDim = reduction, ...)
 
   basilisk::setBasiliskShared(FALSE)
+  # FIXME: set `enforce=True` to normalize X which is corrected for
+  # ambient RNA, otherwise use `assay.X="logcounts"` instead.
   altExp(sce, "scvelo") <- velociraptor::scvelo(
     sce,
     mode = "stochastic",
@@ -53,8 +55,7 @@ runSlingshotAndVelocity <- function(sce, reduction = "PCA", ...) {
     use.dimred = reduction,
     scvelo.params = list(
       filter_and_normalize = list(
-        min_shared_counts = 20L, n_top_genes = 2000L),
-      moments = list(n_pcs = 30L, n_neighbors = 30L)
+        min_shared_counts = 20L, n_top_genes = 2000L)
     ))
 
   sce
@@ -74,6 +75,191 @@ runTradeSeq <- function(sce, subset_row = NULL, nknots = 6, ...) {
   )
 
   sce
+}
+
+runScVelo <- function(x,
+  dimred = NULL, use.dimred = NULL,
+  assay.X="counts", assay.spliced="spliced", assay.unspliced="unspliced",
+  mode = c('steady_state', 'deterministic', 'stochastic', 'dynamical'),
+  scvelo.params = list(), ncomponents = 30, return_sce = FALSE) {
+
+  if (is.null(dimred)) {
+    if (!is.null(use.dimred)) {
+      dimred <- reducedDim(x, use.dimred)
+    }
+  }
+
+  spliced <- assay(x, assay.spliced)
+  unspliced <- assay(x, assay.unspliced)
+  X <- assay(x, assay.X)
+
+  refdim <- as.integer(dim(spliced))
+  if (!identical(refdim, as.integer(dim(unspliced))) || !identical(refdim, as.integer(dim(X)))) {
+    stop("matrices in 'x' must have the same dimensions")
+  }
+
+  X <- t(X)
+  spliced <- t(spliced)
+  unspliced <- t(unspliced)
+
+  and <- reticulate::import("anndata")
+  scv <- reticulate::import("scvelo")
+  adata <- and$AnnData(X, layers=list(spliced=spliced, unspliced=unspliced))
+  adata$obs_names <- rownames(spliced)
+  adata$var_names <- colnames(spliced)
+
+  if (!is.null(dimred)) {
+    adata$obsm <- list(X_pca = dimred)
+  }
+
+  # Preprocessing requisites consist of
+  #  1. gene selection by detection (with a minimum number of counts) and high variability (dispersion)
+  #  2. normalizing every cell by its total size and logarithmizing X.
+  #  3. Filtering and normalization is applied in the same vein to spliced/unspliced counts and X.
+  #  4. Logarithmizing is only applied to X.
+  #  5. If X is already preprocessed from former analysis, it will not be touched.
+  do.call(scv$pp$filter_and_normalize, c(list(data=adata), scvelo.params$filter_and_normalize))
+
+  do.call(scv$pp$moments, c(list(data=adata), scvelo.params$moments))
+
+  if (mode=="dynamical") {
+    do.call(scv$tl$recover_dynamics, c(list(data=adata), scvelo.params$recover_dynamics))
+  }
+
+  scvelo.params$velocity$mode <- mode
+  do.call(scv$tl$velocity, c(list(data=adata), scvelo.params$velocity))
+
+  do.call(scv$tl$velocity_graph, c(list(data=adata), scvelo.params$velocity_graph))
+
+  do.call(scv$tl$velocity_pseudotime, c(list(adata=adata), scvelo.params$velocity_pseudotime))
+
+  if (mode=="dynamical") {
+    do.call(scv$tl$latent_time, c(list(data=adata), scvelo.params$latent_time))
+  }
+
+  do.call(scv$tl$velocity_confidence, c(list(data=adata), scvelo.params$velocity_confidence))
+
+  if (return_sce)
+    return(AnnData2SCE(adata))
+  else
+    return(adata)
+}
+
+runDynamoVelocity <- function(x,
+  dimred = NULL, use.dimred = NULL,
+  assay.X="counts", assay.spliced="spliced", assay.unspliced="unspliced",
+  mode = c("deterministic", "stochastic", "negbin"),
+  n_top_genes = 2000L, py.params = list(),
+  ...) {
+
+  scv <- reticulate::import("scvelo")
+  and <- reticulate::import("anndata")
+  dyn <- reticulate::import("dynamo")
+
+  if (is.null(dimred)) {
+    if (!is.null(use.dimred)) {
+      dimred <- reducedDim(x, use.dimred)
+    }
+  }
+
+  spliced <- assay(x, assay.spliced)
+  unspliced <- assay(x, assay.unspliced)
+  X <- assay(x, assay.X)
+
+  refdim <- as.integer(dim(spliced))
+  if (!identical(refdim, as.integer(dim(unspliced))) || !identical(refdim, as.integer(dim(X)))) {
+    stop("matrices in 'x' must have the same dimensions")
+  }
+
+  X <- t(X)
+  spliced <- t(spliced)
+  unspliced <- t(unspliced)
+
+  and <- reticulate::import("anndata")
+  scv <- reticulate::import("scvelo")
+  adata <- and$AnnData(X, layers=list(spliced=spliced, unspliced=unspliced))
+  adata$obs_names <- rownames(spliced)
+  adata$var_names <- colnames(spliced)
+
+  preprocessor <- dyn$preprocessing$Preprocessor(
+    convert_gene_name_function = NULL
+  )
+  preprocessor$config_seurat_recipe(adata)
+  preprocessor$standardize_adata(adata = adata, tkey = NULL, experiment_type = "conventional")
+  preprocessor$filter_genes_by_outliers(adata)
+  preprocessor$normalize_by_cells(adata)
+  preprocessor$select_genes_kwargs <- list(
+    "recipe" = "seurat", "n_top_genes" = as.integer(n_top_genes))
+  preprocessor$select_genes(adata)
+  preprocessor$log1p(adata)
+
+  if (!is.null(dimred)) {
+    adata$obsm <- list(X_pca = dimred)
+  }
+
+  # Experiment type
+  # adata$uns$update(list(
+  #   "pp" = list(
+  #     has_splicing = TRUE,
+  #     has_labeling = FALSE,
+  #     splicing_labeling = FALSE,
+  #     has_protein = FALSE,
+  #     experiment_type = "conventional",
+  #     experiment_layers = c("X", "spliced", "unspliced"),
+  #     experiment_total_layers = NULL,
+  #     tkey = NULL,
+  #     norm_method = NULL
+  #   )
+  # ))
+
+  mode <- match.arg(mode)
+  do.call(dyn$tl$moments, c(list(adata = adata, X_data = adata$obsm['X_pca']), py.params$moments))
+  do.call(dyn$tl$dynamics, c(list(adata = adata, model = mode), py.params$dynamics))
+
+  adata
+}
+
+runUniTVelo <- function(sce, dimred = NULL, use.dimred = NULL, ...) {
+  if (is.null(dimred)) {
+    if (!is.null(use.dimred)) {
+      dimred <- reducedDim(x, use.dimred)
+    }
+  }
+
+  spliced <- assay(sce, "spliced")
+  unspliced <- assay(sce, "unspliced")
+  X <- assay(sce, "counts")
+}
+
+runScanorama <- function(sce, nfeatures = 2000L, ..., convert = TRUE) {
+  obj <- Seurat::CreateSeuratObject(
+    counts = assay(sce, "counts"),
+    assay = "RNA",
+    meta.data = data.frame(
+      row.names = colnames(sce),
+      sample_id = sce$sample_id,
+      cell_type = sce$cluster_id)
+  )
+
+  obj_list <- Seurat::SplitObject(obj, split.by = "sample_id")
+  datasets <- lapply(obj_list, function(obj) {
+    obj %>%
+      Seurat::NormalizeData(verbose = FALSE) %>%
+      Seurat::FindVariableFeatures(
+        selection.method = "vst", nfeatures = 2000, verbose = FALSE) %>% 
+      Seurat::ScaleData(verbose = FALSE) %>%
+      Seurat::GetAssayData(assay = "RNA", slot = "scale.data") %>%
+      t()
+  })
+  names(datasets) <- NULL
+  genes <- lapply(datasets, function(data) colnames(data))
+
+  scanorama <- reticulate::import("scanorama")
+  results <- scanorama$correct(
+    datasets, genes, return_dimred = TRUE,
+    dimred = 30L, ds_names = names(obj_list))
+
+  results
 }
 
 plotSlingshotCurveOnReduc <- function(sce, reduction = "UMAP", ...) {
