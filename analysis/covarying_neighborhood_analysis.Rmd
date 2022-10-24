@@ -14,28 +14,10 @@ library(ggplot2) # Fix {ggtreeExtra} error
 
 ## 算法探索
 
-```{r}
-data('rcna_demo', package = "rcna")
-
-str(rcna_demo)
-```
-
-```{r}
-for (var in names(rcna_demo$samplem)) {
-  cat(var, ":\n")
-  print(unique(rcna_demo$samplem[[var]]))
-}
-```
-
-```{r}
-rcna_demo$samplem |>
-  dplyr::group_by(batch, case, male) |>
-  dplyr::count()
-```
-
-`batch` 是一个比 replicates 更大的概念。
-
-我觉得应该将数据集拆分，而不是应用 `isPNR2` 或者 `isTR4` 这种类型的二元变量。
+- `batch` 是一个比 replicates 更大的概念。
+- 目前 {CNA} 不支持多元无序变量。
+- `ncorrs` is the vector of neighborhood coefficients
+- 我觉得应该将数据集拆分，而不是应用 `isPNR2` 或者 `isTR4` 这种类型的二元变量。
 
 ## 加载数据
 
@@ -110,10 +92,16 @@ gseaTable <- function(gsea) {
 
 ## MOCK 发育规律
 
+关于有序离散变量：https://github.com/immunogenomics/cna/issues/12
+
+> Continuous variables should work fine -- just plug them in. Ordered categorical variables are a bit trickier -- you can always just code the categories as {1,2,3...} and plug them in since they're ordered, but be aware that they will be fit via a linear model so the assumption is that whatever enrichment differentiates category 1 from category 2 will also equally differentiate category 2 from category 3.
+
+CNA 假设有序离散变量之间的富集差异是线性的。
+
 ```{r}
 obj_mock <- subset(obj, subset = group %in% c("0DPI-MOCK", "1DPI-MOCK", "2DPI-MOCK", "3DPI-MOCK"))
 obj_mock$time_val <- as.numeric(factor(obj_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
-obj_mock <- Seurat::FindNeighbors(obj_mock)
+obj_mock <- Seurat::FindNeighbors(obj_mock, reduction = "harmony")
 
 obj_mock <- rcna::association.Seurat(
   seurat_object = obj_mock,
@@ -125,21 +113,47 @@ obj_mock <- rcna::association.Seurat(
 )
 ```
 
-### Association results
+### Time Series
 
-```{r fig.height=4, fig.width=10}
-p1 <- Seurat::FeaturePlot(obj_mock, reduction = "tsne", features = c('cna_ncorrs_fdr10')) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+```{r fig.height=3, fig.width=11}
+Seurat::DimPlot(obj_mock, reduction = "tsne", split.by = "time") &
+  ggplot2::coord_fixed()
+```
+
+### Association results {.tabset}
+
+```{r}
+blue_to_orange <- rev(ggthemes::ggthemes_data[[
+  c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
+```
+
+在下面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI ~ 3DPI 的邻域系数。
+
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::FeaturePlot(obj_mock, reduction = "tsne", features = c("cna_ncorrs")) &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
   ggplot2::coord_fixed()
 
 p2 <- Seurat::DimPlot(obj_mock, reduction = "tsne", group = "group") &
-  ggthemes::scale_color_tableau() &
   ggplot2::coord_fixed()
 
 p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
 ```
 
-在上面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。没有通过 FDR 5% 的邻域显示为灰色。
+#### UMAP
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::FeaturePlot(obj_mock, reduction = "umap", features = c("cna_ncorrs")) &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::DimPlot(obj_mock, reduction = "umap", group = "group") &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+```
 
 ### Neighborhood loadings of NAM PCs
 
@@ -150,11 +164,12 @@ p <- Seurat::FeaturePlot(
     obj_mock, reduction = "tsne",
     features = paste0("NAMPC_", 1:6),
     ncol = 3, order = TRUE) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
   ggplot2::coord_fixed()
 
 p
 ```
+
 ### Variance explained by NAM PCs
 
 ```{r}
@@ -204,7 +219,7 @@ p <- gsea %>%
 p
 ```
 
-从上面的 GO 齿条来看，这确实像是发育程序。
+从上面的 GO 词条来看，这确实像是发育程序。
 
 ### Sample loadings of NAM PCs
 
@@ -214,6 +229,100 @@ sample_df$sample <- stringr::str_extract(rownames(sample_df), "\\dDPI-MOCK")
 
 ggplot2::ggplot(sample_df, ggplot2::aes(NAMPC_1, NAMPC_2, color = sample)) +
   ggplot2::geom_point()
+```
+
+## PH-1 侵染反应
+
+```{r}
+obj_pnr2 <- subset(obj, subset = group %in% c("0DPI-MOCK", "1DPI-PNR2", "2DPI-PNR2", "3DPI-PNR2"))
+obj_pnr2$time_val <- as.numeric(factor(obj_pnr2$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+obj_pnr2 <- Seurat::FindNeighbors(obj_pnr2, reduction = "harmony")
+
+obj_pnr2 <- rcna::association.Seurat(
+  seurat_object = obj_pnr2,
+  test_var = "time_val",
+  samplem_key = "sample",
+  graph_use = "RNA_nn",
+  batches = NULL,
+  covs = NULL
+)
+```
+
+### Association results {.tabset}
+
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::FeaturePlot(obj_pnr2, reduction = "tsne", features = c("cna_ncorrs")) &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::DimPlot(obj_pnr2, reduction = "tsne", group = "group") &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+```
+
+#### UMAP
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::FeaturePlot(obj_pnr2, reduction = "umap", features = c("cna_ncorrs")) &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::DimPlot(obj_pnr2, reduction = "umap", group = "group") &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+```
+
+## TR4 侵染反应
+
+```{r}
+obj_tr4 <- subset(obj, subset = group %in% c("0DPI-MOCK", "1DPI-TR4", "2DPI-TR4", "3DPI-TR4"))
+obj_tr4$time_val <- as.numeric(factor(obj_tr4$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+obj_tr4 <- Seurat::FindNeighbors(obj_tr4, reduction = "harmony")
+
+obj_tr4 <- rcna::association.Seurat(
+  seurat_object = obj_tr4,
+  test_var = "time_val",
+  samplem_key = "sample",
+  graph_use = "RNA_nn",
+  batches = NULL,
+  covs = NULL
+)
+```
+
+### Association results {.tabset}
+
+#### t-SNE
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::FeaturePlot(obj_tr4, reduction = "tsne", features = c("cna_ncorrs")) &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::DimPlot(obj_tr4, reduction = "tsne", group = "group") &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+```
+
+#### UMAP
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::FeaturePlot(obj_tr4, reduction = "umap", features = c("cna_ncorrs")) &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::coord_fixed()
+
+p2 <- Seurat::DimPlot(obj_tr4, reduction = "umap", group = "group") &
+  ggplot2::coord_fixed()
+
+p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+```
+
+```{r}
+knitr::knit_exit()
 ```
 
 ## 病原菌诱导的总体应激反应
@@ -473,7 +582,7 @@ obj_sub <- subset(obj, subset = group %in% c("1DPI-MOCK", "1DPI-PNR2", "1DPI-TR4
 ```
 
 ```{r factorize}
-obj_sub <- Seurat::FindNeighbors(obj_sub)
+obj_sub <- Seurat::FindNeighbors(obj_sub, reduction = "harmony")
 obj_sub$is_pnr2 <- as.numeric(obj_sub$treatment == "PNR2")
 obj_sub$is_tr4 <- as.numeric(obj_sub$treatment == "TR4")
 obj_sub$is_mock <- as.numeric(obj_sub$treatment == "MOCK")

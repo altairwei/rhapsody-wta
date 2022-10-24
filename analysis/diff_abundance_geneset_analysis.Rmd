@@ -8,13 +8,18 @@ output: html_document
 ```{r setup, include=FALSE}
 library(magrittr)
 library(patchwork)
+library(ggplot2)
 knitr::opts_chunk$set(echo = TRUE, autodep=TRUE)
-source("../scripts/UtilityFunctions.R")
+source("../scripts/EnrichmentUtilities.R")
 ```
 
 # DA 亚群标志基因的富集分析
 
 ## 加载注释数据
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
 
 我们现在已经构建出了[小麦的 OrgDb](https://github.com/altairwei/org.Taestivum.iwgsc.db)：
 
@@ -28,225 +33,33 @@ orgdb <- org.Taestivum.iwgsc.db
 加载 1DPI 的 DA 亚群标志基因：
 
 ```{r}
-da_1dpi_marker <- readRDS(Sys.glob("../output/da_marker_1dpi_*.rds"))
+da_1dpi_marker <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialAbundance/da_cosg_marker_1dpi_*.rds"))
 ```
 
-```{r}
-make_DA_enrich <- function(da, contrast, subpopulation,
-  ont = c("BP", "MF", "CC", "ALL"),
-  simplify = TRUE
-) {
-  ont <- match.arg(ont)
-  df <- da[[contrast]]$da.markers[[subpopulation]]
-
-  enr <- df %>%
-    dplyr::filter(p_value < 0.01) %>%
-    dplyr::pull(gene) %>%
-    clusterProfiler::enrichGO(
-      orgdb, keyType = "GID",
-      ont = ont
-    )
-
-  if (simplify && ont != "ALL")
-  enr <- clusterProfiler::simplify(enr, cutoff = 0.5)
-
-  enr
-}
-
-make_DA_compare <- function(da, sets,
-  ont = c("BP", "MF", "CC", "ALL"),
-  simplify = TRUE
-) {
-  stopifnot(is.list(sets) && !is.null(names(sets)) && length(sets) > 1)
-
-  compare_list <- sets %>%
-    lapply(function(set) {
-      da[[ set[[1]] ]]$da.markers[[ set[[2]] ]] %>%
-        dplyr::filter(p_value < 0.01) %>%
-        dplyr::pull(gene)
-    })
-
-  comp_enr <- clusterProfiler::compareCluster(
-    compare_list, fun = "enrichGO",
-    OrgDb = orgdb, keyType = "GID",
-    ont = ont)
-
-  if (simplify && ont != "ALL")
-    comp_enr <- clusterProfiler::simplify(comp_enr, cutoff = 0.5)
-
-  comp_enr
-}
-
-PNR2_da2 <- da_1dpi_marker[["PNR2 vs. MOCK - 1DPI"]]$da.markers[[2]]
-head(PNR2_da2)
-```
-
-### PNR2 诱导的应激态亚群
-
-由于 DA 亚群标志基因的 P value 都非常小，所以我们没法直接推断出背景。
+### 特征相反的谱系
 
 ```{r cache=TRUE}
-p1 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 1, ont = "BP") %>%
-  brookite::enrich_barplot(
-    x = "Count", show_category = 20,
-    title = "PNR2 induced DA1"
-  )
-
-p2 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 2, ont = "BP") %>%
-  brookite::enrich_barplot(
-    x = "Count", show_category = 20,
-    title = "PNR2 induced DA2"
-  )
-```
-
-```{r fig.height=6, fig.width=12}
-p1 + p2
-```
-
-### TR4 诱导的应激态亚群
-
-```{r fig.height=6, fig.width=18}
-p1 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 1, ont = "BP") %>%
-  brookite::enrich_barplot(
-    x = "Count", show_category = 20,
-    title = "TR4 induced DA1"
-  )
-
-p2 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 3, ont = "BP") %>%
-  brookite::enrich_barplot(
-    x = "Count", show_category = 20,
-    title = "TR4 induced DA3"
-  )
-
-p3 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 4, ont = "BP") %>%
-  brookite::enrich_barplot(
-    x = "Count", show_category = 20,
-    title = "TR4 induced DA4"
-  )
-
-p1 + p2 + p3
-```
-
-做一下主题比较：
-
-```{r cache=TRUE}
-comp_enr <- make_DA_compare(da_1dpi_marker,
+comp_enr <- performDACompareORA(da_1dpi_marker,
   list(
-    "1DPI-TR4-DA1" = list("TR4 vs. MOCK - 1DPI", 1),
-    "1DPI-TR4-DA3" = list("TR4 vs. MOCK - 1DPI", 3),
-    "1DPI-TR4-DA4" = list("TR4 vs. MOCK - 1DPI", 4)
+    "DA2" = list("PNR2 vs. MOCK - 1DPI", 2),
+    "DA3" = list("TR4 vs. MOCK - 1DPI", 3),
+    "DA4" = list("TR4 vs. MOCK - 1DPI", 4)
   )
 )
 ```
 
-```{r fig.height=12, fig.width=7}
-enrichplot::dotplot(comp_enr, showCategory = 20, by = "count", label_format = 60) +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-```
-
-```{r fig.height=7, fig.width=10}
-comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 3)
-```
-
-```{r fig.height=10, fig.width=10}
+```{r fig.height=10, fig.width=12, message=FALSE, warning=FALSE}
 p <- comp_enr %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 2.5, offset_tiplab = 2.5,
-    label_format_cladelab = 5,
+    showCategory = 40, nCluster = 20,
+    offset = 30, offset_tiplab = 15,
+    label_format_cladelab = 5, size = "count",
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::coord_cartesian()
-p
-```
-
-### PNR2 与 TR4 特征相反的亚群
-
-直接比较 PNR2 和 TR4 两个相反的亚群：
-
-```{r fig.height=6, fig.width=12}
-p1 <- make_DA_enrich(da_1dpi_marker, "PNR2 vs. MOCK - 1DPI", 2, ont = "BP") %>%
-  brookite::enrich_barplot(
-    x = "Count", show_category = 20,
-    title = "PNR2 induced DA2"
-  )
-
-p2 <- make_DA_enrich(da_1dpi_marker, "TR4 vs. MOCK - 1DPI", 6, ont = "BP") %>%
-  brookite::enrich_barplot(
-    x = "Count", show_category = 20,
-    title = "TR4 induced DA6"
-  )
-
-p1 + p2
-```
-
-这两个基因集做一下生物主题比较：
-
-```{r cache=TRUE}
-comp_enr <- make_DA_compare(da_1dpi_marker,
-  list(
-    "1DPI-PNR2-DA2" = list("PNR2 vs. MOCK - 1DPI", 2),
-    "1DPI-TR4-DA6" = list("TR4 vs. MOCK - 1DPI", 6)
-  )
-)
-```
-
-```{r fig.height=7, fig.width=6}
-enrichplot::dotplot(comp_enr, showCategory = 20, by = "count", label_format = 60) +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-```
-
-```{r fig.height=7, fig.width=10}
-comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::emapplot(legend_n = 3)
-```
-
-```{r fig.height=6, fig.width=10}
-p <- comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 10,
-    offset = 2, offset_tiplab = 4,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::coord_cartesian()
-p
-```
-
-## 2DPI 的分析
-
-```{r}
-da_2dpi_marker <- readRDS(Sys.glob("../output/da_marker_2dpi_*.rds"))
-```
-
-### VCs_3 亚群
-
-```{r cache=TRUE}
-comp_enr <- make_DA_compare(
-  c(da_1dpi_marker, da_2dpi_marker),
-  list(
-    "1DPI-TR4-DA3" = list("TR4 vs. MOCK - 1DPI", 3),
-    "2DPI-TR4-DA4" = list("TR4 vs. MOCK - 2DPI", 4),
-    "2DPI-PNR2-DA3" = list("PNR2 vs. MOCK - 2DPI", 3)
-  )
-)
-```
-
-```{r fig.height=10, fig.width=10}
-p <- comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 2.5, offset_tiplab = 2.5,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::coord_cartesian()
+  #ggplot2::coord_cartesian()
+  NULL
 p
 ```
 
