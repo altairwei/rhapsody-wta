@@ -20,7 +20,8 @@ editor_options:
   - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
   - [Integration of Stimulating Samples](integration_of_stimulating_samples.html)
   - [Sample Correlation Analysis](sample_correlation_analysis.html)
-  - [Analysis of Integrated Mock Samples](analysis_of_mock_samples.html)
+  - [Integrated Analysis of Mock Samples](analysis_of_mock_samples.html)
+  - [Integrated Analysis of All Samples](analysis_of_all_samples.html)
 - Differential Abundance Analysis
   - [Compositional Analysis by scDC](compositional_analysis_by_scDC.html)
   - [Compositional Analysis by scCODA](compositional_analysis_by_scCODA.html)
@@ -31,5 +32,6 @@ editor_options:
   - [Perform Differential State Analysis](differential_state_analysis.html)
   - [Geneset Enrichment Analysis](diff_state_geneset_analysis.html)
 - Trajectory Inference
+  - [Developmental Process of MOCK Samples](developmental_process_of_mock_samples.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - TODO: GRN of trajectory

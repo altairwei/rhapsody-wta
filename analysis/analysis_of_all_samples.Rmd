@@ -1,0 +1,114 @@
+---
+title: "Integrated Analysis of All Samples"
+author: "Altair Wei"
+date: '2022-10-24'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+reactable::reactable(iris)
+```
+
+## 加载数据集
+
+```{r}
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+
+
+## 细胞群体的标识基因
+
+### 鉴定 Marker 基因
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+```{r}
+cosgMarkerDataframe <- function(x) {
+  clusters <- colnames(x$names)
+  lapply(clusters, function(cls) data.frame(
+    clusters = cls,
+    genes = x$names[[cls]],
+    scores = x$scores[[cls]]
+  )) |> dplyr::bind_rows()
+}
+
+markers <- cosgMarkerDataframe(marker_cosg)
+```
+
+### Marker 基因列表 {.tabset}
+
+```{r message=FALSE, warning=FALSE}
+anno <- brookite::pull_annotation(
+  unique(markers$genes),
+  mart_info = list(
+    mart = "plants_mart",
+    dataset = "taestivum_eg_gene",
+    host = "https://plants.ensembl.org"
+  ),
+  dest_attrs = c(
+    Description = "description",
+    GO_ID = "go_id",
+    GO_Name = "name_1006",
+    GO_Level = "namespace_1003"
+  ))
+
+markers_list <- dplyr::left_join(markers, anno, by = c("genes" = "ensembl_gene_id")) |>
+  dplyr::select(genes, scores, clusters, Description, GO_Name)
+markers_list <- split(markers_list, markers_list$clusters)
+```
+
+```{r results='asis'}
+for (cls in names(markers_list)) {
+  df <- markers_list[[cls]]
+  df_id <- paste0("markers_anno_table_", cls)
+  cat("####", cls, "\n\n")
+  print(
+    htmltools::tagList(
+      htmltools::tags$button(
+        "Download as CSV",
+        onclick = sprintf(
+          "Reactable.downloadDataCSV('%s', '%s')",
+          df_id, df_id)
+      ),
+      reactable::reactable(
+        df,
+        defaultPageSize = 5,
+        elementId = df_id
+      )
+    )
+  )
+}
+```
+
+
+### 表达值投影 {.tabset}
+
+```{r fig.height=6, fig.width=9, results='asis'}
+for (cls in names(markers_list)) {
+  df <- markers_list[[cls]] |> dplyr::select(genes, scores)
+  df_id <- paste0("markers_anno_table_", cls)
+  cat("####", cls, "\n\n")
+  tops <- suppressMessages(
+    dplyr::arrange(df, dplyr::desc(scores)) |>
+    dplyr::top_n(6) |>
+    dplyr::pull(genes))
+  p <- Seurat::FeaturePlot(obj, features = tops, order = TRUE,
+                           reduction = "umap", ncol = 3) &
+    ggplot2::coord_fixed()
+  print(p)
+  cat("\n\n")
+}
+```
+
+
