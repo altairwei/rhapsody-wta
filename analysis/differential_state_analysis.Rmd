@@ -14,7 +14,8 @@ BPPARAM <- BiocParallel::MulticoreParam(workers = 6)
 `muscat` 包要求输入数据需要预先经过处理，比如整合、聚类和细胞注释等等，因此这里我们直接加载已经处理过的 `Seurat` 对象。
 
 ```{r read-seurat-data, message=FALSE, warning=FALSE}
-obj <- readRDS("../output/obj_annotated.rds")
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj))), palette = NULL)
 ```
 
@@ -51,44 +52,13 @@ cat("\n\n")
 将所有样本降维图拆解成 "MOCK-AllSample"、"PNR2-AllSample"以及 "TR4-AllSample"：
 
 ```{r dim-plot-by-treatment, fig.height=5, fig.width=14}
-obj$treatment_type <- rhapsodykit::key_mapping(obj$group, c(
-  "0DPI-MOCK" = "MOCK",
-  "1DPI-MOCK" = "MOCK",
-  "2DPI-MOCK" = "MOCK",
-  "3DPI-MOCK" = "MOCK",
-
-  "1DPI-PNR2" = "PNR2",
-  "2DPI-PNR2" = "PNR2",
-  "3DPI-PNR2" = "PNR2",
-
-  "1DPI-TR4"  = "TR4",
-  "2DPI-TR4"  = "TR4",
-  "3DPI-TR4"  = "TR4"
-))
-
-obj$time <- rhapsodykit::key_mapping(obj$group, c(
-  "0DPI-MOCK" = "0DPI",
-  "1DPI-MOCK" = "1DPI",
-  "2DPI-MOCK" = "2DPI",
-  "3DPI-MOCK" = "3DPI",
-
-  "1DPI-PNR2" = "1DPI",
-  "2DPI-PNR2" = "2DPI",
-  "3DPI-PNR2" = "3DPI",
-
-  "1DPI-TR4"  = "1DPI",
-  "2DPI-TR4"  = "2DPI",
-  "3DPI-TR4"  = "3DPI"
-))
-
-Seurat::DimPlot(obj, reduction = "tsne", group.by = "time", split.by = "treatment_type") +
+Seurat::DimPlot(obj, reduction = "tsne", group.by = "time", split.by = "treatment") +
   ggplot2::theme(plot.title = ggplot2::element_blank())
 ```
 
 ### 2.2 准备 {muscat} 要求的输入格式
 
 ```{r read-muscat-sce}
-Seurat::DefaultAssay(obj) <- "integrated"
 sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
 ```
 
@@ -106,10 +76,6 @@ cluster_stats %>% as.data.frame.matrix()
 ```{r cluster-abundance-barplot, warning=FALSE}
 rhapsodykit::barplot_cluster_abundance(sce)
 ```
-
-TODO: 计算丰度变化的显著性。
-
-> Statistical significance of differences in the proportion of clusters between separate arrays and sequencing runs was performed using a Chi-square test. (Macosko, Evan Z., Anindita Basu, Rahul Satija, James Nemesh, Karthik Shekhar, Melissa Goldman, Itay Tirosh, et al. 2015. "Highly Parallel Genome-Wide Expression Profiling of Individual Cells Using Nanoliter Droplets." Cell 161 (5): 1202--14. <https://doi.org/10.1016/j.cell.2015.05.002>.)
 
 ### 2.4 样本细胞数量
 
@@ -147,7 +113,7 @@ p_sample_cells
 ```{r calc-pseudo-bulk, warning=FALSE}
 pb_list <- xfun::cache_rds(
   file = "pb_list.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialState/",
   expr = {
     list(
       "counts" = rhapsodykit::calculate_pseudo_bulk(sce, "counts", BPPARAM = BPPARAM),
@@ -166,7 +132,7 @@ pb_list <- xfun::cache_rds(
 ```{r pb-mds-plot}
 pb_mds_df <- xfun::cache_rds(
   file = "pb_mds_df.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialState/",
   expr = local({
     data <- muscat::pbMDS(pb_list$logcounts)$data
     data$time <- rhapsodykit::key_mapping(data$group_id, c(
@@ -356,7 +322,7 @@ contrast_names <- c(
 
 ds_res <- xfun::cache_rds(
   file = "ds_res.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialState/",
   expr = {
     list(
       edgeR = rhapsodykit::pseudobulk_diff_state(
@@ -377,7 +343,7 @@ ds_res <- xfun::cache_rds(
 
 ds_1dpi <- xfun::cache_rds(
   file = "ds_1dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialState/",
   expr = list(
     edgeR = rhapsodykit::pseudobulk_diff_state(
       sce, pb_list$counts,
@@ -402,7 +368,7 @@ ds_1dpi <- xfun::cache_rds(
 
 ds_2dpi <- xfun::cache_rds(
   file = "ds_2dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialState/",
   expr = list(
     edgeR = rhapsodykit::pseudobulk_diff_state(
       sce, pb_list$counts,
@@ -427,7 +393,7 @@ ds_2dpi <- xfun::cache_rds(
 
 ds_3dpi <- xfun::cache_rds(
   file = "ds_3dpi.rds",
-  dir = "../output/",
+  dir = "../results/ObjectCache/DifferentialState/",
   expr = list(
     edgeR = rhapsodykit::pseudobulk_diff_state(
       sce, pb_list$counts,
@@ -530,7 +496,7 @@ ds_res$DESeq2 %>%
 除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
 
 ```{r gene-expr-freq, eval=FALSE}
-ds_res$edgeR %>%
+ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant(0.05, 1) %>%
   rhapsodykit::expr_freq_filter(sce) %>%
   rhapsodykit::diff_state_summary()
@@ -630,14 +596,14 @@ tbl_filtered <- ds_res$DESeq2 %>%
 
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:16, "gene") %>%
+  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:13, "gene") %>%
   rhapsodykit::from_list_to_upset() %>%
   rhapsodykit::upset_dataframe() %>%
   rhapsodykit::upset_plot()
 
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", 1:16, "gene") %>%
+  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", 1:13, "gene") %>%
   rhapsodykit::from_list_to_upset() %>%
   rhapsodykit::upset_dataframe() %>%
   rhapsodykit::upset_plot()
@@ -652,12 +618,12 @@ plot_updown <- function(contrast) {
   up_list <- ds_res$DESeq2 %>%
     rhapsodykit::diff_state_filter(logFC > 0) %>%
     rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull(contrast, 1:16, "gene")
+    rhapsodykit::diff_state_pull(contrast, 1:13, "gene")
   
   down_list <- ds_res$DESeq2 %>%
     rhapsodykit::diff_state_filter(logFC < 0) %>%
     rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull(contrast, 1:16, "gene")
+    rhapsodykit::diff_state_pull(contrast, 1:13, "gene")
   
   rhapsodykit::upset_updown_regulated(up_list, down_list)
 }
@@ -744,7 +710,7 @@ TODO: 针对某个 cluster ，绘制所有 contrast 的 UpSet 图。
 ```{r cluster-upset}
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
-  diff_state_subset(cluster = "VCs_5") %>%
+  diff_state_subset(cluster = "Va_4") %>%
   upset_contrasts()
 ```
 
@@ -781,8 +747,8 @@ cowplot::plot_grid(plotlist = ps, ncol = 2, align = "vh")
 我们可以从细胞水平来看看这些 DS 基因的差异性分布：
 
 ```{r violin-plot, fig.height=5, fig.width=14}
-scater::plotExpression(sce[, sce$cluster_id == "VCs_5"],
-  features = tbl_filtered$`VCs_5`$gene[seq_len(6)],
+scater::plotExpression(sce[, sce$cluster_id == "Va_4"],
+  features = tbl_filtered$`Va_4`$gene[seq_len(6)],
   x = "sample_id", colour_by = "group_id", ncol = 3) +
   ggplot2::guides(fill = ggplot2::guide_legend(override.aes = list(size = 5, alpha = 1))) +
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
@@ -803,7 +769,7 @@ genes <- dplyr::bind_rows(tbl_filtered) %>%
 # top-5 DS genes per cluster
 rhapsodykit::heatmap_cross_sample(
   pb_arr, genes,
-  clusters = c("VCs_5", "MCs_5"),
+  clusters = c("Va_4", "Me_1"),
   type = "logcounts",
   show_row_names = FALSE)
 ```
@@ -915,6 +881,10 @@ cols <- circlize::colorRamp2(brks, .hm_cols)
     col_anno, row_anno, cc_ids, row_title = NULL, 
     cluster_row_slices = FALSE, cluster_column_slices = FALSE, 
     use_raster = TRUE, raster_device = "CairoPNG"))
+```
+
+```{r}
+knitr::knit_exit()
 ```
 
 ## 4 时间线差异状态

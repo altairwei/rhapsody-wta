@@ -30,7 +30,7 @@ editor_options:
   - [Co-varying Neighborhood Analysis](covarying_neighborhood_analysis.html)
 - Differential State Analysis
   - [Perform Differential State Analysis](differential_state_analysis.html)
-  - [Geneset Enrichment Analysis](diff_state_geneset_analysis.html)
+  - [Geneset Enrichment for Differential States](diff_state_geneset_analysis.html)
   - [Pseudobulk Gene Expression Analysis](pseudobulk_gene_expression_analysis.html)
 - Trajectory Inference
   - [Developmental Process of MOCK Samples](developmental_process_of_mock_samples.html)

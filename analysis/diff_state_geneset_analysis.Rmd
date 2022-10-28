@@ -7,6 +7,7 @@ output: html_document
 ```{r setup, include=FALSE}
 library(magrittr)
 library(patchwork)
+library(ggplot2)
 knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 source("../scripts/UtilityFunctions.R")
 source("../scripts/EnrichmentUtilities.R")
@@ -17,7 +18,7 @@ source("../scripts/EnrichmentUtilities.R")
 首先读取差异分析的结果：
 
 ```{r}
-ds_res <- readRDS(Sys.glob("../output/ds_res_*.rds"))
+ds_res <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/ds_res_*.rds"))
 ```
 
 ## 1.1 基于 GO 注释的功能分析
@@ -56,26 +57,26 @@ length(keys(orgdb, keytype = "GID"))
 ```{r cache=TRUE}
 enr1 <- performDSEnrichORA(
   ds_res$DESeq2,
-  "X1DPI.PNR2-X1DPI.MOCK", "VCs_5",
+  "X1DPI.PNR2-X1DPI.MOCK", "Va_4",
   ont = "BP"
 )
 
 enr2 <- performDSEnrichORA(
   ds_res$DESeq2,
-  "X1DPI.PNR2-X1DPI.MOCK", "VCs_5",
+  "X1DPI.PNR2-X1DPI.MOCK", "Va_4",
   ont = "MF"
 )
 
 p1 <- enr1$enr %>%
   brookite::enrich_barplot(
     x = "Count", show_category = 20,
-    title = "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
+    title = "Va_4 of 1DPI-PNR2 vs. 1DPI-MOCK"
   )
 
 p2 <-  enr2$enr %>% 
   brookite::enrich_barplot(
     x = "Count", show_category = 20,
-    title = "VCs_5 of 1DPI-PNR2 vs. 1DPI-MOCK"
+    title = "Va_4 of 1DPI-PNR2 vs. 1DPI-MOCK"
   )
 ```
 
@@ -92,7 +93,7 @@ clusterProfiler::goplot(enr1$enr, showCategory = 40)
 ```{r cache=TRUE}
 enr <- performDSEnrichORA(
   ds_res$DESeq2,
-  "X1DPI.PNR2-X1DPI.MOCK", "MCs_5",
+  "X1DPI.PNR2-X1DPI.MOCK", "Me_6",
   ont = "BP"
 )
 ```
@@ -106,8 +107,8 @@ enrichplot::goplot(enr$enr, showCategory = 60)
 现在我们可以从基因与 GO 的关系绘图：
 
 ```{r}
-enr1 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "BP")
-enr2 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "VCs_5", ont = "MF")
+enr1 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Va_4", ont = "BP")
+enr2 <- performDSEnrichORA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Va_4", ont = "MF")
 ```
 
 ```{r cnetplot, fig.height=8, fig.width=16}
@@ -187,16 +188,16 @@ comp_enr <- performDSCompareORA(ds_res$DESeq2,
     "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
   clusters = c(
-    "VCs_5" = "VCs_5",
-    "MCs_5" = "MCs_5",
-    "MCs_1" = "MCs_1"
+    "Me_6" = "Me_6",
+    "Va_2" = "Va_2",
+    "Va_4" = "Va_4"
   )
 )
 ```
 
 ```{r 1dpi-ora-compare-cluster, dev="png", fig.height=12, fig.width=8}
 comp_enr@compareClusterResult$cluster <- factor(
-  comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5", "MCs_1"))
+  comp_enr@compareClusterResult$cluster, c("Me_6", "Va_2", "Va_4"))
 enrichplot::dotplot(
     comp_enr, x = "contrast",
     showCategory = 40, by = "count", label_format = 60) +
@@ -219,7 +220,7 @@ p <- comp_enr %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::treeplot(
     showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 8,
+    offset = 30, offset_tiplab = 12,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 5.5)) +
@@ -247,8 +248,8 @@ GSEA 将一个基因集内各基因的统计数据聚合起来，因此有可能
 For gene set enrichment analysis, we need a ranked list of genes. Suppose you are importing your own data from a csv file and the file contains two columns, one for gene ID (no duplicated allowed) and another one for fold change, you can prepare your own geneList via the following command:
 
 ```{r results="hide", cache=TRUE}
-gsea1 <- performDSEnrichGSEA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "MCs_5", ont = "BP")
-gsea2 <- performDSEnrichGSEA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "MCs_5", ont = "MF")
+gsea1 <- performDSEnrichGSEA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Va_4", ont = "BP")
+gsea2 <- performDSEnrichGSEA(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK", "Va_4", ont = "MF")
 ```
 
 问题是从哪里去找通路数据库呢？似乎 [Plant Reactome](https://plantreactome.gramene.org/) 很不错的样子。
@@ -312,15 +313,15 @@ comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
     "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
   clusters = c(
-    "VCs_5" = "VCs_5",
-    "MCs_5" = "MCs_5",
-    "Un_1" = "Un_1"
+    "Me_6" = "Me_6",
+    "Va_2" = "Va_2",
+    "Va_4" = "Va_4"
   ),
   simplify = TRUE
 )
 
 comp_enr@compareClusterResult$cluster <- factor(
-  comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5", "Un_1"))
+  comp_enr@compareClusterResult$cluster, c("Me_6", "Va_2", "Va_4"))
 ```
 
 ```{r 1dpi-gsea-compare-cluster, dev="png", fig.height=15, fig.width=10}
@@ -372,13 +373,13 @@ p
 加载 1DPI 单独的 DS 结果：
 
 ```{r}
-ds_1dpi <- readRDS(Sys.glob("../output/ds_1dpi_*.rds"))
+ds_1dpi <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/ds_1dpi_*.rds"))
 ```
 
 加载 MDS 降维数据：
 
 ```{r}
-pb_mds_df <- readRDS(Sys.glob("../output/pb_mds_df_*.rds"))
+pb_mds_df <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/pb_mds_df_*.rds"))
 pb_mds_df$time <- dplyr::recode(pb_mds_df$group_id,
   "X0DPI.MOCK" = "0DPI",
   "X1DPI.MOCK" = "1DPI",
@@ -480,7 +481,7 @@ genecount_df %>%
   ggplot2::theme(legend.position = "right")
 ```
 
-## DS 分析中显著的 MCs_5 和 VCs_5 细胞群集
+## DS 分析中显著的 Va_4 和 Me_6 细胞群集
 
 ### ORA 分析
 
@@ -546,7 +547,7 @@ query_annotation <- function(genes, go_data) {
 
 intersection_query(itsc,
   c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
-  c("VCs_5")
+  c("Va_4")
 )
 ```
 
@@ -555,7 +556,7 @@ intersection_query(itsc,
 ```{r}
 intersection_query(itsc,
   c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
-  c("VCs_5")
+  c("Va_4")
 )
 ```
 
@@ -570,12 +571,12 @@ mart_info <- list(
 
 intersection_query(itsc,
   c("X1DPI.PNR2-X1DPI.MOCK", "X1DPI.TR4-X1DPI.MOCK"),
-  c("VCs_5")
+  c("Va_4")
 ) %>%
   brookite::pull_annotation(mart_info)
 ```
 
-VCs_5 和 MCs_5 的生物主题比较：
+Va_4 和 Me_6 的生物主题比较：
 
 ![](`r paste("figure", knitr::current_input(), "1dpi-ora-compare-cluster-1.png", sep = '/')`)
 
@@ -585,38 +586,6 @@ VCs_5 和 MCs_5 的生物主题比较：
 
 ![](`r paste("figure", knitr::current_input(), "1dpi-gsea-compare-cluster-1.png", sep = '/')`)
 
-## Cortex Cells
-
-```{r message=FALSE, warning=FALSE, cache=TRUE}
-comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
-  contrasts = c(
-    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
-    "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
-  ),
-  clusters = c(
-    "CCs_1", "CCs_2", "CCs_3", "CCs_6",
-    "CCs_7", "CCs_8"
-  ),
-  simplify = TRUE
-)
-```
-
-```{r fig.height=18, fig.width=20, message=FALSE, warning=FALSE}
-p <- comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    size = "geneRatio", color = "NES",
-    offset = 50, offset_tiplab = 28,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(12, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
-  ggplot2::coord_cartesian() +
-  NULL
-p
-```
-
 ## Mesophyll Cells
 
 ```{r message=FALSE, warning=FALSE, cache=TRUE}
@@ -625,9 +594,7 @@ comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
     "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
     "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
-  clusters = c(
-    "MCs_1", "MCs_2", "MCs_3", "MCs_5"
-  ),
+  clusters = paste0("Me_", 1:6),
   simplify = TRUE
 )
 ```
@@ -638,7 +605,7 @@ p <- comp_enr %>%
   enrichplot::treeplot(
     showCategory = 20, nCluster = 12,
     size = "geneRatio", color = "NES",
-    offset = 50, offset_tiplab = 16,
+    offset = 50, offset_tiplab = 22,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(12, 0))) +
@@ -656,18 +623,18 @@ comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
     "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
     "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
-  clusters = paste0("VCs_", 4:6),
+  clusters = c("Va_1", "Va_2", "Va_4"),
   simplify = TRUE
 )
 ```
 
-```{r fig.height=10, fig.width=16, message=FALSE, warning=FALSE}
+```{r fig.height=10, fig.width=12, message=FALSE, warning=FALSE}
 p <- comp_enr %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::treeplot(
     showCategory = 40, nCluster = 12,
     size = "geneRatio", color = "NES",
-    offset = 45, offset_tiplab = 15,
+    offset = 45, offset_tiplab = 21,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(8, 0))) +
@@ -685,7 +652,7 @@ comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
     "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
   ),
   clusters = c(
-    "ECs_1", "ECs_2", "GCs", "Un_2"
+    "Gu", "BS", "Ep_1", "Ep_2"
   ),
   simplify = TRUE
 )
@@ -697,7 +664,7 @@ p <- comp_enr %>%
   enrichplot::treeplot(
     showCategory = 20, nCluster = 12,
     size = "geneRatio", color = "NES",
-    offset = 40, offset_tiplab = 17,
+    offset = 30, offset_tiplab = 14,
     label_format_cladelab = 5,
     hexpand = .01,
     geneClusterPanel = "dotplot", nWords = 0) +
@@ -711,7 +678,7 @@ p
 # 3 侵染中期（2DPI）差异状态基因的富集分析
 
 ```{r}
-ds_2dpi <- readRDS(Sys.glob("../output/ds_2dpi_*.rds"))
+ds_2dpi <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/ds_2dpi_*.rds"))
 ```
 
 ```{r}
@@ -736,7 +703,7 @@ genecount_df %>%
   ggplot2::theme(legend.position = "right")
 ```
 
-## 3.1 VCs_5 与 MCs_5
+## 3.1 Va_4 与 Me_6
 
 ### ORA
 
@@ -747,14 +714,14 @@ comp_enr <- performDSCompareORA(ds_2dpi$DESeq2,
     "TR4_2DPI" = "X2DPI.TR4-X2DPI.MOCK"
   ),
   clusters = c(
-    "VCs_5" = "VCs_5",
-    "MCs_5" = "MCs_5",
-    "Un_1" = "Un_1"
+    "Me_6" = "Me_6",
+    "Va_2" = "Va_2",
+    "Va_4" = "Va_4"
   )
 )
 
 comp_enr@compareClusterResult$cluster <- factor(
-  comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5", "Un_1"))
+  comp_enr@compareClusterResult$cluster, c("Me_6", "Va_2", "Va_4"))
 ```
 
 ```{r 2dpi-ora-compare-cluster, dev="png", fig.height=12, fig.width=8}
@@ -770,7 +737,7 @@ p <- comp_enr %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::treeplot(
     showCategory = 40, nCluster = 9,
-    offset = 30, offset_tiplab = 8,
+    offset = 30, offset_tiplab = 10,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 6)) +
@@ -787,15 +754,15 @@ comp_enr <- performDSCompareGSEA(ds_2dpi$DESeq2,
     "TR4_2DPI" = "X2DPI.TR4-X2DPI.MOCK"
   ),
   clusters = c(
-    "VCs_5" = "VCs_5",
-    "MCs_5" = "MCs_5",
-    "Un_1" = "Un_1"
+    "Me_6" = "Me_6",
+    "Va_2" = "Va_2",
+    "Va_4" = "Va_4"
   ),
   simplify = TRUE
 )
 
 comp_enr@compareClusterResult$cluster <- factor(
-  comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5", "Un_1"))
+  comp_enr@compareClusterResult$cluster, c("Me_6", "Va_2", "Va_4"))
 ```
 
 ```{r 2dpi-gsea-compare-cluster, fig.height=15, fig.width=10}
@@ -805,22 +772,23 @@ enrichplot::dotplot(comp_enr, x = "contrast", showCategory = 40, label_format = 
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 ```
 
-```{r fig.height=12, fig.width=16}
+```{r fig.height=12, fig.width=14}
 p <- comp_enr %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::treeplot(
     showCategory = 40, nCluster = 10,
     size = "geneRatio", color = "NES",
-    offset = 40, offset_tiplab = 18,
+    offset = 50, offset_tiplab = 24,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(8, 0))) +
   ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
-  ggplot2::coord_cartesian()
+  #ggplot2::coord_cartesian() +
+  NULL
 p
 ```
 
-## 3.2 Cortex Cells
+## 3.2 Mesophyll
 
 ```{r cache=TRUE}
 comp_enr <- performDSCompareGSEA(ds_2dpi$DESeq2,
@@ -828,10 +796,7 @@ comp_enr <- performDSCompareGSEA(ds_2dpi$DESeq2,
     "PNR2_2DPI" = "X2DPI.PNR2-X2DPI.MOCK",
     "TR4_2DPI" = "X2DPI.TR4-X2DPI.MOCK"
   ),
-  clusters = c(
-    "CCs_1", "CCs_2", "CCs_3",
-    "CCs_6", "CCs_7", "CCs_8"
-  )
+  clusters = paste0("Me_", 1:6)
 )
 ```
 
@@ -848,7 +813,7 @@ p <- comp_enr %>%
   enrichplot::treeplot(
     showCategory = 40, nCluster = 14,
     sieze = "geneRatio", color = "NES",
-    offset = 50, offset_tiplab = 26,
+    offset = 50, offset_tiplab = 28,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
@@ -865,18 +830,18 @@ comp_enr <- performDSCompareGSEA(ds_2dpi$DESeq2,
     "PNR2_2DPI" = "X2DPI.PNR2-X2DPI.MOCK",
     "TR4_2DPI" = "X2DPI.TR4-X2DPI.MOCK"
   ),
-  clusters = paste0("VCs_", 4:6),
+  clusters = c("Va_1", "Va_2", "Va_4"),
   simplify = TRUE
 )
 ```
 
-```{r fig.height=15, fig.width=16, message=FALSE, warning=FALSE}
+```{r fig.height=15, fig.width=10, message=FALSE, warning=FALSE}
 p <- comp_enr %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::treeplot(
     showCategory = 40, nCluster = 12,
     size = "geneRatio", color = "NES",
-    offset = 40, offset_tiplab = 12,
+    offset = 40, offset_tiplab = 24,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(8, 0))) +
@@ -885,12 +850,44 @@ p <- comp_enr %>%
 p
 ```
 
+## 3.4 其他细胞
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+comp_enr <- performDSCompareGSEA(ds_2dpi$DESeq2,
+  contrasts = c(
+    "PNR2_2DPI" = "X2DPI.PNR2-X2DPI.MOCK",
+    "TR4_2DPI" = "X2DPI.TR4-X2DPI.MOCK"
+  ),
+  clusters = c(
+    "Gu", "BS", "Ep_1", "Ep_2"
+  ),
+  simplify = TRUE
+)
+```
+
+```{r fig.height=12, fig.width=16, message=FALSE, warning=FALSE}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 20, nCluster = 12,
+    size = "geneRatio", color = "NES",
+    offset = 30, offset_tiplab = 12,
+    label_format_cladelab = 5,
+    hexpand = .01,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(12, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
+  ggplot2::coord_cartesian() +
+  NULL
+p
+```
+
 # 4 侵染后期（3DPI）差异状态基因
 
-## 4.1 VCs_5 和 MCs_5
+## 4.1 Va_4 和 Me_6
 
 ```{r}
-ds_3dpi <- readRDS(Sys.glob("../output/ds_3dpi_*.rds"))
+ds_3dpi <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/ds_3dpi_*.rds"))
 ```
 
 ```{r}
@@ -924,14 +921,14 @@ comp_enr <- performDSCompareORA(ds_3dpi$DESeq2,
     "TR4_3DPI" = "X3DPI.TR4-X3DPI.MOCK"
   ),
   clusters = c(
-    "VCs_5" = "VCs_5",
-    "MCs_5" = "MCs_5",
-    "Un_1" = "Un_1"
+    "Me_6" = "Me_6",
+    "Va_2" = "Va_2",
+    "Va_4" = "Va_4"
   )
 )
 
 comp_enr@compareClusterResult$cluster <- factor(
-  comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5", "Un_1"))
+  comp_enr@compareClusterResult$cluster, c("Me_6", "Va_2", "Va_4"))
 ```
 
 ```{r 3dpi-ora-compare-cluster, dev="png", fig.height=12, fig.width=8}
@@ -964,15 +961,15 @@ comp_enr <- performDSCompareGSEA(ds_3dpi$DESeq2,
     "TR4_3DPI" = "X3DPI.TR4-X3DPI.MOCK"
   ),
   clusters = c(
-    "VCs_5" = "VCs_5",
-    "MCs_5" = "MCs_5",
-    "Un_1" = "Un_1"
+    "Me_6" = "Me_6",
+    "Va_2" = "Va_2",
+    "Va_4" = "Va_4"
   ),
   simplify = TRUE
 )
 
 comp_enr@compareClusterResult$cluster <- factor(
-  comp_enr@compareClusterResult$cluster, c("VCs_5", "MCs_5", "Un_1"))
+  comp_enr@compareClusterResult$cluster, c("Me_6", "Va_2", "Va_4"))
 ```
 
 ```{r 3dpi-gsea-compare-cluster, fig.height=15, fig.width=10}
@@ -988,7 +985,7 @@ p <- comp_enr %>%
   enrichplot::treeplot(
     showCategory = 40, nCluster = 11,
     size = "geneRatio", color = "NES",
-    offset = 40, offset_tiplab = 16,
+    offset = 40, offset_tiplab = 20,
     label_format_cladelab = 5,
     geneClusterPanel = "dotplot", nWords = 0) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(7, 0))) +
@@ -997,7 +994,7 @@ p <- comp_enr %>%
 p
 ```
 
-## 4.2 Vascular Cells
+## 4.2 Mesophyll
 
 ```{r message=FALSE, warning=FALSE, cache=TRUE}
 comp_enr <- performDSCompareGSEA(ds_3dpi$DESeq2,
@@ -1005,7 +1002,7 @@ comp_enr <- performDSCompareGSEA(ds_3dpi$DESeq2,
     "PNR2_3DPI" = "X3DPI.PNR2-X3DPI.MOCK",
     "TR4_3DPI" = "X3DPI.TR4-X3DPI.MOCK"
   ),
-  clusters = paste0("VCs_", 4:6),
+  clusters = paste0("Me_", 1:6),
   simplify = TRUE
 )
 ```
@@ -1022,5 +1019,66 @@ p <- comp_enr %>%
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(8, 0))) +
   ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
   ggplot2::coord_cartesian()
+p
+```
+
+## 4.3 Vascular Cells
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+comp_enr <- performDSCompareGSEA(ds_3dpi$DESeq2,
+  contrasts = c(
+    "PNR2_3DPI" = "X3DPI.PNR2-X3DPI.MOCK",
+    "TR4_3DPI" = "X3DPI.TR4-X3DPI.MOCK"
+  ),
+  clusters = c("Va_1", "Va_2", "Va_4"),
+  simplify = TRUE
+)
+```
+
+```{r fig.height=15, fig.width=16, message=FALSE, warning=FALSE}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "geneRatio", color = "NES",
+    offset = 40, offset_tiplab = 22,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(8, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
+  ggplot2::coord_cartesian()
+p
+```
+
+
+## 3.4 其他细胞
+
+```{r message=FALSE, warning=FALSE, cache=TRUE}
+comp_enr <- performDSCompareGSEA(ds_3dpi$DESeq2,
+  contrasts = c(
+    "PNR2_3DPI" = "X3DPI.PNR2-X3DPI.MOCK",
+    "TR4_3DPI" = "X3DPI.TR4-X3DPI.MOCK"
+  ),
+  clusters = c(
+    "Gu", "BS", "Ep_1", "Ep_2"
+  ),
+  simplify = TRUE
+)
+```
+
+```{r fig.height=12, fig.width=16, message=FALSE, warning=FALSE}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 20, nCluster = 12,
+    size = "geneRatio", color = "NES",
+    offset = 30, offset_tiplab = 13,
+    label_format_cladelab = 5,
+    hexpand = .01,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(12, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
+  ggplot2::coord_cartesian() +
+  NULL
 p
 ```
