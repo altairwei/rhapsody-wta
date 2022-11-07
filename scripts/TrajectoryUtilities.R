@@ -265,37 +265,69 @@ runScanorama <- function(sce, nfeatures = 2000L, ..., convert = TRUE) {
 plotSlingshotCurveOnReduc <- function(sce, reduction = "UMAP", ...) {
   if (!is.null(colnames(reducedDim(sce, reduction))))
     colnames(reducedDim(sce, reduction)) <- NULL
-  
+
   pseudo.paths <- slingshot::slingPseudotime(sce)
-  
+
   # Taking the rowMeans just gives us a single pseudo-time for all cells. Cells
   # in segments that are shared across paths have similar pseudo-time values in 
   # all paths anyway, so taking the rowMeans is not particularly controversial.
   shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
-  
+
   # Need to loop over the paths and add each one separately.
-  embedded <- slingshot::embedCurves(sce, reduction)
+  dots <- list(...)
+  dimred <- reduction
+  if ("ncomponents" %in% names(dots))
+    dimred <- reducedDim(sce, reduction)[, dots$ncomponents]
+
+  embedded <- slingshot::embedCurves(sce, dimred)
   embedded <- slingshot::slingCurves(embedded)
   curve_data <- lapply(embedded, function(path) data.frame(path$s[path$ord,]))
-  
+
   if (is.data.frame(curve_data))
     curve_list <- list(curve_data)
   else if (is.list(curve_data) && all(sapply(curve_data, is.data.frame)))
     curve_list <- curve_data
   else
     curve_list <- list()
-  
+
   p <- scater::plotReducedDim(
     sce, reduction, colour_by = I(shared.pseudo), ...) +
     ggplot2::coord_fixed()
-  
+
   for (curve in curve_list)
     p <- p + ggplot2::geom_path(
       data = curve,
       mapping = ggplot2::aes(x = Dim.1, y = Dim.2),
       size = 1.2)
-  
+
   p
+}
+
+plotLineageCurveOnReduc <- function(sce, lineage, dimred = "UMAP", ncomponents = 2, ...) {
+  stopifnot(is.numeric(lineage))
+  
+  if (length(ncomponents) == 1L) {
+    to_plot <- seq_len(ncomponents)
+  }
+  else {
+    to_plot <- ncomponents
+  }
+  
+  embeddings <- reducedDim(sce, dimred)[, to_plot]
+  colnames(embeddings) <- paste0(dimred, ".", to_plot)
+  embedded <- slingshot::slingCurves(
+    slingshot::embedCurves(sce, embeddings))
+  pseudo.paths <- slingshot::slingPseudotime(sce)
+  
+  scater::plotReducedDim(sce,
+                         dimred = dimred, ncomponents = ncomponents,
+                         colour_by = I(pseudo.paths[, lineage]), ...) +
+    ggplot2::geom_path(
+      data = data.frame(embedded[[lineage]]$s[embedded[[lineage]]$ord,]),
+      mapping = ggplot2::aes_string(
+        x = colnames(embeddings)[1],
+        y = colnames(embeddings)[2]),
+      size = 1.2)
 }
 
 plotVelocityArrow <- function(sce, reduction, ...) {
@@ -441,26 +473,72 @@ blue2white2red <- function(n) {
   pal(n)
 }
 
-plotPseudotimeHeatmap <- function(mtx,
-  palette = colorRamps::matlab.like2, ...) {
+plotPseudotimeHeatmap <- function(
+    mtx, cluster_rows = TRUE, query_set = FALSE,
+    seriation = FALSE, seriation_method = "GW",
+    palette = colorRamps::matlab.like2,
+    color_branches = FALSE,
+    dend_k = NULL,
+    ...) {
 
   mtx_uni <- unique(mtx)
   if (length(mtx_uni) < 100)
     q <- max(abs(mtx))
   else
     q <- stats::quantile(abs(mtx), probs = .99)
-  
-  bks <- seq(-q, q, length.out = 9)
 
+  bks <- seq(-q, q, length.out = 9)
   col_fun <- circlize::colorRamp2(
     breaks = bks,
     colors = palette(length(bks))
   )
-  
-  ComplexHeatmap::Heatmap(
+
+  row_dist <- as.dist(1 - cor(t(mtx)))
+  row_dist[is.na(row_dist)] <- 1
+
+  if (seriation) {
+    o1 <- seriation::seriate(row_dist, method = seriation_method)
+    # Currently, the permutation vector can be stored as a simple
+    # integer vector or as an object of class hclust.
+    row_dend <- as.dendrogram(o1[[1]])
+  } else {
+    row_dend <- hclust(row_dist, method = "ward.D2")
+    if (color_branches)
+      row_dend <- dendextend::color_branches(row_dend, k = dend_k)
+  }
+
+  if (cluster_rows) {
+    show_row_dend <- TRUE
+    cluster_rows <- row_dend
+  } else {
+    cluster_rows <- FALSE
+    show_row_dend = FALSE
+  }
+
+  ph_res <- ComplexHeatmap::Heatmap(
     mtx,
+
+    # Remove name from fill legend
+    name = NULL,
+    use_raster = TRUE,
+
+    # Keep original row/col order
+    row_order = rownames(mtx),
+    column_order = colnames(mtx),
     col = col_fun,
+
+    # Add left annotation (legend with tumor/normal)
+    # right_annotation = gene_ann,
+    # ACTUAL SPLIT by sample group
+    cluster_rows = cluster_rows,
+    row_split = dend_k,
+    show_row_names = FALSE,
+    show_row_dend = show_row_dend,
+
     cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_column_dend = FALSE,
+
     heatmap_legend_param = list(
       title = NULL,
       legend_direction = "vertical",
@@ -468,6 +546,13 @@ plotPseudotimeHeatmap <- function(mtx,
     ),
     ...
   )
+
+  if (query_set) {
+    query_results <- list(heatmap = ph_res, row_dend = row_dend)
+    return(query_results)
+  } else {
+    return(ph_res)
+  }
 }
 
 calculateDiffusionMap <- function(
@@ -531,8 +616,8 @@ runPHATE <- function(x, ..., altexp=NULL, name="PHATE") {
 
 wrapSlingshotToDynverse <- function(sds) {
   cluster <- slingshot::slingClusterLabels(sds)
-  start_cell <- apply(slingshot::slingPseudotime(sds), 1, min) %>%
-    sort() %>% head(1) %>% names()
+  start_cell <- apply(slingshot::slingPseudotime(sds), 1, min) |>
+    sort() |> head(1) |> names()
   start.clus <- names(which(cluster[start_cell,] == 1))
 
   # satisfy r cmd check
@@ -541,9 +626,9 @@ wrapSlingshotToDynverse <- function(sds) {
   # collect milestone network
   lineages <- slingshot::slingLineages(sds)
   dist <- igraph::distances(slingshot::slingMST(sds))
-  cluster_network <- lineages %>%
-    purrr:::map_df(~ tibble::tibble(from = .[-length(.)], to = .[-1])) %>%
-    unique() %>%
+  cluster_network <- lineages |>
+    purrr:::map_df(~ tibble::tibble(from = .[-length(.)], to = .[-1])) |>
+    unique() |>
     dplyr:::mutate(
       length = dist[cbind(from, to)],
       directed = TRUE
@@ -579,10 +664,10 @@ wrapSlingshotToDynverse <- function(sds) {
 
   output <-
     dynwrap::wrap_data(
-      cell_ids = rownames(sds)) %>%
+      cell_ids = rownames(sds)) |>
     dynwrap::add_trajectory(
       milestone_network = cluster_network,
-      progressions = progressions) %>%
+      progressions = progressions) |>
     dynwrap::add_dimred(
       dimred = dimred)
 

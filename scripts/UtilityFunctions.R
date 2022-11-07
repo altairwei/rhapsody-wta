@@ -368,3 +368,9 @@ pseudobulk <- function(seurat,
   do.call(cbind, pb_list)
 }
 
+treatment_colors <- c(
+  "MOCK" = "blue",
+  "PNR2" = "red",
+  "TR4"  = "forestgreen"
+)
+

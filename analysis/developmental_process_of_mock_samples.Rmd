@@ -178,7 +178,7 @@ blue_to_orange <- rev(ggthemes::ggthemes_data[[
   c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
 ```
 
-在下面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI ~ 3DPI 的邻域系数。
+在下面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI \~ 3DPI 的邻域系数。
 
 #### UMAP
 
@@ -303,7 +303,8 @@ scv <- reticulate::import("scvelo")
 
 adata$obsm$update(list(
   X_tsne = reducedDim(sce_mock, "TSNE"),
-  X_umap = reducedDim(sce_mock, "UMAP")
+  X_umap = reducedDim(sce_mock, "UMAP"),
+  X_phate = reducedDim(sce_mock, "PHATE")
 ))
 
 adata$obs$cellType <- sce_mock$cluster_id
@@ -423,10 +424,9 @@ scv.pl.scatter(
 
 ### 隐时间 {.tabset}
 
-> The dynamical model recovers the latent time of the underlying cellular processes. This latent time represents the cell’s internal clock and approximates the real time experienced by cells as they differentiate, based only on its transcriptional dynamics.
+> The dynamical model recovers the latent time of the underlying cellular processes. This latent time represents the cell's internal clock and approximates the real time experienced by cells as they differentiate, based only on its transcriptional dynamics.
 >
-> scVelo’s latent time is based only on its transcriptional dynamics and represents
-the cell’s internal clock. It captures aspects of the actual time better than similarity-based diffusion pseudo-time.
+> scVelo's latent time is based only on its transcriptional dynamics and represents the cell's internal clock. It captures aspects of the actual time better than similarity-based diffusion pseudo-time.
 
 ```{python}
 ltkwargs=dict(color='latent_time', color_map='gnuplot', size=20, figsize=(7, 7))
@@ -452,237 +452,32 @@ scv.pl.scatter(r.adata, basis="tsne", **ltkwargs)
 r.adata.uns['neighbors']['distances'] = r.adata.obsp['distances']
 r.adata.uns['neighbors']['connectivities'] = r.adata.obsp['connectivities']
 
-scv.tl.paga(r.adata, groups='cellType')
+scv.tl.paga(r.adata, groups='cellType', threshold_root_end_prior=1)
 ```
 
 #### UMAP
 
 ```{python fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1,
+scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1, legend_loc='on data',
             min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
 ```
 
 #### t-SNE
 
 ```{python fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='tsne', size=50, alpha=.1,
+scv.pl.paga(r.adata, basis='tsne', size=50, alpha=.1, legend_loc='on data',
             min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
 ```
 
-## 5 轨迹推断
-
-### 叶肉细胞
-
-```{r}
-sce_me <- sce_mock[, sce_me$cluster_id %in% paste0("Me_", 1:5)]
-```
-
-```{r}
-adata <- runScVelo(
-  sce_me,
-  mode = "dynamical",
-  use.dimred = "HARMONY",
-  assay.X = "logcounts",
-  scvelo.params = list(
-    filter_and_normalize = list(
-      min_shared_counts = 20L, n_top_genes = 2000L),
-    moments = list(n_pcs = 30L, n_neighbors = 30L)
-  )
-)
-```
-
-```{r}
-scv <- reticulate::import("scvelo")
-
-adata$obsm$update(list(
-  X_tsne = reducedDim(sce_me, "TSNE"),
-  X_umap = reducedDim(sce_me, "UMAP")
-))
-
-adata$obs$cellType <- sce_me$cluster_id
-```
-
-```{python plot-stream-umap, fig.height=7, fig.width=7}
-scv.pl.velocity_embedding_stream(
-  r.adata, basis="umap", color="cellType", figsize = (7, 7))
-```
-
-解决 slingshot pseudotime 分布不均匀的问题：
-
-1. 使用 DPT 计算 pseudotime：{destiny} 可以计算 DPT。如果使用 DPT 的话，DiffusionMap 要当成概括化方法来用，而不仅仅是可视化方法，但参考教程中是基于 PCA 来计算 DiffusionMap 然后再计算 DPT 的。参考 https://broadinstitute.github.io/2020_scWorkshop/trajectory-analysis.html 但如果这样的化，harmony 该应用在什么地方？cluster 也得发生变化？
-
-2. Slingshot 计算 pseudotime 的方式：pseudotime values are obtained by orthogonal projection onto curves，所以我们需要看看 HARMONY 空间的细胞与曲线的相对位置。
-
-3. 对 harmony 取子集，然后用 diffusion map 简约掉多余的轴？再将结果喂给 slingshot 。
-
-#### Slingshot
-
-```{r}
-sce_me <- runDiffusionMap(sce_me, dimred = "HARMONY", ncomponents = 10, n_eigs = 10)
-```
-
-##### 基于 HARMONY
-
-```{r}
-sce_me <- slingshot::slingshot(sce_me,
-  clusterLabels = sce_me$cluster_id,
-  reducedDim = "HARMONY", start.clus = "Me_1",
-  approx_points = FALSE)
-```
-
-```{r fig.height=7, fig.width=14}
-p1 <- plotSlingshotCurveOnReduc(sce_me, reduction = "HARMONY")
-p2 <- plotSlingshotCurveOnReduc(sce_me, reduction = "UMAP")
-p3 <- plotSlingshotCurveOnReduc(sce_me, reduction = "DiffusionMap")
-p1 + p2 + p3
-```
-
-```{r}
-psts <- slingshot::slingPseudotime(sce_me) |>
-  as.data.frame() |>
-  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
-                      values_to = "pseudotime", names_to = "lineages")
-
-ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
-  ggplot2::geom_density(alpha = .5) +
-  ggplot2::scale_fill_brewer(type = "qual") +
-  #ggplot2::facet_wrap(~lineages) +
-  cowplot::theme_cowplot() +
-  ggplot2::theme(
-    strip.background = ggplot2::element_rect(fill = "white")
-  )
-```
-
-测序深度对 pseudotime 计算有影响吗？
-
-```{r}
-p1 <- scater::plotColData(sce_me, "nCount_RNA", "cluster_id",
-                          colour_by = "slingPseudotime_1", point_size = .1) +
-  ggplot2::scale_y_log10()
-p2 <- scater::plotColData(sce_me, "nCount_RNA", "cluster_id",
-                          colour_by = "slingPseudotime_2", point_size = .1) +
-  ggplot2::scale_y_log10()
-
-p1/p2
-```
-
-##### 基于 DC
-
-```{r}
-sce_me <- slingshot::slingshot(sce_me,
-  clusterLabels = sce_me$cluster_id,
-  reducedDim = "DiffusionMap", start.clus = "Me_2",
-  approx_points = FALSE)
-```
-
-```{r fig.height=7, fig.width=14}
-p1 <- plotSlingshotCurveOnReduc(sce_me, reduction = "HARMONY")
-p2 <- plotSlingshotCurveOnReduc(sce_me, reduction = "UMAP")
-p3 <- plotSlingshotCurveOnReduc(sce_me, reduction = "DiffusionMap")
-p1 + p2 + p3
-```
-
-```{r}
-psts <- slingshot::slingPseudotime(sce_me) |>
-  as.data.frame() |>
-  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
-                      values_to = "pseudotime", names_to = "lineages")
-
-ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
-  ggplot2::geom_density(alpha = .5) +
-  ggplot2::scale_fill_brewer(type = "qual") +
-  #ggplot2::facet_wrap(~lineages) +
-  cowplot::theme_cowplot() +
-  ggplot2::theme(
-    strip.background = ggplot2::element_rect(fill = "white")
-  )
-```
-
-#### Diffusion Pseudotime
-
-```{r}
-harmony <- reducedDim(sce_me, "HARMONY")
-dm <- destiny::DiffusionMap(harmony)
-
-#dpt <- destiny::DPT(dm, tips = which(colnames(sce_me) == "1DPI-MOCK-1_184678"))
-dpt <- destiny::DPT(dm, tips = sample(which(sce_me$cluster_id == "Me_2"), size = 1))
-```
-
-```{r}
-df <- data.frame(DC1 = destiny::eigenvectors(dm)[, 1],
-                 DC2 = destiny::eigenvectors(dm)[, 2], 
-                 dptval = dpt$dpt, cell_type = sce_me$cluster_id)
-p1 <- ggplot2::ggplot(df) + ggplot2::geom_point(ggplot2::aes(x = DC1, y = DC2, color = dptval))
-p2 <- ggplot2::ggplot(df) + ggplot2::geom_point(ggplot2::aes(x = DC1, y = DC2, color = cell_type))
-p <- cowplot::plot_grid(p1, p2)
-p
-```
-
-```{r}
-ggplot2::ggplot(data.frame(pseudotime = dpt$dpt), ggplot2::aes(x = pseudotime)) +
-  ggplot2::geom_density(alpha = .5) +
-  ggplot2::scale_fill_brewer(type = "qual") +
-  cowplot::theme_cowplot()
-```
-
-#### scVelo
-
-```{r}
-adata$obsm$update(list(
-  X_dc = reducedDim(sce_me, "DiffusionMap")
-))
-```
-
-```{python plot-velo-umap, fig.height=12, fig.width=12}
-scv.pl.velocity_embedding(
-  r.adata, basis="dc", color="cellType", figsize=(12, 12),
-  arrow_length=6, arrow_size=2, scale=2, dpi=300)
-```
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(
-  r.adata, color='velocity_pseudotime', cmap='gnuplot',
-  basis='dc', size=20, figsize=(7, 7))
-```
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, basis="dc", color='latent_time', color_map='gnuplot', size=20, figsize=(7, 7))
-```
-```{r}
-ggplot2::ggplot(data.frame(pseudotime = adata$obs$latent_time), ggplot2::aes(x = pseudotime)) +
-  ggplot2::geom_density(alpha = .5) +
-  ggplot2::scale_fill_brewer(type = "qual") +
-  cowplot::theme_cowplot()
-```
-
-#### PAGA
-
-```{r}
-sc <- reticulate::import("scanpy")
-```
-
-```{r}
-sc$tl$paga(adata, groups='cellType')
-```
+#### PHATE
 
 ```{python fig.width=7, fig.height=7}
-sc.pl.paga(r.adata, threshold=0.4, show=True)
+scv.pl.paga(r.adata, basis='phate', size=50, alpha=.1, legend_loc='on data',
+            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
 ```
 
-```{python fig.width=7, fig.height=7}
-sc.pl.umap(r.adata, color='cellType', legend_loc='on data', size=20)
+```{r}
+knitr::knit_exit()
 ```
 
-```{python}
-sc.pl.paga_compare(
-    r.adata, basis='umap', threshold=0.5, title='', right_margin=0.2, size=10, edge_width_scale=0.5,
-    legend_fontsize=12, fontsize=12, frameon=False, edges=True, save=False)
-```
 
-```{python}
-import numpy as np
-r.adata.uns['iroot'] = np.flatnonzero(r.adata.obs['cellType']  == 'Me_2')[0]
-sc.tl.dpt(r.adata)
-```
-
-```{python fig.width=7, fig.height=7}
-sc.pl.umap(r.adata, color='dpt_pseudotime', legend_loc='on data', size=20)
-```

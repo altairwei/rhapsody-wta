@@ -867,8 +867,8 @@
       "RemoteRepo": "rnamagnet",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "39a5c78bb960256143b809d4dc97bb37c9aa6bd1",
-      "Hash": "2a03e47c5a12f5573e4997954c4226b0",
+      "RemoteSha": "7b3c8e1e5f00f1e3eb066cbaf342f61f0960156e",
+      "Hash": "638a677332f8fdf5585713a0ae1e2d2e",
       "Requirements": [
         "Biobase",
         "Matrix",
@@ -1395,6 +1395,16 @@
         "shiny"
       ]
     },
+    "TSP": {
+      "Package": "TSP",
+      "Version": "1.2-1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "ecd45bbf66cdc3bd4554154de9d253ab",
+      "Requirements": [
+        "foreach"
+      ]
+    },
     "TTR": {
       "Package": "TTR",
       "Version": "0.24.3",
@@ -1869,8 +1879,8 @@
       "RemoteRepo": "brookite",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "32be22aed3d95dc3a665f4e25e86420507b6f629",
-      "Hash": "52462940ec4b8461731e7109d997fc6c",
+      "RemoteSha": "c039b2534b04bf505d3f2375d2d24da8cbbfd07e",
+      "Hash": "cc490ecd8932bcc9d6b4379b4fd6e6e4",
       "Requirements": [
         "AnnotationForge",
         "biomaRt",
@@ -1915,6 +1925,14 @@
         "rlang",
         "sass"
       ]
+    },
+    "ca": {
+      "Package": "ca",
+      "Version": "0.71.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "392f13bb4dfd3c07259ecdeba6aa71f9",
+      "Requirements": []
     },
     "caTools": {
       "Package": "caTools",
@@ -3100,6 +3118,16 @@
       "Requirements": [
         "future",
         "globals"
+      ]
+    },
+    "gclus": {
+      "Package": "gclus",
+      "Version": "1.3.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "8f905e7f70ac42e5b0e39d6ba360dd44",
+      "Requirements": [
+        "cluster"
       ]
     },
     "genefilter": {
@@ -4998,6 +5026,14 @@
         "rlang"
       ]
     },
+    "qap": {
+      "Package": "qap",
+      "Version": "0.1-2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "21c4fc168ebf32add2db6a358ce4714c",
+      "Requirements": []
+    },
     "qlcMatrix": {
       "Package": "qlcMatrix",
       "Version": "0.9.7",
@@ -5785,6 +5821,23 @@
       "Requirements": [
         "R6",
         "stringr"
+      ]
+    },
+    "seriation": {
+      "Package": "seriation",
+      "Version": "1.4.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "9f03af039f9e2cd7d49598566ed45c59",
+      "Requirements": [
+        "MASS",
+        "TSP",
+        "ca",
+        "cluster",
+        "colorspace",
+        "gclus",
+        "qap",
+        "registry"
       ]
     },
     "sessioninfo": {

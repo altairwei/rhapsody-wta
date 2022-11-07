@@ -1,0 +1,470 @@
+---
+title: "Mesophyll and Vascular Bundle Lineages"
+author: "Altair Wei"
+date: '2022-11-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/TrajectoryUtilities.R")
+source("../scripts/EnrichmentUtilities.R")
+```
+
+```{r message=FALSE, warning=FALSE, results="hide"}
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+```
+
+## Mesophyll Lineages
+
+```{r}
+sce_mock <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_mock_spliced_*.rds"))
+```
+
+```{r}
+sce_me <- sce_mock[, sce_mock$cluster_id %in% paste0("Me_", c("α", "β", "γ", "δ", "ε"))]
+```
+
+```{r}
+adata <- runScVelo(
+  sce_me,
+  mode = "dynamical",
+  use.dimred = "HARMONY",
+  assay.X = "logcounts",
+  scvelo.params = list(
+    filter_and_normalize = list(
+      min_shared_counts = 20L, n_top_genes = 2000L),
+    moments = list(n_pcs = 30L, n_neighbors = 30L)
+  )
+)
+```
+
+```{r}
+dm <- destiny::DiffusionMap(reducedDim(sce_me, "HARMONY"))
+reducedDim(sce_me, "DiffusionMap") <- destiny::eigenvectors(dm)[, 1:2]
+```
+
+```{r}
+scv <- reticulate::import("scvelo")
+
+adata$obsm$update(list(
+  X_tsne = reducedDim(sce_me, "TSNE"),
+  X_umap = reducedDim(sce_me, "UMAP"),
+  X_dc = reducedDim(sce_me, "DiffusionMap")
+))
+
+adata$obs$cellType <- as.character(sce_me$cluster_id)
+```
+
+```{r}
+scv$tl$terminal_states(adata)
+```
+
+```{python}
+scv.pl.scatter(r.adata, color=['root_cells', 'end_points'], basis='umap')
+```
+
+```{r}
+dpt <- destiny::DPT(
+  dm = dm,
+  tips = sample(
+    which(adata$obs$root_cells == 1
+          & adata$obs$cellType == "Me_α"),
+    size = 1)
+)
+
+sce_me$dpt <- dpt$dpt
+```
+
+#### RNA 速率
+
+```{python fig.height=7, fig.width=7}
+scv.pl.velocity_embedding_stream(
+  r.adata, basis="umap", color="cellType", figsize = (7, 7))
+```
+
+```{python fig.height=12, fig.width=12}
+scv.pl.velocity_embedding(
+  r.adata, basis="dc", color="cellType", figsize=(12, 12),
+  arrow_length=6, arrow_size=2, scale=2, dpi=300, legend_loc='on data')
+```
+
+```{r}
+ggplot2::ggplot(
+    data = data.frame(
+      pseudotime = c(
+        adata$obs$latent_time,
+        adata$obs$velocity_pseudotime,
+        sce_me$dpt / max(sce_me$dpt)),
+      type = rep(c("latent_time", "velocity_pseudotime", "dpt"), each = adata$n_obs)),
+    mapping = ggplot2::aes(x = pseudotime, fill = type)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::ggtitle("Pseudotime distribution") +
+  cowplot::theme_cowplot()
+```
+
+```{python}
+r.adata.uns['neighbors']['distances'] = r.adata.obsp['distances']
+r.adata.uns['neighbors']['connectivities'] = r.adata.obsp['connectivities']
+
+scv.tl.paga(r.adata, groups='cellType')
+```
+
+```{python fig.width=7, fig.height=7}
+scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1, legend_loc='on data',
+            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
+```
+
+```{r fig.height=7, fig.width=18}
+p1 <- scater::plotDiffusionMap(sce_me, colour_by = I(dpt$dpt)) +
+  ggplot2::ggtitle("Diffusion Pseudo Time") +
+  ggplot2::coord_fixed()
+p2 <- scater::plotDiffusionMap(sce_me, colour_by = I(adata$obs$latent_time)) +
+  ggplot2::ggtitle("Latent Time") +
+  ggplot2::coord_fixed()
+p3 <- scater::plotDiffusionMap(sce_me, colour_by = I(adata$obs$velocity_pseudotime)) +
+  ggplot2::ggtitle("Velocity Pseudotime") +
+  ggplot2::coord_fixed()
+p4 <- scater::plotDiffusionMap(sce_me, colour_by = "cellType") +
+  ggplot2::ggtitle("Cell Type") +
+  ggplot2::coord_fixed()
+
+p4 + p1 + p2 + p3 + patchwork::plot_layout(nrow = 1)
+```
+
+#### 发育轨迹推断
+
+```{r}
+sce_me <- xfun::cache_rds(
+  file = "sce_mock_me_slingshot.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = slingshot::slingshot(sce_me,
+    clusterLabels = sce_me$cluster_id,
+    reducedDim = "HARMONY", start.clus = "Me_β",
+    approx_points = FALSE)
+)
+```
+
+```{r fig.height=7, fig.width=14}
+ncomps <- c(7, 9, 11, 13)
+plist <- list()
+
+for (idx in seq_along(ncomps)) {
+  plist[[idx]] <- scater::plotReducedDim(
+      sce_me, dimred = "HARMONY",
+      ncomponents = c(2, ncomps[[idx]]),
+      colour_by = "cellType") +
+    ggplot2::coord_fixed()
+}
+
+patchwork::wrap_plots(plist)
+```
+
+```{r fig.height=7, fig.width=14}
+ncomps <- c(7, 9, 11, 13)
+plist <- list()
+
+for (idx in seq_along(ncomps)) {
+  plist[[idx]] <- plotSlingshotCurveOnReduc(
+    sce_me, reduction = "HARMONY",
+    ncomponents = c(2, ncomps[[idx]]))
+}
+
+patchwork::wrap_plots(plist)
+```
+
+
+```{r fig.height=7, fig.width=14}
+p2 <- plotSlingshotCurveOnReduc(sce_me, reduction = "UMAP")
+p3 <- plotSlingshotCurveOnReduc(sce_me, reduction = "DiffusionMap")
+p2 + p3
+```
+
+测序深度对 pseudotime 计算有影响吗？
+
+```{r}
+p1 <- scater::plotColData(sce_me, "nCount_RNA", "cluster_id",
+                          colour_by = "slingPseudotime_1", point_size = .1) +
+  ggplot2::scale_y_log10()
+p2 <- scater::plotColData(sce_me, "nCount_RNA", "cluster_id",
+                          colour_by = "slingPseudotime_2", point_size = .1) +
+  ggplot2::scale_y_log10()
+
+p1/p2
+```
+
+```{r}
+pseudo.paths <- slingshot::slingPseudotime(sce_me)
+embedded <- slingshot::slingCurves(slingshot::embedCurves(sce_me, reducedDim(sce_me, "HARMONY")[, c(13, 2)]))
+
+p1 <- scater::plotReducedDim(sce_me, dimred = "HARMONY", ncomponents = c(13, 2),
+                             colour_by = I(pseudo.paths[, "Lineage1"])) +
+  ggplot2::geom_path(
+    data = data.frame(embedded[[1]]$s[embedded[[1]]$ord,]),
+    mapping = ggplot2::aes(x = harmony_13, y = harmony_2), size = 1.2) +
+  ggplot2::ggtitle("Lineage1") +
+  ggplot2::coord_fixed()
+
+p2 <- scater::plotReducedDim(sce_me, dimred = "HARMONY", ncomponents = c(13, 2),
+                             colour_by = I(pseudo.paths[, "Lineage2"])) +
+  ggplot2::geom_path(
+    data = data.frame(embedded[[2]]$s[embedded[[2]]$ord,]),
+    mapping = ggplot2::aes(x = harmony_13, y = harmony_2), size = 1.2) +
+  ggplot2::ggtitle("Lineage2") +
+  ggplot2::coord_fixed()
+
+p3 <- scater::plotReducedDim(sce_me, dimred = "HARMONY", ncomponents = c(13, 2),
+                             colour_by = "cellType") +
+  ggplot2::ggtitle("Cell Type") +
+  ggplot2::coord_fixed()
+
+p3 + p1 + p2
+```
+
+```{r fig.height=3, fig.width=7}
+psts <- slingshot::slingPseudotime(sce_me) |>
+  as.data.frame() |>
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      values_to = "pseudotime", names_to = "lineages")
+
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::facet_wrap(~lineages, scales = "free_x") +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white")
+  )
+```
+
+#### 去除离群细胞
+
+```{r}
+ptime <- slingshot::slingPseudotime(sce_me)
+
+sce_me <- sce_me[, -which(ptime[, "Lineage1"] > 40)]
+```
+
+```{r fig.height=3, fig.width=7}
+psts <- slingshot::slingPseudotime(sce_me) |>
+  as.data.frame() |>
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      values_to = "pseudotime", names_to = "lineages")
+
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::facet_wrap(~lineages, scales = "free_x") +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white")
+  )
+```
+
+```{r}
+sce_me <- slingshot::slingshot(sce_me,
+  clusterLabels = sce_me$cluster_id,
+  reducedDim = "HARMONY", start.clus = "Me_β",
+  approx_points = 300)
+```
+
+```{r fig.height=3, fig.width=7}
+psts <- slingshot::slingPseudotime(sce_me) |>
+  as.data.frame() |>
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      values_to = "pseudotime", names_to = "lineages")
+
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::facet_wrap(~lineages, scales = "free_x") +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white")
+  )
+```
+```{r}
+p1 <- plotLineageCurveOnReduc(sce_me, 1L,
+                              dimred = "HARMONY", ncomponents = c(13, 2)) +
+  ggplot2::ggtitle("Lineage1") +
+  ggplot2::coord_fixed()
+
+p2 <- plotLineageCurveOnReduc(sce_me, 2L,
+                              dimred = "HARMONY", ncomponents = c(13, 2)) +
+  ggplot2::ggtitle("Lineage2") +
+  ggplot2::coord_fixed()
+
+p3 <- scater::plotReducedDim(sce_me, dimred = "HARMONY", ncomponents = c(13, 2),
+                             colour_by = "cellType") +
+  ggplot2::ggtitle("Cell Type") +
+  ggplot2::coord_fixed()
+
+p3 + p1 + p2
+```
+
+```{r}
+p1 <- plotLineageCurveOnReduc(sce_me, 1L, dimred = "DiffusionMap") +
+  ggplot2::ggtitle("Lineage1") +
+  ggplot2::coord_fixed()
+
+p2 <- plotLineageCurveOnReduc(sce_me, 2L, dimred = "DiffusionMap") +
+  ggplot2::ggtitle("Lineage2") +
+  ggplot2::coord_fixed()
+
+p1 + p2
+```
+
+
+#### 基因动态表达
+
+```{r}
+icMat <- tradeSeq::evaluateK(sce_me, k = 3:10)
+```
+
+选择 `nknots = 6` 比较合适。
+
+```{r}
+# Fit GAM for all genes will take too much memory. So
+# we select features based on two different methods. See
+# https://github.com/statOmics/tradeSeq/issues/150
+sce_me <- scry::devianceFeatureSelection(sce_me, assay = "logcounts", sorted = FALSE)
+rowData(sce_me)$geneVar <- scran::modelGeneVar(sce_me, density.weights = FALSE)
+hvg.vars <- scran::getTopHVGs(rowData(sce_me)$geneVar, n = 5000)
+sorted <- sort(rowData(sce_me)$binomial_deviance, decreasing = TRUE)
+hvg.dev <- names(sorted)[1:5000]
+hvgs <- union(hvg.dev, hvg.vars)
+```
+
+```{r}
+layout(matrix(c(1, 2), nrow = 1))
+
+fit.var <- metadata(rowData(sce_me)$geneVar)
+plot(fit.var$mean, fit.var$var, xlab = "Mean of log-expression",
+    ylab = "Variance of log-expression",
+    main="Feature Selection with Variance")
+points(fit.var$mean[hvg.dev], fit.var$var[hvg.dev], col = "red", pch = 16, cex = 0.5)
+curve(fit.var$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
+
+selected <- sorted * NA
+selected[hvg.vars] <- sorted[hvg.vars]
+plot(sorted, type="l", xlab="ranked genes",
+     ylab="binomial deviance", main="Feature Selection with Deviance")
+segments(
+  x0 = seq_along(selected), y0 = 0,
+  x1 = seq_along(selected), y1 = selected,
+  lty = 1, lwd = 0.03)
+abline(v = 10000, lty = 2, col = "red")
+```
+
+```{r}
+tradeSeqSce <- xfun::cache_rds(
+  file = "sce_mock_me_fitGAM.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::fitGAM(
+    # fitGAM needs counts rather than logcounts, see
+    # the source code of SCE-version fitGAM.
+    counts = sce_me, nknots = 6,
+    sce = TRUE, verbose = TRUE,
+    genes = hvgs
+  )
+)
+```
+
+##### 世系内的比较
+
+```{r}
+assocRes <- tradeSeq::associationTest(tradeSeqSce, lineages = TRUE)
+```
+
+```{r}
+lineage1_genes <-  rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_1, "fdr") <= 0.05)]
+lineage2_genes <-  rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_2, "fdr") <= 0.05)]
+```
+
+```{r}
+UpSetR::upset(
+  data = UpSetR::fromList(list(
+    Lineage1 = lineage1_genes, Lineage2 = lineage2_genes)),
+  keep.order = TRUE)
+```
+
+##### 世系间的比较
+
+```{r}
+patternRes <- tradeSeq::patternTest(tradeSeqSce)
+```
+
+```{r}
+patternGenes <- rownames(patternRes)[
+  which(p.adjust(patternRes$pvalue, "fdr") <= 0.05)]
+```
+
+##### 动态表达的聚类
+
+`tradeSeq::clusterExpressionPatterns` 不好用，会将基因划分出太多的 cluster。
+
+```{r}
+diffGenes <- Reduce(union, list(lineage1_genes, lineage1_genes, patternGenes))
+yhatSmooth <- tradeSeq::predictSmooth(tradeSeqSce, gene = diffGenes, nPoints = 100, tidy = FALSE)
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+
+mat <- yhatSmoothScaled[, 1:101]
+
+ph_res <- plotPseudotimeHeatmap(
+  yhatSmoothScaled,
+  #palette = colorRamps::matlab.like,
+  seriation = FALSE,
+  dend_k = 10,
+  row_title = "G%s",
+  row_title_rot = 0,
+  column_split = stringr::str_match(
+    colnames(yhatSmoothScaled), "(lineage\\d)_")[, 2]
+) |> ComplexHeatmap::draw()
+```
+
+```{r}
+gene_list <- ComplexHeatmap::row_order(ph_res)
+names(gene_list) <- paste0("G", 1:10)
+gene_list <- lapply(gene_list, function(order) {
+  rownames(yhatSmoothScaled)[order]
+})
+```
+
+```{r}
+comp_enr <- clusterProfiler::compareCluster(
+  gene_list,
+  fun = "enrichGO",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID",
+  ont = "BP",
+  universe = rownames(tradeSeqSce)
+) |> clusterProfiler::simplify(cutoff = 0.4)
+```
+
+
+```{r fig.height=8, fig.width=6}
+enrichplot::dotplot(
+    comp_enr, showCategory = 10, by = "count", label_format = 100)
+```
+
+
+```{r fig.height=7, fig.width=10}
+p <- comp_enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 10, nCluster = 12,
+    offset = 50, offset_tiplab = 25,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 5.5)) +
+  #ggplot2::coord_cartesian() +
+  NULL
+p
+```
+
+## Vascular Bundle Lineages

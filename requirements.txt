@@ -43,6 +43,7 @@ entrypoints==0.4
 et-xmlfile==1.1.0
 etils==0.6.0
 executing==0.8.3
+fa2==0.3.5
 fastjsonschema==2.15.3
 fbpca==1.0
 filelock==3.8.0
@@ -66,7 +67,7 @@ grpcio==1.46.3
 h5py==3.7.0
 identify==2.5.3
 idna==3.3
-igraph==0.9.11
+igraph==0.10.1
 imageio==2.19.3
 importlib-metadata==4.11.4
 importlib-resources==5.7.1
@@ -166,7 +167,7 @@ pyro-ppl==1.8.1
 pyrsistent==0.18.1
 pysam==0.19.1
 python-dateutil==2.8.2
-python-igraph==0.9.11
+python-igraph==0.10.1
 pytorch-lightning==1.6.5
 pytz==2022.1
 pytz-deprecation-shim==0.1.0.post0

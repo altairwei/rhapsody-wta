@@ -34,5 +34,6 @@ editor_options:
   - [Pseudobulk Gene Expression Analysis](pseudobulk_gene_expression_analysis.html)
 - Trajectory Inference
   - [Developmental Process of MOCK Samples](developmental_process_of_mock_samples.html)
+  - [Mesophyll and Vascular Bundle Lineages](mesophyll_vascular_lineages.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - TODO: GRN of trajectory
