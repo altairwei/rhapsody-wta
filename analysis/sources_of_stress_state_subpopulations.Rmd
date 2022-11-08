@@ -15,6 +15,11 @@ library(TrajectoryUtils)
 source("../scripts/TrajectoryUtilities.R")
 ```
 
+```{python}
+import scvelo as scv
+import matplotlib.pyplot as plt
+```
+
 ## 使用 {TSCAN} 推断全局结构
 
 ### 数据准备
@@ -25,89 +30,304 @@ source("../scripts/TrajectoryUtilities.R")
 sce <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_spliced_*.rds"))
 ```
 
-### MOCK 样本结构推断
-
-```{r}
-sce_mock <- sce[, sce$treatment == "MOCK"]
-```
-
-预先计算：
-
-```{r}
-by.cluster <- scater::aggregateAcrossCells(sce_mock, ids = sce_mock$cluster_id)
-centroids <- reducedDim(by.cluster, "HARMONY")
-```
-
-获得 MST ：
-
-```{r}
-mst <- TSCAN::createClusterMST(centroids, clusters = NULL, outgroup = FALSE)
-```
-
-绘制：
-
-```{r dev="svglite"}
-plot(mst)
-```
-
-### 1DPI 差异拟时序分析
+## 1 差异轨迹分析 1DPI 样本
 
 ```{r}
 sce_1dpi <- sce[, sce$time == "1DPI"]
 ```
 
-```{r fig.height=8, fig.width=16}
-p1 <- scater::plotReducedDim(sce_1dpi, dimred = "TSNE",
-    point_size = 0.5,
-    colour_by = "RNA_snn_res.1.6",
-    text_by = "RNA_snn_res.1.6") +
-  ggplot2::scale_color_manual(
-    values = Seurat::DiscretePalette(
-      length(unique(sce$RNA_snn_res.1.6)))
-  ) +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-p2 <- scater::plotReducedDim(sce_1dpi, dimred = "UMAP",
-    point_size = 0.5,
-    colour_by = "RNA_snn_res.1.6",
-    text_by = "RNA_snn_res.1.6") +
-  ggplot2::scale_color_manual(
-    values = Seurat::DiscretePalette(
-      length(unique(sce$RNA_snn_res.1.6)))
-  ) +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-p1 + p2
-```
+### 1.1 整体分析
+
+#### 降维可视化 {.tabset}
 
 ```{r}
-rm(sce_1dpi)
-gc()
+sce_1dpi <- runDiffusionMap(sce_1dpi, dimred = "HARMONY")
+sce_1dpi <- runPHATE(sce_1dpi, dimred = "HARMONY")
+```
+
+##### t-SNE
+
+```{r}
+scater::plotReducedDim(sce_1dpi, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce_1dpi$cellType)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+##### UMAP
+
+```{r}
+scater::plotReducedDim(sce_1dpi, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce_1dpi$cellType)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+##### PHATE
+
+```{r}
+scater::plotReducedDim(sce_1dpi, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce_1dpi$cellType)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
 ```
 
 > The question is: should we fit a separate trajectory for each condition? We might expect the trajectory itself to be changed by the treatment if the treatment effect is systematically large. Otherwise, the treatment may impact the expression profile of some genes but the overall trajectory will be preserved.
 >
 > While it may seem reasonable to perform trajectory inference separately on cells from our different conditions, this is problematic for two reasons: 1) inferred trajectories will be less stable, as they would use only a subset of the available data, and 2) there would be no straightforward method for combining these results
 
-## 叶肉细胞应激态亚群
+### 1.2 叶肉细胞应激态亚群
+
+Me_5 和 Me_6 似乎会干扰轨迹的推断，并且细胞身份都与 Me_γ 有关，所以没必要加进去。Va_1 要不要加入还需要考虑，因为他大部分来自 Va_α，小部分来自 Me_α 和 Me_β 。
 
 ```{r}
-cells_chosen <- sce$time == "1DPI" & sce$RNA_snn_res.1.6 %in% c("14", "5", "15", "16")
-sce_me_da_1dpi <- sce[, cells_chosen]
-sce_me_da_1dpi$cluster_id <- sce_me_da_1dpi$RNA_snn_res.1.6
-sce_me_da_1dpi <- sce_me_da_1dpi[Matrix::rowSums(counts(sce_me_da_1dpi) > 0) > 10, ]
+cells_chosen <- sce_1dpi$cluster_id %in% c(
+  "Me_1", "Me_2", "Me_4", "Me_3")#, "Va_1")
+sce_me_da_1dpi <- sce_1dpi[, cells_chosen]
+sce_me_da_1dpi <- sce_me_da_1dpi[
+  Matrix::rowSums(counts(sce_me_da_1dpi) > 0) > 10, ]
 ```
 
-### 特征选择
+#### 降维可视化 {.tabset}
 
 ```{r}
-ggplot2::quickplot(
-    x = Matrix::rowSums(counts(sce_me_da_1dpi) > 0),
-    geom = "histogram", bins = 100) +
-  ggplot2::scale_x_log10()
+sce_me_da_1dpi <- runDiffusionMap(sce_me_da_1dpi, dimred = "HARMONY")
+sce_me_da_1dpi <- runPHATE(sce_me_da_1dpi, dimred = "HARMONY")
 ```
+
+##### HARMONY
+
+```{r}
+scater::plotReducedDim(sce_me_da_1dpi,
+    dimred = "HARMONY",
+    ncomponents = c(7, 17),
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce_me_da_1dpi$cellType)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+##### PAHTE
+
+```{r}
+scater::plotReducedDim(sce_me_da_1dpi, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce_me_da_1dpi$cellType)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+##### DiffusionMap
+
+```{r}
+scater::plotReducedDim(sce_me_da_1dpi, dimred = "DiffusionMap",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_manual(
+    values = Seurat::DiscretePalette(
+      length(unique(sce_me_da_1dpi$cellType)))
+  ) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### RNA 速率
+
+```{r}
+adata_me_da_1dpi <- cache_pickle(
+  file = "scvelo_me_da_1dpi.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runScVelo(
+    sce_me_da_1dpi,
+    mode = "dynamical",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    scvelo.params = list(
+      filter_and_normalize = list(
+        min_shared_counts = 20L, n_top_genes = 2000L),
+      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    )
+  )
+)
+```
+
+```{r}
+scv <- reticulate::import("scvelo")
+
+adata_me_da_1dpi$obsm$update(list(
+  X_tsne = reducedDim(sce_me_da_1dpi, "TSNE"),
+  X_umap = reducedDim(sce_me_da_1dpi, "UMAP")
+))
+
+adata_me_da_1dpi$obs$cellType <- as.character(sce_me_da_1dpi$cluster_id)
+```
+
+```{python fig.height=7, fig.width=7}
+scv.pl.velocity_embedding_stream(
+  r.adata_me_da_1dpi, basis="umap", color="cellType", figsize = (7, 7))
+```
+
+```{r}
+adata_me_da_1dpi <- cache_pickle(
+  file = "unitvelo_me_da_1dpi.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_me_da_1dpi,
+    label = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = -1L
+  )
+)
+```
+
+#### 轨迹推断
+
+```{r}
+sce_me_da_1dpi <- xfun::cache_rds(
+  file = "slingshot_me_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = slingshot::slingshot(sce_me_da_1dpi,
+    clusterLabels = sce_me_da_1dpi$cluster_id,
+    reducedDim = "HARMONY", start.clus = "Me_1",
+    approx_points = 500)
+)
+```
+
+##### 细胞世系 {.tabset}
+
+###### HARMONY
+
+```{r fig.height=6, fig.width=12}
+plotLineagesOnReduc(sce_me_da_1dpi, dimred = "HARMONY", ncomponents = c(7, 17))
+```
+
+###### DiffusionMap
+
+```{r fig.height=6, fig.width=12}
+plotLineagesOnReduc(sce_me_da_1dpi, dimred = "DiffusionMap")
+```
+
+###### PHATE
+
+```{r fig.height=5, fig.width=14}
+plotLineagesOnReduc(sce_me_da_1dpi, dimred = "PHATE")
+```
+
+##### 拟时间分布
+
+```{r fig.height=3, fig.width=7}
+psts <- slingshot::slingPseudotime(sce_me_da_1dpi) |>
+  as.data.frame() |>
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      values_to = "pseudotime", names_to = "lineages")
+
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::facet_wrap(~lineages, scales = "free_x") +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white")
+  )
+```
+
+##### 去除离群细胞
+
+```{r}
+sce_me_da_1dpi <- sce_me_da_1dpi[, -which(sce_me_da_1dpi$slingPseudotime_1 > 45)]
+```
+
+```{r}
+sce_me_da_1dpi <- slingshot::slingshot(sce_me_da_1dpi,
+    clusterLabels = sce_me_da_1dpi$cluster_id,
+    reducedDim = "HARMONY", start.clus = "Me_1",
+    approx_points = 500)
+```
+
+```{r fig.height=3, fig.width=7}
+psts <- slingshot::slingPseudotime(sce_me_da_1dpi) |>
+  as.data.frame() |>
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      values_to = "pseudotime", names_to = "lineages")
+
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::facet_wrap(~lineages, scales = "free_x") +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white")
+  )
+```
+
+#### 差异进程分析
+
+```{r}
+psts <- slingshot::slingPseudotime(sce_me_da_1dpi$slingshot) %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    cells = rownames(.),
+    conditions = sce_me_da_1dpi$treatment) %>%
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+    values_to = "pseudotime", names_to = "lineages")
+```
+
+```{r fig.height=3, fig.width=7}
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = conditions)) +
+    ggplot2::geom_density(alpha = .5) +
+    ggplot2::scale_fill_brewer(type = "qual") +
+    ggplot2::facet_wrap(~lineages, scales = "free_x") +
+    cowplot::theme_cowplot() +
+    ggplot2::theme(
+      strip.background = ggplot2::element_rect(fill = "white")
+    )
+```
+
+#### 基因动态表达
+
+##### 特征选择
 
 ```{r}
 # Fit GAM for all genes will take too much memory. So
@@ -115,9 +335,9 @@ ggplot2::quickplot(
 # https://github.com/statOmics/tradeSeq/issues/150
 sce_me_da_1dpi <- scry::devianceFeatureSelection(sce_me_da_1dpi, assay = "logcounts", sorted = FALSE)
 rowData(sce_me_da_1dpi)$geneVar <- scran::modelGeneVar(sce_me_da_1dpi, density.weights = FALSE)
-hvg.vars <- scran::getTopHVGs(rowData(sce_me_da_1dpi)$geneVar, n = 10000)
+hvg.vars <- scran::getTopHVGs(rowData(sce_me_da_1dpi)$geneVar, n = 5000)
 sorted <- sort(rowData(sce_me_da_1dpi)$binomial_deviance, decreasing = TRUE)
-hvg.dev <- names(sorted)[1:10000]
+hvg.dev <- names(sorted)[1:5000]
 hvgs <- union(hvg.dev, hvg.vars)
 ```
 
@@ -125,16 +345,16 @@ hvgs <- union(hvg.dev, hvg.vars)
 >
 > Strictly speaking, the interpretation of the fitted trend as the technical component assumes that the expression profiles of most genes are dominated by random technical noise. In practice, all expressed genes will exhibit some non-zero level of biological variability due to events like transcriptional bursting. Thus, it would be more appropriate to consider these estimates as technical noise plus “uninteresting” biological variation, under the assumption that most genes do not participate in the processes driving interesting heterogeneity across the population.
 
-```{r}
+```{r fig.height=4, fig.width=10}
+layout(matrix(c(1, 2), nrow = 1))
+
 fit.var <- metadata(rowData(sce_me_da_1dpi)$geneVar)
 plot(fit.var$mean, fit.var$var, xlab = "Mean of log-expression",
-    ylab = "Variance of log-expression")
+    ylab = "Variance of log-expression",
+    main="Feature Selection with Variance")
 points(fit.var$mean[hvg.dev], fit.var$var[hvg.dev], col = "red", pch = 16, cex = 0.5)
 curve(fit.var$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
-```
 
-
-```{r}
 selected <- sorted * NA
 selected[hvg.vars] <- sorted[hvg.vars]
 plot(sorted, type="l", xlab="ranked genes",
@@ -143,34 +363,16 @@ segments(
   x0 = seq_along(selected), y0 = 0,
   x1 = seq_along(selected), y1 = selected,
   lty = 1, lwd = 0.03)
-abline(v = 10000, lty = 2, col = "red")
+abline(v = 5000, lty = 2, col = "red")
 ```
 
-### 参数优化
+##### 参数优化
 
 ```{r eval=FALSE}
-icMat <- tradeSeq::evaluateK(sce_me_da_1dpi, k = 3:10)
-```
-
-### 模型推断
-
-```{r}
-sce_me_da_1dpi <- xfun::cache_rds(
-  file = "slingshot_me_da_1dpi.rds",
+icMat <- xfun::cache_rds(
+  file = "icMat_me_da_1dpi.rds",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  #rerun = TRUE,
-  expr = local({
-    sce <- runSlingshotAndVelocity(
-      sce_me_da_1dpi, reduction = "HARMONY",
-      start.clus = "14", approx_points = FALSE)
-
-    sce <- runTradeSeq(
-      sce, subset_row = hvgs,
-      nknots = 7
-    )
-
-    sce
-  })
+  expr = tradeSeq::evaluateK(sce_me_da_1dpi, k = 3:10)
 )
 ```
 
@@ -183,15 +385,16 @@ sce_me_da_1dpi <- runPHATE(sce_me_da_1dpi, dimred = "HARMONY", knn = 15, decay =
 
 感觉 Slingshot 的 pseudotime 计算的不好，头部和尾部的细胞分布太少了。
 
-### 差异进程
+##### 差异进程
 
 ```{r fig.height=7, fig.width=14, results='asis'}
 printDiffTrajectoryReport(sce_me_da_1dpi, heading = "####")
 ```
 
-### 差异表达
 
-#### 谱系内的比较
+##### 差异表达
+
+###### 谱系内的比较
 
 > To assess significant changes in gene expression as a function of pseudotime within each lineage, we use the `associationTest`, which tests the null hypothesis that gene expression is not a function of pseudotime, i.e., whether the estimated smoothers are significantly varying as a function of pseudotime within each lineage.
 
@@ -270,7 +473,7 @@ p1 + p2
 scater::plotReducedDim(sce_me_da_1dpi, dimred = "DiffusionMap", colour_by = rownames(oof)[10])
 ```
 
-#### 谱系间的比较
+###### 谱系间的比较
 
 > To test differential expression between conditions, we use the `conditionTest` function implemented in `tradeSeq`. This function tests the null hypothesis that genes have identical expression patterns in each condition
 
@@ -373,12 +576,12 @@ for (xx in cUniq) {
 knitr::knit_exit()
 ```
 
-### 差异表达的模型选择
+##### 模型选择
 
 > The overall strategy is to fit a model to the per-gene expression with respect to pseudotime, allowing us to obtain inferences about the significance of any association. We can then prioritize interesting genes as those with low  
 p-values for further investigation.
 
-#### TSCAN + ANOVA
+###### TSCAN + ANOVA
 
 logcounts 对 pseudotime 的线性模型。
 
@@ -435,45 +638,6 @@ plotPseudotimeHeatmap(
 >
 > When a trajectory consists of a series of clusters (as in the Nestorowa dataset), pseudotime-based DE tests can be considered a continuous generalization of cluster-based marker detection. One would expect to identify similar genes by performing an ANOVA on the per-cluster expression values, and indeed, this may be a more interpretable approach as it avoids imposing the assumption that a trajectory exists at all. The main benefit of pseudotime-based tests is that they encourage expression to be a smooth function of pseudotime, assuming that the degrees of freedom in the trend fit prevents overfitting. This smoothness reflects an expectation that changes in expression along a trajectory should be gradual.
 
-#### dynfeature
-
-官方文档没有说明使用什么模型来拟合 pseudotime 的。
-
-```{r}
-dynomodel <- wrapSlingshotToDynverse(sce_me_da_1dpi$slingshot)
-dynomodel <- dynwrap::add_pseudotime(
-  dynomodel, dynwrap::calculate_pseudotime(dynomodel))
-```
-
-```{r fig.height=3, fig.width=7}
-p1 <- dynplot::plot_dendro(dynomodel, color_cells = "pseudotime")
-p2 <- dynplot::plot_dendro(dynomodel, color_cells = "grouping", grouping = sce_me_da_1dpi$cluster_id)
-p1 / p2
-```
-
-dynwrap 计算 pseudotime 应该是基于 milestone 来的，这可能跟 MST 的计算方式一致。而 slingshot 是利用 `TrajectoryUtils::averagePseudotime` 计算的。调查一下 pseudotime 计算方式的差别。对比了一下 TSCAN ，pseudotime 的计算很相似。
-
-```{r}
-data.frame(conditions = sce_me_da_1dpi$treatment, pseudotime = dynomodel$pseudotime) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
-    ggplot2::geom_density(alpha = .5) +
-    ggplot2::scale_fill_brewer(type = "qual") +
-    #ggplot2::facet_wrap(~lineages) +
-    cowplot::theme_cowplot() +
-    ggplot2::theme(
-      strip.background = ggplot2::element_rect(fill = "white")
-    )
-```
-
-
-```{r}
-p1 <- dynplot::plot_dimred(dynomodel,
-                           dimred = reducedDim(sce_me_da_1dpi, "DiffusionMap"),
-                           grouping = sce_me_da_1dpi$cluster_id)
-p2 <- dynplot::plot_dimred(dynomodel, color_cells = "pseudotime",
-                           dimred = reducedDim(sce_me_da_1dpi, "DiffusionMap"))
-p1 + p2
-```
 
 ## 维管束应激态亚群
 
@@ -947,7 +1111,6 @@ printDiffTrajectoryReport(sce_vastress_da_3dpi, heading = "####")
 ```
 
 
-
 ## psupertime 应用
 
 ```{r}
@@ -956,6 +1119,14 @@ sce_me_1 <- sce[, cells_chosen]
 sce_me_1$cluster_id <- sce_me_1$RNA_snn_res.1.6
 sce_me_1$time <- factor(sce_me_1$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
 ```
+
+### 数据整合
+
+```{r eval=FALSE}
+res <- runScanorama(sce_me_1)
+```
+
+每个样本分别寻找 HVGs，最后找到的交集只有 15 个基因，这产出的矫正后矩阵基本上算是废了。
 
 ### 时间序列分析
 

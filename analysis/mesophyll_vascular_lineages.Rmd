@@ -12,6 +12,11 @@ source("../scripts/TrajectoryUtilities.R")
 source("../scripts/EnrichmentUtilities.R")
 ```
 
+```{python}
+import scvelo as scv
+import matplotlib.pyplot as plt
+```
+
 ```{r message=FALSE, warning=FALSE, results="hide"}
 library(org.Taestivum.iwgsc.db)
 orgdb <- org.Taestivum.iwgsc.db
@@ -445,7 +450,6 @@ comp_enr <- clusterProfiler::compareCluster(
   universe = rownames(tradeSeqSce)
 ) |> clusterProfiler::simplify(cutoff = 0.4)
 ```
-
 
 ```{r fig.height=8, fig.width=6}
 enrichplot::dotplot(

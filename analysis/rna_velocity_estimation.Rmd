@@ -122,94 +122,14 @@ sce <- xfun::cache_rds(
 )
 ```
 
-### 添加到 Seurat 对象
-
 ```{r}
-obj$cellType <- as.character(Seurat::Idents(obj))
-```
-
-```{r}
-cell_names <- colnames(obj)
-gene_names <- rownames(obj)
-obj[["spliced"]] <- SeuratObject::CreateAssayObject(
-  counts = spliced[gene_names, cell_names])
-obj[["unspliced"]] <- SeuratObject::CreateAssayObject(
-  counts = unspliced[gene_names, cell_names])
-```
-
-```{r}
-rm(data_list, spliced, unspliced, ambiguous)
+rm(obj, data_list, spliced, unspliced, ambiguous)
 gc()
 ```
 
-转换成 Python 数据：
+## 2 1DPI 样品分析
 
-```{r}
-h5adFile <- xfun::cache_rds(
-  file = "h5adFile.rds",
-  dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = local({
-    h5SeuratFile <- "../results/ObjectCache/TrajectoryInference/obj_velocity.h5Seurat"
-    # Remove scale.data of RNA assay
-    obj@assays$RNA@scale.data <- obj@assays$spliced@scale.data
-    SeuratDisk::SaveH5Seurat(obj, filename = h5SeuratFile, overwrite = TRUE)
-    SeuratDisk::Convert(h5SeuratFile, dest = "h5ad", overwrite = TRUE)
-    paste0(substr(h5SeuratFile, 1, nchar(h5SeuratFile) - 8), "h5ad")
-  })
-)
-
-rm(obj)
-```
-
-```{python}
-h5adFile=r.h5adFile
-```
-
-## 2 Velocyto 算法
-
-直接计算所有样本的 velocity 内存 64G 是不足的。我怀疑是没有经过 HVGs 选择，导致矩阵非常大。
-
-```{r eval=FALSE}
-obj_1dpi <- SeuratWrappers::RunVelocity(
-  obj_1dpi, reduction = "harmony",
-  deltaT = 1, kCells = 25, fit.quantile = 0.02)
-```
-
-通过 Velocyto.R 绘制 RNA 速率图太耗时间和内存了，不采取这个犯法。
-
-```{r eval=FALSE}
-ident.colors <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_1dpi))), palette = NULL)
-names(ident.colors) <- levels(obj_1dpi)
-cell.colors <- ident.colors[Seurat::Idents(obj_1dpi)]
-names(cell.colors) <- colnames(obj_1dpi)
-
-velocyto.R::show.velocity.on.embedding.cor(
-  emb = Seurat::Embeddings(
-    object = obj_1dpi,
-    reduction = "tsne"),
-  vel = Seurat::Tool(
-    object = obj_1dpi,
-    slot = "SeuratWrappers::RunVelocity"),
-  n = 100,
-  scale = "sqrt",
-  cell.colors = velocyto.R::ac(
-    x = cell.colors, alpha = 0.5),
-  cex = 0.8,
-  arrow.scale = 3,
-  show.grid.flow = TRUE,
-  min.grid.cell.mass = 0.5,
-  grid.n = 40,
-  arrow.lwd = 1,
-  do.par = FALSE,
-  cell.border.alpha = 0.1
-)
-```
-
-## 3 scVelo 算法
-
-### 3.1 1DPI 样品分析
-
-#### 读取数据
+### 读取数据
 
 ```{r}
 sce_sub <- sce[, sce$time == "1DPI"]
@@ -244,7 +164,7 @@ adata$obs$cellType <- sce_sub$cluster_id
 scv.pl.proportions(r.adata, groupby="cellType", figsize = (8, 4))
 ```
 
-#### 速率估计
+### 速率估计
 
 是否需要设置 `use_rep="X_harmony"` 呢？我感觉应该需要，否则 scVelo 会基于 PCA 来计算 neighbors
 
@@ -269,25 +189,25 @@ scv$tl$velocity(adata, mode='dynamical')
 scv$tl$velocity_graph(adata)
 ```
 
-#### 速率流线 {.tabset}
+### 速率流线 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python plot-stream-tsne, fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
   r.adata, basis="tsne", color="cellType", figsize= (7, 7))
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python plot-stream-umap, fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
   r.adata, basis="umap", color="cellType", figsize = (7, 7))
 ```
 
-#### 速率网格 {.tabset}
+### 速率网格 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python plot-grid-tsne, fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_grid(
@@ -295,7 +215,7 @@ scv.pl.velocity_embedding_grid(
   arrow_length=3, arrow_size=1, figsize=(7, 7))
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python plot-grid-umap, fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_grid(
@@ -303,9 +223,9 @@ scv.pl.velocity_embedding_grid(
   arrow_length=3, arrow_size=1, figsize=(7, 7))
 ```
 
-#### 速率细胞 {.tabset}
+### 速率细胞 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python plot-velo-tsne, fig.height=12, fig.width=12}
 scv.pl.velocity_embedding(
@@ -313,7 +233,7 @@ scv.pl.velocity_embedding(
   arrow_length=6, arrow_size=3, scale=2, dpi=300)
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python plot-velo-umap, fig.height=12, fig.width=12}
 scv.pl.velocity_embedding(
@@ -321,100 +241,62 @@ scv.pl.velocity_embedding(
   arrow_length=6, arrow_size=3, scale=2, dpi=300)
 ```
 
-#### Kinetic rate paramters
-
-```{python fig.height=4, fig.width=12}
-df = r.adata.var
-df = df[(df['fit_likelihood'] > .1) & df['velocity_genes'] == True]
-
-kwargs = dict(xscale='log', fontsize=16)
-with scv.GridSpec(ncols=3) as pl:
-    pl.hist(df['fit_alpha'], xlabel='transcription rate', **kwargs)
-    pl.hist(df['fit_beta'] * df['fit_scaling'], xlabel='splicing rate', xticks=[.1, .4, 1], **kwargs)
-    pl.hist(df['fit_gamma'], xlabel='degradation rate', xticks=[.1, .4, 1], **kwargs)
-```
-
-```{r}
-scv$get_df(adata, 'fit*', dropna = TRUE) |> head()
-```
-
-#### Latent time {.tabset}
+### 隐时间 {.tabset}
 
 > scVelo’s latent time is based only on its transcriptional dynamics and represents
 the cell’s internal clock. It captures aspects of the actual time better than similarity-based diffusion pseudo-time.
 
-##### t-SNE
+#### t-SNE
 
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, basis="tsne", color='latent_time', color_map='gnuplot', size=20)
+```{python plot-latent-time-tsne, fig.height=7, fig.width=7}
+scv.pl.scatter(r.adata, basis="tsne",
+  color='latent_time', color_map='gnuplot',
+  size=20, figsize=(7, 7))
 ```
 
-##### UMAP
+#### UMAP
 
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, basis="umap", color='latent_time', color_map='gnuplot', size=20)
+```{python plot-latent-time-umap, fig.height=7, fig.width=7}
+scv.pl.scatter(r.adata, basis="umap",
+  color='latent_time', color_map='gnuplot',
+  size=20, figsize=(7, 7))
 ```
 
-#### Top-likelihood genes
+### 速度与连贯性 {.tabset}
 
-```{python fig.height=12, fig.width=12}
-top_genes = r.adata.var['fit_likelihood'].sort_values(ascending=False).index
-scv.pl.scatter(r.adata, basis=top_genes[:15], color="cellType", ncols=5, frameon=False)
-```
+#### t-SNE
 
-#### Identify important genes
-
-```{python}
-scv.tl.rank_velocity_genes(r.adata, groupby='cellType', min_corr=.3)
-df = scv.DataFrame(r.adata.uns['rank_velocity_genes']['names'])
-```
-
-```{r}
-head(reticulate::py$df)
-```
-
-```{python fig.height=4, fig.width=12}
-kwargs = dict(frameon=False, size=10, linewidth=1.5, color="cellType")
-
-scv.pl.scatter(r.adata, df['CC'][:5], ylabel='CC', **kwargs)
-scv.pl.scatter(r.adata, df['Me_1'][:5], ylabel='Me_1', **kwargs)
-```
-
-#### Speed and coherence {.tabset}
-
-##### t-SNE
-
-```{python fig.height=7, fig.width=14}
+```{python plot-confidence-tsne, fig.height=7, fig.width=14}
 scv.tl.velocity_confidence(r.adata)
 keys = 'velocity_length', 'velocity_confidence'
-scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="tsne", perc=[5, 95])
+scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="tsne", perc=[5, 95], figsize=(7, 14))
 ```
 
-##### UMAP
+#### UMAP
 
-```{python fig.height=7, fig.width=14}
+```{python plot-confidence-umap, fig.height=7, fig.width=14}
 scv.tl.velocity_confidence(r.adata)
 keys = 'velocity_length', 'velocity_confidence'
-scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="umap", perc=[5, 95])
+scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="umap", perc=[5, 95], figsize=(7, 14))
 ```
 
-#### Velocity graph and pseudotime {.tabset}
+### 速率图 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
-```{python fig.height=7, fig.width=7}
-scv.pl.velocity_graph(r.adata, threshold=0.8, basis="tsne", color="cellType")
+```{python plot-velo-graph-tsne, fig.height=7, fig.width=7}
+scv.pl.velocity_graph(r.adata, threshold=0.8, basis="tsne", color="cellType", figsize=(7, 7))
 ```
 
-##### UMAP
+#### UMAP
 
-```{python fig.height=7, fig.width=7}
-scv.pl.velocity_graph(r.adata, threshold=.8, basis="umap", color="cellType")
+```{python plot-velo-graph-umap, fig.height=7, fig.width=7}
+scv.pl.velocity_graph(r.adata, threshold=.8, basis="umap", color="cellType", figsize=(7, 7))
 ```
 
-#### PAGA velocity graph {.tabset}
+### PAGA 图 {.tabset}
 
-```{python}
+```{python run-paga}
 r.adata.uns['neighbors']['distances'] = r.adata.obsp['distances']
 r.adata.uns['neighbors']['connectivities'] = r.adata.obsp['connectivities']
 
@@ -426,22 +308,21 @@ df = scv.get_df(r.adata, 'paga/transitions_confidence', precision=2).T
 reticulate::py$df
 ```
 
-##### t-SNE
+#### t-SNE
 
-```{python fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='tsne', size=50, alpha=.1,
-            min_edge_width=2, node_size_scale=1.5)
+```{python plot-paga-tsne, fig.width=7, fig.height=7}
+scv.pl.paga(r.adata, basis='tsne', size=50, alpha=.1, legend_loc='on data',
+            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
 ```
 
-##### UMAP
+#### UMAP
 
-```{python fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1,
-            min_edge_width=2, node_size_scale=1.5)
+```{python plot-paga-umap, fig.width=7, fig.height=7}
+scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1, legend_loc='on data',
+            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
 ```
 
-
-### 3.2 2DPI 样本分析
+## 3 2DPI 样本分析
 
 ```{r}
 sce_sub <- sce[, sce$time == "2DPI"]
@@ -459,49 +340,109 @@ sce_sub <- sce[, sce$time == "2DPI"]
 <<plot-prop>>
 ```
 
-#### 速率流线 {.tabset}
+### 速率流线 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-umap>>
 ```
 
-#### 速率网格 {.tabset}
+### 速率网格 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-umap>>
 ```
 
-#### 速率细胞 {.tabset}
+### 速率细胞 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-umap>>
 ```
 
-### 3.3 3DPI 样本分析
+### 隐时间 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-umap>>
+```
+
+### 速度与连贯性 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-umap>>
+```
+
+### 速率图 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-umap>>
+```
+
+### PAGA 图 {.tabset}
+
+```{python}
+<<run-paga>>
+```
+
+#### t-SNE
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-tsne>>
+```
+
+#### UMAP
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-umap>>
+```
+
+## 4 3DPI 样本分析
 
 ```{r}
 sce_sub <- sce[, sce$time == "3DPI"]
@@ -519,49 +460,110 @@ sce_sub <- sce[, sce$time == "3DPI"]
 <<plot-prop>>
 ```
 
-#### 速率流线 {.tabset}
+### 速率流线 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-umap>>
 ```
 
-#### 速率网格 {.tabset}
+### 速率网格 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-umap>>
 ```
 
-#### 速率细胞 {.tabset}
+### 速率细胞 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-umap>>
 ```
 
-### 3.4 MOCK 样本分析
+### 隐时间 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-umap>>
+```
+
+### 速度与连贯性 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-umap>>
+```
+
+### 速率图 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-umap>>
+```
+
+### PAGA 图 {.tabset}
+
+```{python}
+<<run-paga>>
+```
+
+#### t-SNE
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-tsne>>
+```
+
+#### UMAP
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-umap>>
+```
+
+
+## 5 MOCK 样本分析
 
 ```{r}
 sce_sub <- sce[, sce$treatment == "MOCK"]
@@ -579,49 +581,110 @@ sce_sub <- sce[, sce$treatment == "MOCK"]
 <<plot-prop>>
 ```
 
-#### 速率流线 {.tabset}
+### 速率流线 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-umap>>
 ```
 
-#### 速率网格 {.tabset}
+### 速率网格 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-umap>>
 ```
 
-#### 速率细胞 {.tabset}
+### 速率细胞 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-umap>>
 ```
 
-### 3.5 PNR2 样本分析
+### 隐时间 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-umap>>
+```
+
+### 速度与连贯性 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-umap>>
+```
+
+### 速率图 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-umap>>
+```
+
+### PAGA 图 {.tabset}
+
+```{python}
+<<run-paga>>
+```
+
+#### t-SNE
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-tsne>>
+```
+
+#### UMAP
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-umap>>
+```
+
+
+## 6 PNR2 样本分析
 
 ```{r}
 sce_sub <- sce[, sce$treatment == "PNR2"]
@@ -639,49 +702,110 @@ sce_sub <- sce[, sce$treatment == "PNR2"]
 <<plot-prop>>
 ```
 
-#### 速率流线 {.tabset}
+### 速率流线 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-umap>>
 ```
 
-#### 速率网格 {.tabset}
+### 速率网格 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-umap>>
 ```
 
-#### 速率细胞 {.tabset}
+### 速率细胞 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-umap>>
 ```
 
-### 3.6 TR4 样本分析
+### 隐时间 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-umap>>
+```
+
+### 速度与连贯性 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-umap>>
+```
+
+### 速率图 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-tsne>>
+```
+
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-umap>>
+```
+
+### PAGA 图 {.tabset}
+
+```{python}
+<<run-paga>>
+```
+
+#### t-SNE
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-tsne>>
+```
+
+#### UMAP
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-umap>>
+```
+
+
+## 7 TR4 样本分析
 
 ```{r}
 sce_sub <- sce[, sce$treatment == "TR4"]
@@ -699,236 +823,105 @@ sce_sub <- sce[, sce$treatment == "TR4"]
 <<plot-prop>>
 ```
 
-#### 速率流线 {.tabset}
+### 速率流线 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-stream-umap>>
 ```
 
-#### 速率网格 {.tabset}
+### 速率网格 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 <<plot-grid-umap>>
 ```
 
-#### 速率细胞 {.tabset}
+### 速率细胞 {.tabset}
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-tsne>>
 ```
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=12, fig.width=12}
 <<plot-velo-umap>>
 ```
 
-```{r}
-knitr::knit_exit()
+### 隐时间 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-tsne>>
 ```
 
-## 4 velociraptor 封装的 scvelo 算法
+#### UMAP
 
-### 4.1 1DPI 样品分析
-
-```{r}
-sce_1dpi <- sce[, sce$time == "1DPI"]
+```{python fig.height=7, fig.width=7}
+<<plot-latent-time-umap>>
 ```
 
-```{r}
-velo.out <- velociraptor::scvelo(
-  sce_1dpi,
-  mode = "stochastic",
-  use.theirs = TRUE,
-  use.dimred = "HARMONY",
-  scvelo.params = list(
-    filter_and_normalize = list(
-      min_shared_counts = 20L, n_top_genes = 2000L),
-    moments = list(n_pcs = 30L, n_neighbors = 30L)
-  ))
+### 速度与连贯性 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-tsne>>
 ```
 
-```{r}
-velo.out
+#### UMAP
+
+```{python fig.height=7, fig.width=14}
+<<plot-confidence-umap>>
 ```
 
-```{r}
-embedded <- velociraptor::embedVelocity(reducedDim(sce_1dpi, "TSNE"), velo.out)
-grid.df <- velociraptor::gridVectors(reducedDim(sce_1dpi, "TSNE"), embedded, resolution = 80)
-sce_1dpi$velocity_pseudotime <- velo.out$velocity_pseudotime
+### 速率图 {.tabset}
+
+#### t-SNE
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-tsne>>
 ```
 
-```{r fig.height=4, fig.width=4}
-scater::plotReducedDim(sce_1dpi,
-    colour_by = "cluster_id",
-    dimred = "TSNE", point_size = .1) +
-  ggplot2::geom_segment(
-    data = grid.df,
-    mapping = ggplot2::aes(
-      x = start.tSNE_1, y = start.tSNE_2, 
-      xend = end.tSNE_1, yend = end.tSNE_2),
-    arrow = grid::arrow(
-      length = grid::unit(0.02, "inches"),
-      type = "closed"),
-    size = 0.2) +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
+#### UMAP
+
+```{python fig.height=7, fig.width=7}
+<<plot-velo-graph-umap>>
 ```
 
-## 5 dynamo 算法
-
-> In dynamo, we also implemented the traditional RNA velocity method based on the steady state assumptions to support analyzing regular 10X data.
-
-从 dynamo 自带的样本数据来看，它对 AnnData 的格式需求仅仅是拥有 spliced 和 unspliced 数据层而已。
-
-> First / second moments are basically mean and uncentered variance of gene expression, which are calculated based on local smoothing via a nearest neighbours graph, constructed in the reduced PCA space from the spliced or total mRNA expression of single cells.
-
-> Kinetic estimation of the conventional scRNA-seq and metabolic labeling based scRNA-seq is often tricky and has a lot pitfalls. Sometimes you may even observed undesired backward vector flow. You can evaluate the confidence of gene-wise velocity and filter those low confidence genes for downstream Velocity vectors analysis.
-
-在计算 moments 时涉及到 nearest neighbours graph, 所以我们要想办法给 dynamo 提供整合后的 harmony 细胞嵌入。
-
-### 4.1 读取数据
-
-dynamo 模块的导入很成问题，首先它会清除当前 python 环境，然后第一次导入还不成功，要导入第二次。所以我们直接在 R 环境中直接通过 reticulate 来使用 dynamo
-
-```{r}
-sce_mock <- sce[, sce$treatment == "MOCK"]
-```
-
-### 4.2 预处理
-
-```{r}
-dyn <- reticulate::import("dynamo")
-
-adata <- runDynamoVelocity(sce_mock,
-  use.dimred = "HARMONY",
-  assay.X = "counts",
-  mode = "negbin",
-  n_top_genes = 10000L,
-  py.params = list(
-    filter_and_normalize = list(
-      min_shared_counts = 20L, n_top_genes = 2000L),
-    dynamics = list(use_smoothed = FALSE)
-  ))
-```
-
-```{r}
-adata$obsm$update(list(
-  X_tsne = reducedDim(sce_mock, "TSNE"),
-  X_umap = reducedDim(sce_mock, "UMAP")
-))
-
-adata$obs$cellType <- sce_mock$cluster_id
-```
-
-### 4.3 速率评估
-
-```{r}
-dyn$tl$reduceDimension(adata, basis='umap')
-dyn$pl$umap(adata, color='cellType')
-```
-
-```{r}
-dyn$tl$gene_wise_confidence(adata, group='cellType')
-```
-
-
-```{r}
-dyn$tl$cell_velocities(adata, method='pearson', other_kernels_dict=list(transform = 'sqrt'))
-```
-
-### 4.4 速率流线
-
-```{r fig.height=7, fig.width=7}
-dyn$pl$streamline_plot(
-  adata, color = c("cellType"), basis = "tsne",
-  show_legend = "on data",
-  show_arrowed_spines = FALSE)
-```
-
-```{r fig.height=7, fig.width=7}
-dyn$pl$streamline_plot(
-  adata, color = c("cellType"), basis = "umap",
-  show_legend = "on data",
-  show_arrowed_spines = FALSE)
-```
-
-### 4.5 速率细胞
-
-```{r}
-dyn$pl$cell_wise_vectors(
-  adata, color = 'cellType', basis = 'umap',
-  show_legend = 'on data', quiver_length = 6,
-  quiver_size = 6, pointsize = 0.1,
-  show_arrowed_spines = FALSE)
-```
-
-## 6 UniTVelo 算法
+### PAGA 图 {.tabset}
 
 ```{python}
-h5adFile=r.h5adFile
+<<run-paga>>
 ```
 
-```{python}
-import scvelo as scv
-import unitvelo as utv
+#### t-SNE
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-tsne>>
 ```
 
-```{python}
-adata_all = scv.read(r.h5adFile)
-adata_all.obs["cellType"] = adata_all.obs["cellType"].astype('category')
-adata_all
+#### UMAP
+
+```{python fig.width=7, fig.height=7}
+<<plot-paga-umap>>
 ```
-
-```{python}
-adata = adata_all[adata_all.obs["time"] == "1DPI"]
-adata.obsm["X_pca"] = adata.obsm["X_harmony"]
-```
-
-```{python}
-import gc
-del adata_all
-gc.collect()
-```
-
-```{python}
-velo = utv.config.Configuration()
-velo.R2_ADJUST = True
-velo.IROOT = None
-velo.FIT_OPTION = '1'
-velo.GPU = -1 # CPU mode
-velo.BASIS = "pca"
-```
-
-UniTVelo 接口设计不好，没有接受 cell embedding 的地方。除非构建一个简化的 anndata，将 X_harmony 命名成 X_pca
-
-```{python}
-adata = utv.run_model(adata, label="cellType", config_file=velo)
-```
-
-CPU 模式的运行时间太长了！完全不实用。
-
-```{python}
-scv.pl.velocity_embedding_stream(adata, basis="tsne", color="cellType", figsize=(7, 7), show=True)
-```
-
 

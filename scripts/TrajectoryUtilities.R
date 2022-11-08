@@ -219,16 +219,57 @@ runDynamoVelocity <- function(x,
   adata
 }
 
-runUniTVelo <- function(sce, dimred = NULL, use.dimred = NULL, ...) {
+runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL,
+  assay.X="counts", assay.spliced="spliced", assay.unspliced="unspliced",
+  mode = c("unified-time", "independent"), GPU = -1L, label = "cellType", normalize=TRUE,
+  ncomponents = 30, return_sce = FALSE
+) {
   if (is.null(dimred)) {
     if (!is.null(use.dimred)) {
       dimred <- reducedDim(x, use.dimred)
     }
   }
 
-  spliced <- assay(sce, "spliced")
-  unspliced <- assay(sce, "unspliced")
-  X <- assay(sce, "counts")
+  spliced <- assay(x, assay.spliced)
+  unspliced <- assay(x, assay.unspliced)
+  X <- assay(x, assay.X)
+
+  refdim <- as.integer(dim(spliced))
+  if (!identical(refdim, as.integer(dim(unspliced))) || !identical(refdim, as.integer(dim(X)))) {
+    stop("matrices in 'x' must have the same dimensions")
+  }
+
+  X <- t(X)
+  spliced <- t(spliced)
+  unspliced <- t(unspliced)
+
+  and <- reticulate::import("anndata")
+  adata <- and$AnnData(X, layers=list(spliced=spliced, unspliced=unspliced))
+  adata$obs_names <- rownames(spliced)
+  adata$var_names <- colnames(spliced)
+  adata$obs$cellType <- colData(x)[[label]]
+
+  if (!is.null(dimred)) {
+    adata$obsm <- list(X_pca = dimred)
+  }
+
+  utv <- reticulate::import("unitvelo")
+  mode <- match.arg(mode)
+  velo <- utv$config$Configuration()
+  velo$R2_ADJUST <- TRUE
+  velo$IROOT <- NULL
+  velo$FIT_OPTION <- if (mode == "unified-time") '1' else '2'
+  velo$GPU <- GPU
+  velo$BASIS <- "pca"
+
+  do.call(utv$run_model, list(
+    adata=adata, label="cellType",
+    config_file=velo, normalize=normalize))
+
+  if (return_sce)
+    return(AnnData2SCE(adata))
+  else
+    return(adata)
 }
 
 runScanorama <- function(sce, nfeatures = 2000L, ..., convert = TRUE) {
@@ -312,7 +353,7 @@ plotLineageCurveOnReduc <- function(sce, lineage, dimred = "UMAP", ncomponents =
   else {
     to_plot <- ncomponents
   }
-  
+
   embeddings <- reducedDim(sce, dimred)[, to_plot]
   colnames(embeddings) <- paste0(dimred, ".", to_plot)
   embedded <- slingshot::slingCurves(
@@ -328,6 +369,39 @@ plotLineageCurveOnReduc <- function(sce, lineage, dimred = "UMAP", ncomponents =
         x = colnames(embeddings)[1],
         y = colnames(embeddings)[2]),
       size = 1.2)
+}
+
+plotLineagesOnReduc <- function(
+    sce, dimred = "UMAP", ncomponents = 2,
+    path_size = 3, ...) {
+  if (length(ncomponents) == 1L)
+    to_plot <- seq_len(ncomponents)
+  else
+    to_plot <- ncomponents
+  
+  embeddings <- reducedDim(sce, dimred)[, to_plot]
+  colnames(embeddings) <- paste0(dimred, ".", to_plot)
+  
+  pseudo.paths <- slingshot::slingPseudotime(sce)
+  embedded <- slingshot::slingCurves(
+    slingshot::embedCurves(sce, embeddings))
+  names(embedded) <- colnames(pseudo.paths)
+  
+  piclist <- purrr::imap(embedded, function(emb, name) {
+    scater::plotReducedDim(
+      sce, dimred = dimred, ncomponents = ncomponents,
+      colour_by = I(pseudo.paths[, name]), ...) +
+      ggplot2::geom_path(
+        data = data.frame(emb$s[emb$ord,]),
+        mapping = ggplot2::aes_string(
+          x = colnames(embeddings)[1],
+          y = colnames(embeddings)[2]),
+        size = path_size) +
+      ggplot2::ggtitle(name) +
+      ggplot2::coord_fixed()
+  })
+  
+  patchwork::wrap_plots(piclist)
 }
 
 plotVelocityArrow <- function(sce, reduction, ...) {
@@ -672,4 +746,54 @@ wrapSlingshotToDynverse <- function(sds) {
       dimred = dimred)
 
   output
+}
+
+clean_pickle = function(path) {
+  olds = list.files(dirname(path), '_[0-9a-f]{32}[.]pickle$', full.names = TRUE)
+  olds = c(olds, path)  # `path` may not exist; make sure it is in target paths
+  base = basename(olds)
+  keep = basename(path) == base  # keep this file (will cache to this file)
+  base = substr(base, 1, nchar(base) - 37)  # 37 = 1 (_) + 32 (md5 sum) + 4 (.rds)
+  unlink(olds[(base == base[keep][1]) & !keep])
+}
+
+cache_pickle <- function(
+  expr = {}, rerun = FALSE,
+  file = 'cache.rds', dir = 'cache/',
+  hash = NULL, clean = TRUE,
+  ...
+) {
+  if (xfun::loadable('knitr')) {
+    if (missing(file) && !is.null(lab <- knitr::opts_current$get('label')))
+      file = paste0(lab, '.rds')
+    if (missing(dir) && !is.null(d <- knitr::opts_current$get('cache.path')))
+      dir = d
+  }
+
+  path = paste0(dir, file)
+  if (!grepl(r <- '([.]pickle)$', path)) path = paste0(path, '.pickle')
+
+  code = deparse(substitute(expr))
+  md5  = xfun:::md5sum_obj(code)
+
+  if (identical(hash, 'auto')) hash = xfun:::global_vars(code, parent.frame(2))
+  if (is.list(hash)) md5 = xfun:::md5sum_obj(c(md5, xfun:::md5sum_obj(hash)))
+
+  path = sub(r, paste0('_', md5, '\\1'), path)
+  if (rerun) unlink(path)
+  if (clean) clean_pickle(path)
+
+  library(reticulate)
+  pickle <- import("pickle")
+  builtins <- import_builtins()
+  if (xfun::file_exists(path)) {
+    with(builtins$open(path, "rb") %as% file,
+         pickle$load(file))
+  } else {
+    obj = expr  # lazy evaluation
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    with(builtins$open(path, "wb") %as% file,
+         pickle$dump(obj, file))
+    obj
+  }
 }

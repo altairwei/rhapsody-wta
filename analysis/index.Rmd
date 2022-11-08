@@ -35,5 +35,6 @@ editor_options:
 - Trajectory Inference
   - [Developmental Process of MOCK Samples](developmental_process_of_mock_samples.html)
   - [Mesophyll and Vascular Bundle Lineages](mesophyll_vascular_lineages.html)
+  - [RNA Velocity Estimation of All Samples](rna_velocity_estimation.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - TODO: GRN of trajectory
