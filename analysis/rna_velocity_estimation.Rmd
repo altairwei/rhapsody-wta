@@ -136,15 +136,19 @@ sce_sub <- sce[, sce$time == "1DPI"]
 ```
 
 ```{r run-scvelo}
-adata <- runScVelo(
-  sce_sub,
-  mode = "dynamical",
-  use.dimred = "HARMONY",
-  assay.X = "logcounts",
-  scvelo.params = list(
-    filter_and_normalize = list(
-      min_shared_counts = 20L, n_top_genes = 2000L),
-    moments = list(n_pcs = 30L, n_neighbors = 30L)
+adata <- cache_pickle(
+  file = "scvelo_adata_1dpi.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runScVelo(
+    sce_sub,
+    mode = "dynamical",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    scvelo.params = list(
+      filter_and_normalize = list(
+        min_shared_counts = 20L, n_top_genes = 2000L),
+      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    )
   )
 )
 ```
@@ -269,7 +273,7 @@ scv.pl.scatter(r.adata, basis="umap",
 ```{python plot-confidence-tsne, fig.height=7, fig.width=14}
 scv.tl.velocity_confidence(r.adata)
 keys = 'velocity_length', 'velocity_confidence'
-scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="tsne", perc=[5, 95], figsize=(7, 14))
+scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="tsne", perc=[5, 95])
 ```
 
 #### UMAP
@@ -277,7 +281,7 @@ scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="tsne", perc=[5, 95], fig
 ```{python plot-confidence-umap, fig.height=7, fig.width=14}
 scv.tl.velocity_confidence(r.adata)
 keys = 'velocity_length', 'velocity_confidence'
-scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="umap", perc=[5, 95], figsize=(7, 14))
+scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="umap", perc=[5, 95])
 ```
 
 ### 速率图 {.tabset}
@@ -329,7 +333,21 @@ sce_sub <- sce[, sce$time == "2DPI"]
 ```
 
 ```{r}
-<<run-scvelo>>
+adata <- cache_pickle(
+  file = "scvelo_adata_2dpi.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runScVelo(
+    sce_sub,
+    mode = "dynamical",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    scvelo.params = list(
+      filter_and_normalize = list(
+        min_shared_counts = 20L, n_top_genes = 2000L),
+      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    )
+  )
+)
 ```
 
 ```{r}
@@ -449,7 +467,21 @@ sce_sub <- sce[, sce$time == "3DPI"]
 ```
 
 ```{r}
-<<run-scvelo>>
+adata <- cache_pickle(
+  file = "scvelo_adata_3dpi.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runScVelo(
+    sce_sub,
+    mode = "dynamical",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    scvelo.params = list(
+      filter_and_normalize = list(
+        min_shared_counts = 20L, n_top_genes = 2000L),
+      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    )
+  )
+)
 ```
 
 ```{r}
@@ -570,7 +602,21 @@ sce_sub <- sce[, sce$treatment == "MOCK"]
 ```
 
 ```{r}
-<<run-scvelo>>
+adata <- cache_pickle(
+  file = "scvelo_adata_mock.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runScVelo(
+    sce_sub,
+    mode = "dynamical",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    scvelo.params = list(
+      filter_and_normalize = list(
+        min_shared_counts = 20L, n_top_genes = 2000L),
+      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    )
+  )
+)
 ```
 
 ```{r}
@@ -691,7 +737,21 @@ sce_sub <- sce[, sce$treatment == "PNR2"]
 ```
 
 ```{r}
-<<run-scvelo>>
+adata <- cache_pickle(
+  file = "scvelo_adata_pnr2.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runScVelo(
+    sce_sub,
+    mode = "dynamical",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    scvelo.params = list(
+      filter_and_normalize = list(
+        min_shared_counts = 20L, n_top_genes = 2000L),
+      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    )
+  )
+)
 ```
 
 ```{r}
@@ -812,7 +872,21 @@ sce_sub <- sce[, sce$treatment == "TR4"]
 ```
 
 ```{r}
-<<run-scvelo>>
+adata <- cache_pickle(
+  file = "scvelo_adata_tr4.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runScVelo(
+    sce_sub,
+    mode = "dynamical",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    scvelo.params = list(
+      filter_and_normalize = list(
+        min_shared_counts = 20L, n_top_genes = 2000L),
+      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    )
+  )
+)
 ```
 
 ```{r}

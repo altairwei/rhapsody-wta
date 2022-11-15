@@ -797,3 +797,337 @@ cache_pickle <- function(
     obj
   }
 }
+
+readPickle <- function(path) {
+  library(reticulate)
+  pickle <- import("pickle")
+  builtins <- import_builtins()
+  with(builtins$open(path, "rb") %as% file,
+       pickle$load(file))
+}
+
+#' Create Paga Object from AnnData
+#'
+#' @param adata \code{reticulate} reference to python AnnData object.
+#' @param basis Dimensionality reduction name
+createPagaObject <- function(adata, basis = "umap") {
+  group_name <- adata$uns['paga']$groups
+  obs <- adata$obs
+
+  paga <- list(
+    connectivities = adata$uns['paga']$connectivities,
+    connectivities_tree = adata$uns['paga']$connectivities_tree,
+    transitions_confidence = adata$uns['paga']$transitions_confidence,
+    threshold = adata$uns["paga"]$threshold,
+    group_name = group_name,
+    groups = levels(obs[[group_name]]),
+    group_colors = setNames(
+      adata$uns[paste0(group_name, "_colors")], levels(obs[[group_name]])),
+    embeddings = data.frame(
+      Dim_1 = as.data.frame(adata$obsm[paste0("X_", basis)])[, 1L],
+      Dim_2 = as.data.frame(adata$obsm[paste0("X_", basis)])[, 2L],
+      group = obs[[group_name]]
+    )
+  )
+
+  # Calculate paga positions on cell embeddings
+  paga$position <- dplyr::group_by(paga$embeddings, group) %>%
+    dplyr::summarise(x = median(Dim_1), y = median(Dim_2))
+
+  rownames(paga$connectivities) <- c(1:nrow(paga$pos))
+  colnames(paga$connectivities) <- c(1:nrow(paga$pos))
+
+  paga
+}
+
+#' Plot PAGA
+#'
+#' @param paga Paga object
+#' @param threshold Do not draw edges for weights below this threshold.
+#' Set to 0 if you want all edges. Discarding low-connectivity edges
+#' helps in getting a much clearer picture of the graph.
+plotPAGA <- function(paga, threshold = 0) {
+  # Inspired by https://romanhaa.github.io/blog/paga_to_r/
+  paga_edges <- tibble::tibble(
+    group1 = rownames(paga$connectivities)[row(paga$connectivities)[upper.tri(paga$connectivities)]],
+    group2 = colnames(paga$connectivities)[col(paga$connectivities)[upper.tri(paga$connectivities)]],
+    weight = paga$connectivities[upper.tri(paga$connectivities)]
+  ) %>%
+    dplyr::mutate(
+      x1 = paga$position$x[match(.$group1, rownames(paga$position))],
+      y1 = paga$position$y[match(.$group1, rownames(paga$position))],
+      x2 = paga$position$x[match(.$group2, rownames(paga$position))],
+      y2 = paga$position$y[match(.$group2, rownames(paga$position))]
+    )
+
+  paga_edges_sig <- dplyr::filter(paga_edges, weight >= threshold)
+  paga_edges_und <- dplyr::filter(paga_edges, weight < threshold)
+
+  p <- ggplot2::ggplot(
+      paga$position, ggplot2::aes(x, y)) +
+    ggplot2::geom_point(
+      data = paga$embeddings,
+      mapping = ggplot2::aes(
+        x = Dim_1, y = Dim_2, color = group),
+      shape = 19,
+      alpha = 0.1,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_segment(
+      data = paga_edges_und,
+      mapping = ggplot2::aes(
+        x = x1, y = y1, xend = x2, yend = y2),
+      linetype = "dashed",
+      color = "grey",
+      size = paga_edges_und$weight*3,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_segment(
+      data = paga_edges_sig,
+      mapping = ggplot2::aes(
+        x = x1, y = y1, xend = x2, yend = y2),
+      linetype = "solid",
+      color = "black",
+      size = paga_edges_sig$weight*3,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(color = group),
+      size = 7, alpha = 1, show.legend = FALSE) +
+    ggplot2::scale_color_manual(values = paga$group_colors) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = group), color = "black", fontface = "bold") +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      axis.title = ggplot2::element_blank(),
+      axis.text = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_blank(),
+      axis.line = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.border = ggplot2::element_blank()
+    )
+
+  p
+}
+
+plotPagaGraph <- function(adata, basis = "umap", threshold = 0) {
+  paga <- createPagaObject(adata, basis = basis)
+  plotPAGA(paga, threshold = threshold)
+}
+
+plotPagaCompare <- function(adata, basis = "umap", threshold = 0) {
+  paga <- createPagaObject(adata, basis = basis)
+
+  obs <- adata$obs
+
+  embed_df <- tibble::tibble(
+    Dim_1 = paga$embeddings$Dim_1,
+    Dim_2 = paga$embeddings$Dim_2,
+    group = obs[[paga$group_name]]
+  )
+
+  group_centers <- embed_df %>%
+    dplyr::group_by(group) %>%
+    dplyr::summarize(x = median(Dim_1), y = median(Dim_2))
+
+  embed_plot <- embed_df %>%
+    ggplot2::ggplot(ggplot2::aes(Dim_1, Dim_2, color = group)) +
+    ggplot2::geom_point(size = 0.1, show.legend = FALSE) +
+    ggplot2::geom_text(
+      data = group_centers,
+      mapping = ggplot2::aes(x, y, label = group),
+      size = 4.5,
+      color = "black",
+      fontface = "bold",
+      show.legend = FALSE
+    ) +
+    ggplot2::scale_color_manual(values = paga$group_colors) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      axis.title = ggplot2::element_blank(),
+      axis.text = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_blank(),
+      axis.line = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.border = ggplot2::element_blank()
+    )
+
+  paga_plot <- plotPAGA(paga, threshold = threshold)
+
+  patchwork::wrap_plots(embed_plot, paga_plot)
+}
+
+plotPagaArrow <- function(adata, basis = "umap", threshold = 0) {
+  paga <- createPagaObject(adata, basis = basis)
+
+  paga_edges <- tibble::tibble(
+    group1 = rownames(paga$connectivities)[row(paga$connectivities)[upper.tri(paga$connectivities)]],
+    group2 = colnames(paga$connectivities)[col(paga$connectivities)[upper.tri(paga$connectivities)]],
+    weight = paga$connectivities[upper.tri(paga$connectivities)]
+  ) %>%
+    dplyr::mutate(
+      x1 = paga$position$x[match(.$group1, rownames(paga$position))],
+      y1 = paga$position$y[match(.$group1, rownames(paga$position))],
+      x2 = paga$position$x[match(.$group2, rownames(paga$position))],
+      y2 = paga$position$y[match(.$group2, rownames(paga$position))]
+    )
+
+  paga_arrows <- tibble::tibble(
+    group1 = character(),
+    group2 = character(),
+    weight = double(),
+    x1 = double(),
+    y1 = double(),
+    x2 = double(),
+    y2 = double()
+  )
+  
+  paga_arrows_dimensions <- nrow(paga$transitions_confidence)
+  
+  comparisons_done <- c()
+  
+  arrow_gap <- 0.5
+  
+  for ( i in 1:paga_arrows_dimensions ) {
+    # loop through columns
+    for ( j in 1:paga_arrows_dimensions ) {
+      # skip cell if on diagonal
+      if ( i == j ) {
+        next
+        # skip cell if transition between these clusters has already been extracted
+      } else if ( paste0(i, "/", j) %in% comparisons_done | paste0(j, "/", i) %in% comparisons_done ) {
+        next
+        # if none of the above, go ahead
+      } else {
+        # get value for transition i to j
+        i_to_j <- paga$transitions_confidence[j,i]
+        # get value for transition j to i (other side of diagonal)
+        j_to_i <- paga$transitions_confidence[i,j]
+        # if i to j is more confident than j to i
+        if ( i_to_j > j_to_i ) {
+          x1 <- paga$position$x[i]
+          y1 <- paga$position$y[i]
+          x2 <- paga$position$x[j]
+          y2 <- paga$position$y[j]
+          x_length = x2 - x1
+          y_length = y2 - y1
+          gap = arrow_gap / sqrt(x_length ^ 2 + y_length ^ 2)
+          x1_new = x1 + gap * x_length
+          y1_new = y1 + gap * y_length
+          x2_new = x1 + (1 - gap) * x_length
+          y2_new = y1 + (1 - gap) * y_length
+          new_entry <- tibble::tibble(
+            group1 = (i - 1),
+            group2 = (j - 1),
+            weight = i_to_j,
+            x1 = x1_new,
+            y1 = y1_new,
+            x2 = x2_new,
+            y2 = y2_new
+          )
+          paga_arrows <- rbind(
+            paga_arrows,
+            new_entry
+          )
+          # if j to i is more confident than i to j
+        } else if ( j_to_i > i_to_j ) {
+          x1 <- paga$position$x[j]
+          y1 <- paga$position$y[j]
+          x2 <- paga$position$x[i]
+          y2 <- paga$position$y[i]
+          x_length = x2 - x1
+          y_length = y2 - y1
+          gap = arrow_gap / sqrt(x_length ^ 2 + y_length ^ 2)
+          x1_new = x1 + gap * x_length
+          y1_new = y1 + gap * y_length
+          x2_new = x1 + (1 - gap) * x_length
+          y2_new = y1 + (1 - gap) * y_length
+          new_entry <- tibble::tibble(
+            group1 = (j - 1),
+            group2 = (i - 1),
+            weight = j_to_i,
+            x1 = x1_new,
+            y1 = y1_new,
+            x2 = x2_new,
+            y2 = y2_new
+          )
+          paga_arrows <- rbind(
+            paga_arrows,
+            new_entry
+          )
+          # else (for example both 0)
+        } else {
+          next
+        }
+        # add comparison to list of already performed comparisons
+        comparisons_done <- c(comparisons_done, paste0(i,"/",j))
+      }
+    }
+  }
+
+  paga_edges <- paga_edges %>%
+    dplyr::filter(weight >= threshold)
+  
+  paga_arrows <- paga_arrows %>%
+    dplyr::filter(weight >= threshold)
+
+  plot <- ggplot2::ggplot()
+
+  # Plot grey edges
+  plot <- plot + ggplot2::geom_segment(
+    data = paga_edges,
+    mapping = ggplot2::aes(
+      x = x1, y = y1, xend = x2, yend = y2),
+    size = paga_edges$weight*3,
+    linetype = "dashed",
+    colour = "grey",
+    alpha = 0.75,
+    show.legend = FALSE
+  )
+
+  # Plot paga node
+  plot <- plot + ggplot2::geom_point(
+    data = paga$position,
+    mapping = ggplot2::aes(x, y, color = group),
+    size = 7,
+    show.legend = FALSE
+  )
+
+  # Plot arrow
+  plot <- plot + ggplot2::geom_segment(
+    data = paga_arrows,
+    mapping = ggplot2::aes(
+      x = x1, y = y1, xend = x2, yend = y2),
+    size = paga_arrows$weight*3,
+    arrow = ggplot2::arrow(
+      length = ggplot2::unit(0.02, "npc"),
+      type = "closed", angle = 15),
+    show.legend = FALSE
+  )
+
+  # Plot node label
+  plot <- plot + ggplot2::geom_text(
+    data = paga$position,
+    mapping = ggplot2::aes(x, y, label = group),
+    color = "black",
+    fontface = "bold"
+  )
+
+  plot <- plot + ggplot2::scale_color_manual(
+      values = paga$group_colors) +
+    ggplot2::labs(x = "Dim_1", y = "Dim_2") +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      axis.title = ggplot2::element_blank(),
+      axis.text = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_blank(),
+      axis.line = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.border = ggplot2::element_blank()
+    )
+
+  plot
+}
