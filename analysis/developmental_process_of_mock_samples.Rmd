@@ -282,202 +282,503 @@ ggplot2::ggplot(sample_df, ggplot2::aes(NAMPC_1, NAMPC_2, color = sample)) +
   ggplot2::geom_point()
 ```
 
-## 4 RNA 速率
+## 4 UniTVelo 速率模型
 
 ```{r}
-adata <- runScVelo(
-  sce_mock,
-  mode = "dynamical",
-  use.dimred = "HARMONY",
-  assay.X = "logcounts",
-  scvelo.params = list(
-    filter_and_normalize = list(
-      min_shared_counts = 20L, n_top_genes = 2000L),
-    moments = list(n_pcs = 30L, n_neighbors = 30L)
+sce_mock <- sce_mock[, sce_mock$cluster_id %in% c(
+  "Me_α", "Me_β", "Me_γ", "Me_δ", "Me_ε",
+  "BS", "MPV", "Va_α", "Va_β", "Va_γ", "Va_δ"
+)]
+
+embed_umap <- reducedDim(sce_mock, "UMAP")
+
+sce_mock <- sce_mock[,
+  embed_umap[, 1L] < 10
+    & embed_umap[, 1L] > -10
+    & embed_umap[, 2L] < 10
+]
+```
+
+### 降维可视化 {.tabset}
+
+```{r}
+sce_mock <- runDiffusionMap(sce_mock, dimred = "HARMONY", seed = 1117L)
+sce_mock <- runPHATE(sce_mock, dimred = "HARMONY", seed = 2019, knn = 15, t = 30)
+```
+
+#### UMAP
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+
+#### t-SNE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### PHATE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### DiffusionMap
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+### 共变邻域分析
+
+```{r}
+createCNAObject <- function(x, samplem_key, samplem_vars, dimred = "PCA", ...) {
+  samplem_vars <- c(samplem_vars, samplem_key)
+  colDf <- as.data.frame(colData(x))
+  
+  samplem_df <- colDf |>
+    dplyr::select(tidyselect::one_of(samplem_vars)) |>
+    unique() |>
+    tibble::remove_rownames()
+
+  obs_df <- tibble::rownames_to_column(colDf, 'CellID')
+
+  if (nrow(samplem_df) == nrow(obs_df)) {
+    stop(
+        'Sample-level metadata is same length as cell-level metadata.       
+         Please check that samplem_vars are sample-level covariates.'
+    )
+  }
+
+  nngraph <- Seurat::FindNeighbors(
+    reducedDim(x, dimred)[, 1:10], compute.SNN = FALSE,
+    return.neighbor = FALSE, ...)$nn
+
+  rcna_object <- list(
+    samplem = samplem_df,
+    obs = obs_df, 
+    connectivities = nngraph,
+    samplem_key = samplem_key,
+    obs_key = 'CellID',
+    N = nrow(samplem_df)
+  )
+
+  rcna_object
+}
+
+sce_mock$time_val <- as.numeric(factor(
+  sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+
+cnaObj <- createCNAObject(
+  sce_mock, 
+  samplem_key = "sample_id",
+  samplem_vars = c(
+    "time", "time_val"
+  )
+)
+
+cnaRes <- rcna::association(
+  data = cnaObj,
+  y = cnaObj$samplem$time_val,
+  batches = NULL,
+  return_nam = TRUE
+)
+
+sce_mock$time_ncorrs <- cnaRes$ncorrs[colnames(sce_mock), , drop=TRUE]
+```
+
+#### 表型关联结果 {.tabset}
+
+```{r}
+blue_to_orange <- rev(ggthemes::ggthemes_data[[
+  c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
+```
+
+##### UMAP
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "group_id",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+##### t-SNE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+##### PHATE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+##### DiffusionMap
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+### 运行 UniTVelo
+
+注意：下面这段代码是在 GPU 服务器上运行的。
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_mock_config_1.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_mock,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
   )
 )
 ```
 
-```{r}
-scv <- reticulate::import("scvelo")
+```{r eval=FALSE}
+adata <- cache_pickle(
+  file = "unitvelo_mock_config_2.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_mock,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      VGENES = "offset",
+      R2_ADJUST = FALSE,
+      IROOT = NULL,
+      FIT_OPTION = "1"
+    )
+  )
+)
+```
 
+`config_2` 推断出的模型，其 latent_time 与 time_ncorrs 的关联性只有 0.8 ，要比 `config_1` 差一点。
+
+```{r eval=FALSE}
+adata <- cache_pickle(
+  file = "unitvelo_mock_config_3.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_mock,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "2",
+      ASSIGN_POS_U = FALSE
+    )
+  )
+)
+```
+
+`config_3` 是独立模式，其结果与 `config_1` 以及 `config_2` 完全相反，并且与 time_ncorrs 的 pearson 相关性是 `-0.34` 。
+
+```{r}
 adata$obsm$update(list(
   X_tsne = reducedDim(sce_mock, "TSNE"),
   X_umap = reducedDim(sce_mock, "UMAP"),
-  X_phate = reducedDim(sce_mock, "PHATE")
+  X_phate = reducedDim(sce_mock, "PHATE"),
+  X_dc = reducedDim(sce_mock, "DiffusionMap")
 ))
 
-adata$obs$cellType <- sce_mock$cluster_id
+adata$obs$cellType <- droplevels(sce_mock$cluster_id)
 ```
 
-### 速率流线 {.tabset}
+#### 速率流线 {.tabset}
 
-#### UMAP
+##### UMAP
 
-```{python plot-stream-umap, fig.height=7, fig.width=7}
+```{python fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
-  r.adata, basis="umap", color="cellType", figsize = (7, 7))
+  r.adata, basis="umap", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-#### t-SNE
+##### t-SNE
 
-```{python plot-stream-tsne, fig.height=7, fig.width=7}
+```{python fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
-  r.adata, basis="tsne", color="cellType", figsize= (7, 7))
+  r.adata, basis="tsne", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-### 速率细胞 {.tabset}
+##### PHATE
 
-#### UMAP
-
-```{python plot-velo-umap, fig.height=12, fig.width=12}
-scv.pl.velocity_embedding(
-  r.adata, basis="umap", color="cellType", figsize=(12, 12),
-  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```{python fig.height=7, fig.width=7}
+scv.pl.velocity_embedding_stream(
+  r.adata, basis="phate", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-#### t-SNE
+##### DiffusionMap
 
-```{python plot-velo-tsne, fig.height=12, fig.width=12}
-scv.pl.velocity_embedding(
-  r.adata, basis="tsne", color="cellType", figsize=(12, 12),
-  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+```{python fig.height=7, fig.width=7}
+scv.pl.velocity_embedding_stream(
+  r.adata, basis="dc", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-### 速度 {.tabset}
+#### 隐时间 {.tabset}
 
-> The speed or rate of differentiation is given by the length of the velocity vector.
+```{r}
+scv$tl$latent_time(adata, min_likelihood=NULL)
+sce_mock$latent_time <- adata$obs$latent_time
+```
+
+
+##### UMAP
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "latent_time",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+##### t-SNE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "latent_time",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+##### PHATE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "latent_time",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+##### DiffusionMap
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
+    point_size = 0.5,
+    colour_by = "latent_time",
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+#### 表型与隐时间的关联
+
+```{r}
+colData(sce_mock) |>
+  as.data.frame() |>
+  dplyr::sample_frac(1) |>
+  ggpubr::ggscatter(
+    x = "time_ncorrs", y = "latent_time", group = NULL,
+    color = "time", conf.int = TRUE,
+    cor.coef = TRUE, cor.method = "pearson") +
+  ggplot2::geom_smooth(method = lm, color = "black", fill = 'lightblue') +
+  NULL
+```
+
+样本数量太大了，导致置信区间的 level 要设置的非常高才有可能看见。
+
+#### 基因动态类型分析
+
+```{r}
+is_velo_genes <- adata$var[["velocity_genes"]]
+velo_genes <- adata$var_names[is_velo_genes]
+peak_time <- adata$var[["fit_t0"]][is_velo_genes]
+
+hist(peak_time, prob = TRUE, breaks = 40)
+lines(density(peak_time))
+```
+
+```{r}
+repression <- velo_genes[peak_time < 0.05]
+induction <- velo_genes[peak_time > 0.95]
+transient <- velo_genes[peak_time > 0.05 & peak_time < 0.95]
+```
 
 ```{python}
-kwargs=dict(cmap='coolwarm', size=10, perc=[5, 95], figsize=(7, 7))
+scv.pl.heatmap(
+    r.adata, var_names=r.repression, sortby='latent_time', yticklabels=False,
+    col_color='cellType', n_convolve=100)
 ```
-
-#### UMAP
-
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, c='velocity_length', basis="umap", **kwargs)
-```
-
-#### t-SNE
-
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, c='velocity_length', basis="tsne", **kwargs)
-```
-
-### 连贯性 {.tabset}
-
-> The coherence of the vector field (i.e., how a velocity vector correlates with its neighboring velocities) provides a measure of confidence.
-
-#### UMAP
-
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, c='velocity_confidence', basis="umap", **kwargs)
-```
-
-#### t-SNE
-
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, c='velocity_confidence', basis="tsne", **kwargs)
-```
-
-### 速率图 {.tabset}
-
-> We can visualize the velocity graph to portray all velocity-inferred cell-to-cell connections/transitions. It can be confined to high-probability transitions by setting a `threshold`.
 
 ```{python}
-vgkwargs=dict(threshold=5, size=10, alpha=.2, color="cellType", figsize=(7, 7))
+scv.pl.heatmap(
+    r.adata, var_names=r.induction, sortby='latent_time', yticklabels=False,
+    col_color='cellType', n_convolve=100)
 ```
-
-#### UMAP
-
-```{python fig.height=7, fig.width=7}
-scv.pl.velocity_graph(r.adata, basis="umap", **vgkwargs)
-```
-
-#### t-SNE
-
-```{python fig.height=7, fig.width=7}
-scv.pl.velocity_graph(r.adata, basis="tsne", **vgkwargs)
-```
-
-### 速率拟时序 {.tabset}
-
-> Finally, based on the velocity graph, a velocity pseudotime can be computed. After inferring a distribution over root cells from the graph, it measures the average number of steps it takes to reach a cell after walking along the graph starting from the root cells.
->
-> Contrarily to diffusion pseudotime, it implicitly infers the root cells and is based on the directed velocity graph instead of the similarity-based diffusion kernel.
-
-#### UMAP
-
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(
-  r.adata, color='velocity_pseudotime', cmap='gnuplot',
-  basis='umap', figsize=(7, 7))
-```
-
-#### t-SNE
-
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(
-  r.adata, color='velocity_pseudotime', cmap='gnuplot',
-  basis='tsne', figsize=(7, 7))
-```
-
-### 隐时间 {.tabset}
-
-> The dynamical model recovers the latent time of the underlying cellular processes. This latent time represents the cell's internal clock and approximates the real time experienced by cells as they differentiate, based only on its transcriptional dynamics.
->
-> scVelo's latent time is based only on its transcriptional dynamics and represents the cell's internal clock. It captures aspects of the actual time better than similarity-based diffusion pseudo-time.
 
 ```{python}
-ltkwargs=dict(color='latent_time', color_map='gnuplot', size=20, figsize=(7, 7))
+scv.pl.heatmap(
+    r.adata, var_names=r.transient, sortby='latent_time', yticklabels=False,
+    col_color='cellType', n_convolve=100)
 ```
 
-#### UMAP
+### 细胞种群连接性
 
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, basis="umap", **ltkwargs)
+#### PAGA 连接图 {.tabset}
+
+```{r}
+sc <- reticulate::import("scanpy")
+sc$tl$paga(adata, groups='cellType')
 ```
 
-#### t-SNE
+##### UMAP
 
-```{python fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, basis="tsne", **ltkwargs)
+```{r fig.height=7, fig.width=7}
+plotPagaGraph(adata, basis="umap", threshold = 0.7, edge_cex = 2, node_cex = 3) +
+  ggplot2::coord_fixed()
 ```
 
-### PAGA 图 {.tabset}
+##### t-SNE
 
-> PAGA graph abstraction has benchmarked as top-performing method for trajectory inference. It provides a graph-like map of the data topology with weighted edges corresponding to the connectivity between two clusters. Here, PAGA is extended by velocity-inferred directionality.
+```{r fig.height=7, fig.width=7}
+plotPagaGraph(adata, basis="tsne", threshold = 0.7, edge_cex = 2) +
+  ggplot2::coord_fixed()
+```
+
+##### PHATE
+
+```{r fig.height=7, fig.width=7}
+plotPagaGraph(adata, basis="phate", threshold = 0.7, edge_cex = 2) +
+  ggplot2::coord_fixed()
+```
+
+##### DiffusionMap
+
+```{r fig.height=7, fig.width=7}
+plotPagaGraph(adata, basis="dc", threshold = 0.7, edge_cex = 2) +
+  ggplot2::coord_fixed()
+```
+
+#### PAGA 有向图 {.tabset}
 
 ```{python}
 r.adata.uns['neighbors']['distances'] = r.adata.obsp['distances']
 r.adata.uns['neighbors']['connectivities'] = r.adata.obsp['connectivities']
 
-scv.tl.paga(r.adata, groups='cellType', threshold_root_end_prior=1)
+scv.tl.paga(r.adata, groups='cellType')
 ```
 
-#### UMAP
+##### UMAP
 
-```{python fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1, legend_loc='on data',
-            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
+```{r fig.width=7, fig.height=7}
+plotPagaArrow(adata, basis = "umap", threshold = 0, edge_cex = 4, node_cex = 6) +
+  ggplot2::coord_fixed()
 ```
 
-#### t-SNE
+##### t-SNE
 
-```{python fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='tsne', size=50, alpha=.1, legend_loc='on data',
-            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
+```{r fig.width=7, fig.height=7}
+plotPagaArrow(adata, basis = "tsne", threshold = 0, edge_cex = 4, node_cex = 6) +
+  ggplot2::coord_fixed()
 ```
 
-#### PHATE
+##### PHATE
 
-```{python fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='phate', size=50, alpha=.1, legend_loc='on data',
-            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
+```{r fig.width=7, fig.height=7}
+plotPagaArrow(adata, basis = "phate", threshold = 0, edge_cex = 4, node_cex = 6, arrow_gap = 0.002) +
+  ggplot2::coord_fixed()
 ```
 
-```{r}
-knitr::knit_exit()
-```
+#### DiffusionMap
 
+```{r fig.width=7, fig.height=7}
+plotPagaArrow(adata, basis = "dc", threshold = 0, edge_cex = 4, node_cex = 6, arrow_gap = 0.002) +
+  ggplot2::coord_fixed()
+```
 

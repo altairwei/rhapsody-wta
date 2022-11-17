@@ -127,7 +127,7 @@ blue_to_orange <- rev(ggthemes::ggthemes_data[[
   c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
 ```
 
-在下面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI ~ 3DPI 的邻域系数。
+在下面的图中，每个细胞根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI ~ 3DPI 的邻域系数。
 
 #### t-SNE
 

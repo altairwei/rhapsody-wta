@@ -1,4 +1,5 @@
 suppressMessages(library(SingleCellExperiment))
+suppressMessages(library(magrittr))
 
 quickDynSlingshot <- function(sce, reduction = "PCA") {
   dataset <- dynwrap::wrap_expression(
@@ -633,7 +634,7 @@ calculateDiffusionMap <- function(
   x, ...,
   exprs_values="logcounts", dimred=NULL, n_dimred=NULL,
   ncomponents = 2, ntop = 500, subset_row = NULL, scale=FALSE,
-  transposed=!is.null(dimred)
+  transposed=!is.null(dimred), seed = 1L
 ) {
   mat <- scater:::.get_mat_from_sce(x, exprs_values=exprs_values, dimred=dimred, n_dimred=n_dimred)
 
@@ -642,6 +643,7 @@ calculateDiffusionMap <- function(
   }
 
   mat <- as.matrix(mat)
+  set.seed(seed)
   difmap_out <- destiny::DiffusionMap(mat, ...)
   difmap_out@eigenvectors[, seq_len(ncomponents), drop = FALSE]
 }
@@ -830,12 +832,18 @@ createPagaObject <- function(adata, basis = "umap") {
     )
   )
 
+  for (mtx_name in c("connectivities", "connectivities_tree",
+                     "transitions_confidence")) {
+    if (!is.null(paga[[mtx_name]]))
+      paga[[mtx_name]] <- as.matrix(paga[[mtx_name]])
+  }
+
   # Calculate paga positions on cell embeddings
   paga$position <- dplyr::group_by(paga$embeddings, group) %>%
     dplyr::summarise(x = median(Dim_1), y = median(Dim_2))
 
-  rownames(paga$connectivities) <- c(1:nrow(paga$pos))
-  colnames(paga$connectivities) <- c(1:nrow(paga$pos))
+  rownames(paga$connectivities) <- c(1:nrow(paga$position))
+  colnames(paga$connectivities) <- c(1:nrow(paga$position))
 
   paga
 }
@@ -846,7 +854,7 @@ createPagaObject <- function(adata, basis = "umap") {
 #' @param threshold Do not draw edges for weights below this threshold.
 #' Set to 0 if you want all edges. Discarding low-connectivity edges
 #' helps in getting a much clearer picture of the graph.
-plotPAGA <- function(paga, threshold = 0) {
+plotPAGA <- function(paga, threshold = 0, edge_cex = 3, node_cex = 2, label_cex = 2) {
   # Inspired by https://romanhaa.github.io/blog/paga_to_r/
   paga_edges <- tibble::tibble(
     group1 = rownames(paga$connectivities)[row(paga$connectivities)[upper.tri(paga$connectivities)]],
@@ -879,7 +887,7 @@ plotPAGA <- function(paga, threshold = 0) {
         x = x1, y = y1, xend = x2, yend = y2),
       linetype = "dashed",
       color = "grey",
-      size = paga_edges_und$weight*3,
+      size = paga_edges_und$weight*edge_cex,
       show.legend = FALSE
     ) +
     ggplot2::geom_segment(
@@ -888,15 +896,16 @@ plotPAGA <- function(paga, threshold = 0) {
         x = x1, y = y1, xend = x2, yend = y2),
       linetype = "solid",
       color = "black",
-      size = paga_edges_sig$weight*3,
+      size = paga_edges_sig$weight*edge_cex,
       show.legend = FALSE
     ) +
     ggplot2::geom_point(
       ggplot2::aes(color = group),
-      size = 7, alpha = 1, show.legend = FALSE) +
+      size = 3*node_cex, alpha = 1, show.legend = FALSE) +
     ggplot2::scale_color_manual(values = paga$group_colors) +
     ggplot2::geom_text(
-      ggplot2::aes(label = group), color = "black", fontface = "bold") +
+      ggplot2::aes(label = group), color = "black",
+      size = 3*label_cex, fontface = "bold") +
     ggplot2::theme_bw() +
     ggplot2::theme(
       axis.title = ggplot2::element_blank(),
@@ -911,9 +920,9 @@ plotPAGA <- function(paga, threshold = 0) {
   p
 }
 
-plotPagaGraph <- function(adata, basis = "umap", threshold = 0) {
+plotPagaGraph <- function(adata, basis = "umap", threshold = 0, ...) {
   paga <- createPagaObject(adata, basis = basis)
-  plotPAGA(paga, threshold = threshold)
+  plotPAGA(paga, threshold = threshold, ...)
 }
 
 plotPagaCompare <- function(adata, basis = "umap", threshold = 0) {
@@ -959,7 +968,10 @@ plotPagaCompare <- function(adata, basis = "umap", threshold = 0) {
   patchwork::wrap_plots(embed_plot, paga_plot)
 }
 
-plotPagaArrow <- function(adata, basis = "umap", threshold = 0) {
+plotPagaArrow <- function(
+    adata, basis = "umap", threshold = 0,
+    edge_cex = 3, node_cex = 2, label_cex = 2,
+    arrow_gap = 0.5) {
   paga <- createPagaObject(adata, basis = basis)
 
   paga_edges <- tibble::tibble(
@@ -985,11 +997,9 @@ plotPagaArrow <- function(adata, basis = "umap", threshold = 0) {
   )
   
   paga_arrows_dimensions <- nrow(paga$transitions_confidence)
-  
+
   comparisons_done <- c()
-  
-  arrow_gap <- 0.5
-  
+
   for ( i in 1:paga_arrows_dimensions ) {
     # loop through columns
     for ( j in 1:paga_arrows_dimensions ) {
@@ -1072,15 +1082,24 @@ plotPagaArrow <- function(adata, basis = "umap", threshold = 0) {
   
   paga_arrows <- paga_arrows %>%
     dplyr::filter(weight >= threshold)
-
+  
   plot <- ggplot2::ggplot()
+
+  plot <- plot + ggplot2::geom_point(
+    data = paga$embeddings,
+    mapping = ggplot2::aes(
+      x = Dim_1, y = Dim_2, color = group),
+    shape = 19,
+    alpha = 0.1,
+    show.legend = FALSE
+  )
 
   # Plot grey edges
   plot <- plot + ggplot2::geom_segment(
     data = paga_edges,
     mapping = ggplot2::aes(
       x = x1, y = y1, xend = x2, yend = y2),
-    size = paga_edges$weight*3,
+    size = paga_edges$weight*edge_cex,
     linetype = "dashed",
     colour = "grey",
     alpha = 0.75,
@@ -1091,7 +1110,7 @@ plotPagaArrow <- function(adata, basis = "umap", threshold = 0) {
   plot <- plot + ggplot2::geom_point(
     data = paga$position,
     mapping = ggplot2::aes(x, y, color = group),
-    size = 7,
+    size = 3*edge_cex,
     show.legend = FALSE
   )
 
@@ -1100,9 +1119,9 @@ plotPagaArrow <- function(adata, basis = "umap", threshold = 0) {
     data = paga_arrows,
     mapping = ggplot2::aes(
       x = x1, y = y1, xend = x2, yend = y2),
-    size = paga_arrows$weight*3,
+    size = paga_arrows$weight*edge_cex,
     arrow = ggplot2::arrow(
-      length = ggplot2::unit(0.02, "npc"),
+      length = ggplot2::unit(0.004*edge_cex, "npc"),
       type = "closed", angle = 15),
     show.legend = FALSE
   )
@@ -1112,7 +1131,8 @@ plotPagaArrow <- function(adata, basis = "umap", threshold = 0) {
     data = paga$position,
     mapping = ggplot2::aes(x, y, label = group),
     color = "black",
-    fontface = "bold"
+    fontface = "bold",
+    size = 3*label_cex
   )
 
   plot <- plot + ggplot2::scale_color_manual(
