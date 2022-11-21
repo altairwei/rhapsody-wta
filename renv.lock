@@ -666,10 +666,10 @@
     },
     "Hmisc": {
       "Package": "Hmisc",
-      "Version": "4.6-0",
+      "Version": "4.7-2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "642812f46e5fb638c01150f2a2b5db44",
+      "Hash": "38d81aab48fd9587c47c8dd20d8498cd",
       "Requirements": [
         "Formula",
         "base64enc",
@@ -4820,6 +4820,18 @@
       "Repository": "CRAN",
       "Hash": "32620e2001c1dce1af49c49dccbb9420",
       "Requirements": []
+    },
+    "psych": {
+      "Package": "psych",
+      "Version": "2.2.9",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "d782101c030f2d287379179006510756",
+      "Requirements": [
+        "lattice",
+        "mnormt",
+        "nlme"
+      ]
     },
     "purrr": {
       "Package": "purrr",

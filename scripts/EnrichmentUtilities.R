@@ -1,4 +1,6 @@
 library(magrittr)
+suppressMessages(library(ggplot2))
+
 
 #' Perform ORA enrichment analysis for DS results
 #'

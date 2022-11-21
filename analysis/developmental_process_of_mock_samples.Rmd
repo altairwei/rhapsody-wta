@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(SingleCellExperiment)
+library(ggplot2)
 knitr::opts_chunk$set(echo = TRUE)
 source("../scripts/TrajectoryUtilities.R")
 plt <- reticulate::import("matplotlib.pyplot")
@@ -109,181 +110,6 @@ sce_mock <- xfun::cache_rds(
 )
 ```
 
-## 2 降维分析 {.tabset}
-
-```{r}
-sce_mock <- runDiffusionMap(sce_mock, dimred = "HARMONY")
-sce_mock <- runPHATE(sce_mock, dimred = "HARMONY")
-```
-
-### UMAP
-
-```{r}
-scater::plotUMAP(sce_mock, colour_by = "cluster_id", point_size = 0.5) +
-  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-```
-
-### t-SNE
-
-```{r}
-scater::plotTSNE(sce_mock, colour_by = "cluster_id", point_size = 0.5) +
-  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-```
-
-### DiffusionMap
-
-```{r}
-scater::plotDiffusionMap(sce_mock, colour_by = "cluster_id", point_size = 0.5) +
-  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-```
-
-### PHATE
-
-```{r}
-scater::plotReducedDim(sce_mock, dimred = "PHATE", colour_by = "cluster_id", point_size = 0.5) +
-  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-```
-
-## 3 共变邻域分析
-
-```{r}
-obj_mock$time_val <- as.numeric(factor(
-  obj_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
-
-obj_mock <- rcna::association.Seurat(
-  seurat_object = obj_mock,
-  test_var = "time_val",
-  samplem_key = "sample",
-  graph_use = "RNA_nn",
-  batches = NULL,
-  covs = NULL
-)
-```
-
-### 时间系列
-
-```{r fig.height=3, fig.width=11}
-Seurat::DimPlot(obj_mock, reduction = "umap", split.by = "time") &
-  ggplot2::coord_fixed()
-```
-
-### 表型关联结果 {.tabset}
-
-```{r}
-blue_to_orange <- rev(ggthemes::ggthemes_data[[
-  c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
-```
-
-在下面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI \~ 3DPI 的邻域系数。
-
-#### UMAP
-
-```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_mock, reduction = "umap", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
-  ggplot2::coord_fixed()
-
-p2 <- Seurat::DimPlot(obj_mock, reduction = "umap", group = "group") &
-  ggplot2::coord_fixed()
-
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
-```
-
-#### t-SNE
-
-```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_mock, reduction = "tsne", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
-  ggplot2::coord_fixed()
-
-p2 <- Seurat::DimPlot(obj_mock, reduction = "tsne", group = "group") &
-  ggplot2::coord_fixed()
-
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
-```
-
-### Neighborhood loadings of NAM PCs
-
-查看源代码可知，`NAM_nbhdXpc` 等于 `NAM_embeddings`，而 `NAM_sampleXpc` 等于 `NAM_loadings` 。
-
-```{r fig.height=8, fig.width=14}
-p <- Seurat::FeaturePlot(
-    obj_mock, reduction = "umap",
-    features = paste0("NAMPC_", 1:6),
-    ncol = 3, order = TRUE) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
-  ggplot2::coord_fixed()
-
-p
-```
-
-### Variance explained by NAM PCs
-
-```{r}
-data.frame(
-  sig2 = obj_mock@reductions$cna@misc$NAM_svs
-          / sum(obj_mock@reductions$cna@misc$NAM_svs)) |>
-    tibble::rowid_to_column('PC') |>
-    ggplot2::ggplot(ggplot2::aes(PC, sig2)) + 
-        ggplot2::geom_point() + 
-        ggplot2::geom_line() + 
-        ggplot2::theme_classic(base_size = 14) + 
-        ggplot2::labs(y = 'Fraction of variance explained', x = 'NAM PC') + 
-        ggplot2::scale_x_continuous(breaks = 1:20)
-```
-
-### Per-gene correlations to neighborhood coefficient
-
-```{r}
-ncorrs <- as(matrix(obj_mock$cna_ncorrs, ncol = 1), "dgCMatrix")
-genes <- qlcMatrix::corSparse(ncorrs, t(obj_mock@assays$RNA@counts))
-genes <- structure(as.numeric(genes), names = rownames(obj_mock@assays$RNA@counts))
-genes <- sort(genes, decreasing = TRUE)
-```
-
-```{r}
-gsea <- clusterProfiler::gseGO(
-  genes,
-  ont = "BP",
-  OrgDb = org.Taestivum.iwgsc.db,
-  keyType = "GID"
-)
-
-gsea <- clusterProfiler::simplify(gsea)
-```
-
-```{r fig.height=10, fig.width=10}
-p <- gsea |>
-  enrichplot::pairwise_termsim() |>
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 20, offset_tiplab = 1,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
-从上面的 GO 词条来看，这确实像是发育程序。
-
-### Sample loadings of NAM PCs
-
-```{r}
-sample_df <- as.data.frame(obj_mock@reductions$cna@feature.loadings[, 1:2])
-sample_df$sample <- stringr::str_extract(rownames(sample_df), "\\dDPI-MOCK")
-
-ggplot2::ggplot(sample_df, ggplot2::aes(NAMPC_1, NAMPC_2, color = sample)) +
-  ggplot2::geom_point()
-```
-
-## 4 UniTVelo 速率模型
-
 ```{r}
 sce_mock <- sce_mock[, sce_mock$cluster_id %in% c(
   "Me_α", "Me_β", "Me_γ", "Me_δ", "Me_ε",
@@ -297,16 +123,19 @@ sce_mock <- sce_mock[,
     & embed_umap[, 1L] > -10
     & embed_umap[, 2L] < 10
 ]
+
+sce_mock$cluster_id <- droplevels(sce_mock$cluster_id)
+sce_mock$cellType <- droplevels(sce_mock$cellType)
 ```
 
-### 降维可视化 {.tabset}
+## 2 降维可视化 {.tabset}
 
 ```{r}
 sce_mock <- runDiffusionMap(sce_mock, dimred = "HARMONY", seed = 1117L)
 sce_mock <- runPHATE(sce_mock, dimred = "HARMONY", seed = 2019, knn = 15, t = 30)
 ```
 
-#### UMAP
+### UMAP
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "UMAP",
@@ -320,7 +149,7 @@ scater::plotReducedDim(sce_mock, dimred = "UMAP",
 ```
 
 
-#### t-SNE
+### t-SNE
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "TSNE",
@@ -333,7 +162,7 @@ scater::plotReducedDim(sce_mock, dimred = "TSNE",
   ggplot2::coord_fixed()
 ```
 
-#### PHATE
+### PHATE
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "PHATE",
@@ -346,7 +175,7 @@ scater::plotReducedDim(sce_mock, dimred = "PHATE",
   ggplot2::coord_fixed()
 ```
 
-#### DiffusionMap
+### DiffusionMap
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
@@ -359,7 +188,66 @@ scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
   ggplot2::coord_fixed()
 ```
 
-### 共变邻域分析
+## 3 三维可视化 {.tabset}
+
+```{r}
+cellTypeColors <- Seurat::DiscretePalette(length(unique(sce_mock$cellType)))
+```
+
+### PHATE
+
+```{r}
+embed_phate <- calculatePHATE(
+  sce_mock, dimred = "HARMONY", seed = 2019,
+  knn = 15, t = 30, ncomponents = 3)
+```
+
+```{r}
+df_to_plot <- data.frame(
+  Dim_1 = embed_phate[, 1],
+  Dim_2 = embed_phate[, 2],
+  Dim_3 = embed_phate[, 3],
+  cellType = sce_mock$cluster_id
+)
+
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ Dim_1, y = ~ Dim_2, z = ~ Dim_3,
+  color = ~ cellType,
+  colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
+)
+```
+
+### DiffusionMap
+
+```{r}
+embed_dc <- calculateDiffusionMap(
+  sce_mock, dimred = "HARMONY", seed = 1117L, ncomponents = 3)
+```
+
+```{r}
+df_to_plot <- data.frame(
+  Dim_1 = embed_dc[, 1],
+  Dim_2 = embed_dc[, 2],
+  Dim_3 = embed_dc[, 3],
+  cellType = sce_mock$cluster_id
+)
+
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ Dim_1, y = ~ Dim_2, z = ~ Dim_3,
+  color = ~ cellType,
+  colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
+)
+```
+
+## 4 共变邻域分析
 
 ```{r}
 createCNAObject <- function(x, samplem_key, samplem_vars, dimred = "PCA", ...) {
@@ -415,19 +303,34 @@ cnaRes <- rcna::association(
 )
 
 sce_mock$time_ncorrs <- cnaRes$ncorrs[colnames(sce_mock), , drop=TRUE]
+sce_mock$time_ncorrs_fdr05 <- rep(0, ncol(sce_mock))
+if (!is.null(cnaRes$fdr_5p_t)) {
+    idx_passed <- which(abs(sce_mock$time_ncorrs) >= cnaRes$fdr_5p_t)
+    sce_mock$time_ncorrs_fdr05[idx_passed] <- sce_mock$time_ncorrs[idx_passed]
+}
+
+sce_mock$time_ncorrs_fdr10 <- rep(0, ncol(sce_mock))
+if (!is.null(cnaRes$fdr_10p_t)) {
+    idx_passed <- which(abs(sce_mock$time_ncorrs) >= cnaRes$fdr_10p_t)
+    sce_mock$time_ncorrs_fdr10[idx_passed] <- sce_mock$time_ncorrs[idx_passed]
+}
 ```
 
-#### 表型关联结果 {.tabset}
+### 表型关联结果 {.tabset}
 
 ```{r}
 blue_to_orange <- rev(ggthemes::ggthemes_data[[
   c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
 ```
 
-##### UMAP
+在下面的图中，每个单元格根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI \~ 3DPI 的邻域系数。
+
+#### UMAP
 
 ```{r}
-scater::plotReducedDim(sce_mock, dimred = "UMAP",
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "UMAP",
     point_size = 0.5,
     colour_by = "time_ncorrs",
     text_by = "cellType",
@@ -438,7 +341,9 @@ scater::plotReducedDim(sce_mock, dimred = "UMAP",
 ```
 
 ```{r}
-scater::plotReducedDim(sce_mock, dimred = "UMAP",
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "UMAP",
     point_size = 0.5,
     colour_by = "group_id",
     text_by = "cellType",
@@ -449,10 +354,12 @@ scater::plotReducedDim(sce_mock, dimred = "UMAP",
   ggplot2::coord_fixed()
 ```
 
-##### t-SNE
+#### t-SNE
 
 ```{r}
-scater::plotReducedDim(sce_mock, dimred = "TSNE",
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "TSNE",
     point_size = 0.5,
     colour_by = "time_ncorrs",
     text_by = "cellType",
@@ -462,10 +369,12 @@ scater::plotReducedDim(sce_mock, dimred = "TSNE",
   ggplot2::coord_fixed()
 ```
 
-##### PHATE
+#### PHATE
 
 ```{r}
-scater::plotReducedDim(sce_mock, dimred = "PHATE",
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "PHATE",
     point_size = 0.5,
     colour_by = "time_ncorrs",
     text_by = "cellType",
@@ -475,10 +384,12 @@ scater::plotReducedDim(sce_mock, dimred = "PHATE",
   ggplot2::coord_fixed()
 ```
 
-##### DiffusionMap
+#### DiffusionMap
 
 ```{r}
-scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "DiffusionMap",
     point_size = 0.5,
     colour_by = "time_ncorrs",
     text_by = "cellType",
@@ -488,7 +399,275 @@ scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
   ggplot2::coord_fixed()
 ```
 
-### 运行 UniTVelo
+### 邻域系数
+
+#### 细胞群体分布
+
+```{r}
+data.frame(time_ncorrs = sce_mock$time_ncorrs,
+           cellType = forcats::fct_relevel(
+             droplevels(sce_mock$cellType),
+             "Me_γ", "MPV", "Va_δ", "Me_δ", "BS")) |>
+  ggplot2::ggplot(ggplot2::aes(x = time_ncorrs, fill = cellType)) +
+  ggplot2::geom_density(position = "stack") +
+  ggplot2::geom_vline(xintercept = cnaRes$fdr_5p_t) +
+  ggplot2::geom_vline(xintercept = -cnaRes$fdr_5p_t) +
+  NULL
+```
+
+```{r}
+data.frame(time_ncorrs = sce_mock$time_ncorrs,
+           cellType = forcats::fct_relevel(
+             droplevels(sce_mock$cellType),
+             "Me_γ", "MPV", "Va_δ", "Me_δ", "BS")) |>
+  ggplot2::ggplot(ggplot2::aes(x = time_ncorrs, y = cellType, fill = cellType)) +
+  ggridges::geom_density_ridges(scale = 4) +
+  ggplot2::geom_vline(xintercept = cnaRes$fdr_5p_t) +
+  ggplot2::geom_vline(xintercept = -cnaRes$fdr_5p_t) +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 2.5))) +
+  ggridges::theme_ridges()
+```
+
+#### 关联基因富集分析
+
+```{r}
+ncorrs <- as(matrix(cnaRes$ncorrs, ncol = 1), "dgCMatrix")
+genes <- qlcMatrix::corSparse(ncorrs, t(logcounts(sce_mock)))
+genes <- structure(as.numeric(genes), names = rownames(logcounts(sce_mock)))
+genes <- sort(genes, decreasing = TRUE)
+```
+
+```{r}
+gsea <- clusterProfiler::gseGO(
+  genes,
+  ont = "BP",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID"
+)
+
+gsea <- clusterProfiler::simplify(gsea, cutoff = 0.5)
+```
+
+```{r fig.height=10, fig.width=10}
+p <- gsea |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 20, offset_tiplab = 1,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+从上面的 GO 词条来看，这确实像是发育程序。
+
+```{r}
+enrichdf <- gsea@result |>
+  tibble::remove_rownames() |>
+  dplyr::mutate(Count = length(strsplit(core_enrichment, "/")[[1]])) |>
+  dplyr::select(ID, Description, NES,
+                Count, p.adjust, core_enrichment)
+```
+
+```{r}
+reactable::reactable(
+  enrichdf,
+  columns = list(
+    "ID" = reactable::colDef(maxWidth = 120),
+    "Description" = reactable::colDef(minWidth = 100),
+    "NES" = reactable::colDef(maxWidth = 80,
+      format = reactable::colFormat(digits = 2)),
+    "Count" = reactable::colDef(maxWidth = 80),
+    "p.adjust" = reactable::colDef(
+      maxWidth = 80, format = reactable::colFormat(digits = 2)),
+    "core_enrichment" = reactable::colDef(show = FALSE)
+  ),
+  details = reactable::colDef(
+    name = "Genes",
+    width = 80,
+    details = function(row_idx) {
+      reactable::reactable(
+        data.frame(Details = enrichdf[row_idx, "core_enrichment"]),
+        outlined = FALSE, fullWidth = TRUE)
+    }
+  )
+)
+```
+
+
+### 邻域负荷
+
+由于样本数量小于 10 个，分析邻域负荷的意义不大。在样本数量很大时，NAM-PCs 可以为数据集提供很有用的解析性描述。
+
+#### 方差解释
+
+查看源代码可知，`NAM_nbhdXpc` 等于 `NAM_embeddings`，而 `NAM_sampleXpc` 等于 `NAM_loadings` 。
+
+```{r}
+data.frame(sig2 = cnaRes$NAM_svs / sum(cnaRes$NAM_svs)) |>
+  tibble::rowid_to_column('PC') |>
+  ggplot2::ggplot(ggplot2::aes(PC, sig2)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_line() +
+  ggplot2::theme_classic(base_size = 14) +
+  ggplot2::labs(y = 'Fraction of variance explained', x = 'NAM PC') +
+  ggplot2::scale_x_continuous(breaks = 1:20)
+```
+
+#### 细胞投影
+
+```{r}
+nampcs <- paste0("NAM", colnames(cnaRes$NAM_embeddings))
+colData(sce_mock)[, nampcs] <- as.data.frame(cnaRes$NAM_embeddings)
+```
+
+```{r fig.height=8, fig.width=16}
+lapply(nampcs, function(pcname) {
+  scater::plotReducedDim(
+    sce_mock,
+    dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = pcname,
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::ggtitle(pcname) +
+  ggplot2::coord_fixed()
+}) |> patchwork::wrap_plots(nrow = 2)
+```
+
+#### 细胞种群分布
+
+```{r fig.height=8, fig.width=16}
+cnaRes$NAM_embeddings |>
+  as.data.frame() |>
+  dplyr::mutate(cellType = forcats::fct_relevel(
+             droplevels(sce_mock$cellType),
+             "Me_γ", "MPV", "Va_δ", "Me_δ", "BS")) |>
+  tidyr::pivot_longer(dplyr::starts_with("PC"), names_to = "PCs", values_to = "loadings") |>
+  ggplot2::ggplot(ggplot2::aes(x = loadings, y = cellType, fill = cellType)) +
+  ggridges::geom_density_ridges(scale = 4) +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 2.5))) +
+  ggplot2::facet_wrap(~ PCs, nrow = 2, scales = "free_x") +
+  #ggridges::theme_ridges()
+  NULL
+```
+
+#### 关联基因富集分析
+
+```{r}
+cnaRes$NAM_embeddings |> head()
+```
+
+```{r}
+ncorrs <- as(cnaRes$NAM_embeddings, "dgCMatrix")
+cormtx <- qlcMatrix::corSparse(ncorrs, t(logcounts(sce_mock)))
+rownames(cormtx) <- colnames(ncorrs)
+colnames(cormtx) <-  rownames(logcounts(sce_mock))
+cormtx <- t(cormtx)
+head(cormtx)
+```
+
+```{r}
+cordf <- as.data.frame(cormtx) |>
+  tibble::rownames_to_column(var = "genes") |>
+  tidyr::pivot_longer(tidyselect::starts_with("PC"),
+                      names_to = "NAMPCs", values_to = "corr") |>
+  dplyr::filter(!is.na(corr))
+```
+
+```{r}
+gseacomp <- clusterProfiler::compareCluster(
+  genes | corr ~ NAMPCs,
+  data = cordf,
+  fun = "gseGO",
+  ont = "BP",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID"
+)
+```
+
+```{r}
+gseacomp <- clusterProfiler::simplify(gseacomp, cutoff = 0.5)
+```
+
+```{r fig.height=16, fig.width=12}
+gseacomp %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 20, nCluster = 12,
+    dotsize = "GeneRatio",
+    color = "NES",
+    offset = 50, offset_tiplab = 20,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 20, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(2, 1))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
+  ggplot2::coord_cartesian()
+```
+
+### 样本负荷
+
+#### 样本间的距离
+
+```{r}
+df_to_plot <- data.frame(
+  PC1 = cnaRes$NAM_loadings[, 1],
+  PC2 = cnaRes$NAM_loadings[, 2],
+  PC3 = cnaRes$NAM_loadings[, 3],
+  Time = stringr::str_extract(rownames(cnaRes$NAM_loadings), "\\dDPI-MOCK")
+)
+
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ PC1, y = ~ PC2, z = ~ PC3,
+  color = ~ Time,
+  #colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
+)
+```
+
+#### 细胞类型丰度关联
+
+> Correlation across samples between the sample loadings for each NAM-PC and the abundances of each of the five main cell types in the dataset.
+
+```{r}
+cluster_prop <- t(prop.table(table(sce_mock$cluster_id, sce_mock$sample_id), 2))
+cluster_prop
+```
+
+```{r}
+corres <- psych::corr.test(
+  x = cnaRes$NAM_loadings[rownames(cluster_prop),],
+  y = cluster_prop, method = "pearson"
+)
+ComplexHeatmap::Heatmap(
+    corres$r,
+    name = "Pearson \nCorrelation",
+    col = c("blue", "white", "red"),
+    row_names_side = "right",
+    row_dend_side = "left",
+    column_names_side = "bottom",
+    column_dend_side = "top",
+    column_names_rot = 45,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+      if (corres$p[i, j] < 0.05)
+        grid::grid.text(
+          sprintf("%.2f", corres$r[i, j]),
+          x, y, gp = grid::gpar(fontsize = 10)
+        )
+    }
+  )
+```
+
+
+## 5 运行 UniTVelo
 
 注意：下面这段代码是在 GPU 服务器上运行的。
 
@@ -532,30 +711,6 @@ adata <- cache_pickle(
 )
 ```
 
-`config_2` 推断出的模型，其 latent_time 与 time_ncorrs 的关联性只有 0.8 ，要比 `config_1` 差一点。
-
-```{r eval=FALSE}
-adata <- cache_pickle(
-  file = "unitvelo_mock_config_3.pickle",
-  dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = runUniTVelo(
-    sce_mock,
-    label_key = "cluster_id",
-    use.dimred = "HARMONY",
-    assay.X = "logcounts",
-    GPU = 0L,
-    config = list(
-      R2_ADJUST = TRUE,
-      IROOT = NULL,
-      FIT_OPTION = "2",
-      ASSIGN_POS_U = FALSE
-    )
-  )
-)
-```
-
-`config_3` 是独立模式，其结果与 `config_1` 以及 `config_2` 完全相反，并且与 time_ncorrs 的 pearson 相关性是 `-0.34` 。
-
 ```{r}
 adata$obsm$update(list(
   X_tsne = reducedDim(sce_mock, "TSNE"),
@@ -567,45 +722,44 @@ adata$obsm$update(list(
 adata$obs$cellType <- droplevels(sce_mock$cluster_id)
 ```
 
-#### 速率流线 {.tabset}
+### 速率流线 {.tabset}
 
-##### UMAP
+#### UMAP
 
 ```{python fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
   r.adata, basis="umap", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-##### t-SNE
+#### t-SNE
 
 ```{python fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
   r.adata, basis="tsne", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-##### PHATE
+#### PHATE
 
 ```{python fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
   r.adata, basis="phate", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-##### DiffusionMap
+#### DiffusionMap
 
 ```{python fig.height=7, fig.width=7}
 scv.pl.velocity_embedding_stream(
   r.adata, basis="dc", color="cellType", dpi=100, title='', figsize=(7, 7))
 ```
 
-#### 隐时间 {.tabset}
+### 隐时间 {.tabset}
 
 ```{r}
 scv$tl$latent_time(adata, min_likelihood=NULL)
 sce_mock$latent_time <- adata$obs$latent_time
 ```
 
-
-##### UMAP
+#### UMAP
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "UMAP",
@@ -618,7 +772,7 @@ scater::plotReducedDim(sce_mock, dimred = "UMAP",
   ggplot2::coord_fixed()
 ```
 
-##### t-SNE
+#### t-SNE
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "TSNE",
@@ -631,7 +785,7 @@ scater::plotReducedDim(sce_mock, dimred = "TSNE",
   ggplot2::coord_fixed()
 ```
 
-##### PHATE
+#### PHATE
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "PHATE",
@@ -644,7 +798,7 @@ scater::plotReducedDim(sce_mock, dimred = "PHATE",
   ggplot2::coord_fixed()
 ```
 
-##### DiffusionMap
+#### DiffusionMap
 
 ```{r}
 scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
@@ -657,7 +811,7 @@ scater::plotReducedDim(sce_mock, dimred = "DiffusionMap",
   ggplot2::coord_fixed()
 ```
 
-#### 表型与隐时间的关联
+### 表型与隐时间的关联
 
 ```{r}
 colData(sce_mock) |>
@@ -673,7 +827,7 @@ colData(sce_mock) |>
 
 样本数量太大了，导致置信区间的 level 要设置的非常高才有可能看见。
 
-#### 基因动态类型分析
+### 基因动态类型分析
 
 ```{r}
 is_velo_genes <- adata$var[["velocity_genes"]]
@@ -708,44 +862,44 @@ scv.pl.heatmap(
     col_color='cellType', n_convolve=100)
 ```
 
-### 细胞种群连接性
+## 6 细胞种群连接性
 
-#### PAGA 连接图 {.tabset}
+### PAGA 连接图 {.tabset}
 
 ```{r}
 sc <- reticulate::import("scanpy")
 sc$tl$paga(adata, groups='cellType')
 ```
 
-##### UMAP
+#### UMAP
 
 ```{r fig.height=7, fig.width=7}
 plotPagaGraph(adata, basis="umap", threshold = 0.7, edge_cex = 2, node_cex = 3) +
   ggplot2::coord_fixed()
 ```
 
-##### t-SNE
+#### t-SNE
 
 ```{r fig.height=7, fig.width=7}
 plotPagaGraph(adata, basis="tsne", threshold = 0.7, edge_cex = 2) +
   ggplot2::coord_fixed()
 ```
 
-##### PHATE
+#### PHATE
 
 ```{r fig.height=7, fig.width=7}
 plotPagaGraph(adata, basis="phate", threshold = 0.7, edge_cex = 2) +
   ggplot2::coord_fixed()
 ```
 
-##### DiffusionMap
+#### DiffusionMap
 
 ```{r fig.height=7, fig.width=7}
 plotPagaGraph(adata, basis="dc", threshold = 0.7, edge_cex = 2) +
   ggplot2::coord_fixed()
 ```
 
-#### PAGA 有向图 {.tabset}
+### PAGA 有向图 {.tabset}
 
 ```{python}
 r.adata.uns['neighbors']['distances'] = r.adata.obsp['distances']
@@ -754,21 +908,21 @@ r.adata.uns['neighbors']['connectivities'] = r.adata.obsp['connectivities']
 scv.tl.paga(r.adata, groups='cellType')
 ```
 
-##### UMAP
+#### UMAP
 
 ```{r fig.width=7, fig.height=7}
-plotPagaArrow(adata, basis = "umap", threshold = 0, edge_cex = 4, node_cex = 6) +
+plotPagaArrow(adata, basis = "umap", threshold = 0, edge_cex = 4, node_cex = 6, point_alpha = 0.3) +
   ggplot2::coord_fixed()
 ```
 
-##### t-SNE
+#### t-SNE
 
 ```{r fig.width=7, fig.height=7}
 plotPagaArrow(adata, basis = "tsne", threshold = 0, edge_cex = 4, node_cex = 6) +
   ggplot2::coord_fixed()
 ```
 
-##### PHATE
+#### PHATE
 
 ```{r fig.width=7, fig.height=7}
 plotPagaArrow(adata, basis = "phate", threshold = 0, edge_cex = 4, node_cex = 6, arrow_gap = 0.002) +

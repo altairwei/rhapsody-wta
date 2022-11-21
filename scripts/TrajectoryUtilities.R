@@ -815,6 +815,7 @@ readPickle <- function(path) {
 createPagaObject <- function(adata, basis = "umap") {
   group_name <- adata$uns['paga']$groups
   obs <- adata$obs
+  group_lvs <- levels(obs[[group_name]])
 
   paga <- list(
     connectivities = adata$uns['paga']$connectivities,
@@ -822,9 +823,9 @@ createPagaObject <- function(adata, basis = "umap") {
     transitions_confidence = adata$uns['paga']$transitions_confidence,
     threshold = adata$uns["paga"]$threshold,
     group_name = group_name,
-    groups = levels(obs[[group_name]]),
+    groups = group_lvs,
     group_colors = setNames(
-      adata$uns[paste0(group_name, "_colors")], levels(obs[[group_name]])),
+      ggthemes::tableau_color_pal('Tableau 20')(length(group_lvs)), group_lvs),
     embeddings = data.frame(
       Dim_1 = as.data.frame(adata$obsm[paste0("X_", basis)])[, 1L],
       Dim_2 = as.data.frame(adata$obsm[paste0("X_", basis)])[, 2L],
@@ -971,7 +972,7 @@ plotPagaCompare <- function(adata, basis = "umap", threshold = 0) {
 plotPagaArrow <- function(
     adata, basis = "umap", threshold = 0,
     edge_cex = 3, node_cex = 2, label_cex = 2,
-    arrow_gap = 0.5) {
+    arrow_gap = 0.5, point_alpha = 0.1) {
   paga <- createPagaObject(adata, basis = basis)
 
   paga_edges <- tibble::tibble(
@@ -1090,7 +1091,7 @@ plotPagaArrow <- function(
     mapping = ggplot2::aes(
       x = Dim_1, y = Dim_2, color = group),
     shape = 19,
-    alpha = 0.1,
+    alpha = point_alpha,
     show.legend = FALSE
   )
 
