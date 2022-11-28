@@ -127,27 +127,167 @@ rm(obj, data_list, spliced, unspliced, ambiguous)
 gc()
 ```
 
-## 2 1DPI 样品分析
+## 2 MOCK 样品分析
 
 ### 读取数据
 
 ```{r}
-sce_sub <- sce[, sce$time == "1DPI"]
+sce_mock <- sce[, sce$treatment == "MOCK"]
+
+sce_mock <- sce_mock[, sce_mock$cluster_id %in% c(
+  paste0("Me_", 1:6), paste0("Va_", 1:4),
+  "MPV_1", "MPV_2", "BS")]
+
+embed_umap <- reducedDim(sce_mock, "UMAP")
+
+sce_mock <- sce_mock[,
+  embed_umap[, 1L] < 8
+    & embed_umap[, 1L] > -8
+    & embed_umap[, 2L] < 8
+]
+
+sce_mock$cluster_id <- droplevels(sce_mock$cluster_id)
+sce_mock$cellType <- droplevels(sce_mock$cellType)
+
+sce_sub <- sce_mock
 ```
+
+### 降维可视化 {.tabset}
+
+```{r run-dimred}
+sce_sub <- runDiffusionMap(sce_sub, dimred = "HARMONY", seed = 2022,
+                           ncomponents = 2, n_eigs = 2)
+sce_sub <- runPHATE(sce_sub, dimred = "HARMONY", seed = 2022, knn = 15, t = 30)
+```
+
+#### t-SNE
+
+```{r plot-dimred-tsne}
+scater::plotReducedDim(
+    sce_sub, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### UMAP
+
+```{r plot-dimred-umap}
+scater::plotReducedDim(
+    sce_sub, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### PHATE
+
+```{r plot-dimred-phate}
+scater::plotReducedDim(
+    sce_sub, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### DiffusionMap
+
+```{r plot-dimred-dc}
+scater::plotReducedDim(
+    sce_sub, dimred = "DiffusionMap",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+### 三维可视化 {.tabset}
+
+```{r cell-3d-colors}
+cellTypeColors <- ggthemes::tableau_color_pal("Tableau 20")(length(levels(sce_sub$cellType)))
+```
+
+#### PHATE
+
+```{r dimred-3d-phate}
+embed_phate <- calculatePHATE(
+  sce_sub, dimred = "HARMONY", seed = 2022,
+  knn = 15, t = 30, ncomponents = 3)
+
+df_to_plot <- data.frame(
+  Dim_1 = embed_phate[, 1],
+  Dim_2 = embed_phate[, 2],
+  Dim_3 = embed_phate[, 3],
+  cellType = sce_sub$cluster_id
+)
+
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ Dim_1, y = ~ Dim_2, z = ~ Dim_3,
+  color = ~ cellType,
+  colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
+)
+```
+
+#### DiffusionMap
+
+```{r dimred-3d-dc}
+embed_dc <- calculateDiffusionMap(
+  sce_sub, dimred = "HARMONY", seed = 2022, ncomponents = 3)
+
+df_to_plot <- data.frame(
+  Dim_1 = embed_dc[, 1],
+  Dim_2 = embed_dc[, 2],
+  Dim_3 = embed_dc[, 3],
+  cellType = sce_sub$cluster_id
+)
+
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ Dim_1, y = ~ Dim_2, z = ~ Dim_3,
+  color = ~ cellType,
+  colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
+)
+```
+
+### 运行算法
 
 ```{r run-scvelo}
 adata <- cache_pickle(
-  file = "scvelo_adata_1dpi.pickle",
+  file = "unitvelo_adata_mock.pickle",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = runScVelo(
-    sce_sub,
-    mode = "dynamical",
+  expr = runUniTVelo(
+    sce_mock,
+    label_key = "cluster_id",
     use.dimred = "HARMONY",
     assay.X = "logcounts",
-    scvelo.params = list(
-      filter_and_normalize = list(
-        min_shared_counts = 20L, n_top_genes = 2000L),
-      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
     )
   )
 )
@@ -156,10 +296,12 @@ adata <- cache_pickle(
 ```{r update-embeddings}
 adata$obsm$update(list(
   X_tsne = reducedDim(sce_sub, "TSNE"),
-  X_umap = reducedDim(sce_sub, "UMAP")
+  X_umap = reducedDim(sce_sub, "UMAP"),
+  X_phate = reducedDim(sce_sub, "PHATE"),
+  X_dc = reducedDim(sce_sub, "DiffusionMap")
 ))
 
-adata$obs$cellType <- sce_sub$cluster_id
+adata$obs$cellType <- droplevels(sce_sub$cluster_id)
 ```
 
 > Here, the proportions of spliced/unspliced counts are displayed. Depending on the protocol used (Drop-Seq, Smart-Seq), we typically have between 10%-25% of unspliced molecules containing intronic sequences. We also advice you to examine the variations on cluster level to verify consistency in splicing efficiency. 
@@ -168,45 +310,24 @@ adata$obs$cellType <- sce_sub$cluster_id
 scv.pl.proportions(r.adata, groupby="cellType", figsize = (8, 4))
 ```
 
-### 速率估计
-
-是否需要设置 `use_rep="X_harmony"` 呢？我感觉应该需要，否则 scVelo 会基于 PCA 来计算 neighbors
-
-> Further, we need the first and second order moments (means and uncentered variances) computed among nearest neighbors in PCA space, summarized in `scv.pp.moments`, which internally computes `scv.pp.pca` and `scv.pp.neighbors`. First order is needed for deterministic velocity estimation, while stochastic estimation also requires second order moments.
-
-```{r eval=FALSE}
-scv$pp$moments(adata, n_pcs=30, n_neighbors=30, use_rep="X_harmony")
-```
-
-RNA 速度是基因表达空间中的矢量，代表单个细胞的运动方向和速度。正的 RNA 速度表示一个基因是上调的，在一些细胞中该基因的未成熟 mRNA 的丰度高于稳定状态下的预期值。反之，负的速度表示一个基因是下调的。
-
-> Velocities are vectors in gene expression space and represent the direction and speed of movement of the individual cells. The velocities are obtained by modeling transcriptional dynamics of splicing kinetics, either stochastically (default) or deterministically (by setting `mode='deterministic'`). For each gene, a steady-state-ratio of pre-mature (unspliced) and mature (spliced) mRNA counts is fitted, which constitutes a constant transcriptional state. Velocities are then obtained as residuals from this ratio. Positive velocity indicates that a gene is up-regulated, which occurs for cells that show higher abundance of unspliced mRNA for that gene than expected in steady state. Conversely, negative velocity indicates that a gene is down-regulated.
-
-```{r eval=FALSE}
-scv$tl$recover_dynamics(adata)
-scv$tl$velocity(adata, mode='dynamical')
-```
-
-> The combination of velocities across genes can then be used to estimate the future state of an individual cell. In order to project the velocities into a lower-dimensional embedding, transition probabilities of cell-to-cell transitions are estimated. That is, for each velocity vector we find the likely cell transitions that are accordance with that direction. The transition probabilities are computed using cosine correlation between the potential cell-to-cell transitions and the velocity vector, and are stored in a matrix denoted as velocity graph.
-
-```{r eval=FALSE}
-scv$tl$velocity_graph(adata)
-```
-
 ### 速率流线 {.tabset}
 
 #### t-SNE
 
 ```{python plot-stream-tsne, fig.height=7, fig.width=7}
-scv.pl.velocity_embedding_stream(
-  r.adata, basis="tsne", color="cellType", figsize= (7, 7))
+ax = scv.pl.velocity_embedding_stream(
+  r.adata, basis="tsne", color="cellType", figsize= (7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 #### UMAP
 
 ```{python plot-stream-umap, fig.height=7, fig.width=7}
-scv.pl.velocity_embedding_stream(
-  r.adata, basis="umap", color="cellType", figsize = (7, 7))
+ax = scv.pl.velocity_embedding_stream(
+  r.adata, basis="umap", color="cellType", figsize= (7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 ### 速率网格 {.tabset}
@@ -214,17 +335,21 @@ scv.pl.velocity_embedding_stream(
 #### t-SNE
 
 ```{python plot-grid-tsne, fig.height=7, fig.width=7}
-scv.pl.velocity_embedding_grid(
+ax = scv.pl.velocity_embedding_grid(
   r.adata, basis="tsne", color="cellType",
-  arrow_length=3, arrow_size=1, figsize=(7, 7))
+  arrow_length=3, arrow_size=1, figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 #### UMAP
 
 ```{python plot-grid-umap, fig.height=7, fig.width=7}
-scv.pl.velocity_embedding_grid(
+ax = scv.pl.velocity_embedding_grid(
   r.adata, basis="umap", color="cellType",
-  arrow_length=3, arrow_size=1, figsize=(7, 7))
+  arrow_length=3, arrow_size=1, figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 ### 速率细胞 {.tabset}
@@ -232,17 +357,21 @@ scv.pl.velocity_embedding_grid(
 #### t-SNE
 
 ```{python plot-velo-tsne, fig.height=12, fig.width=12}
-scv.pl.velocity_embedding(
+ax = scv.pl.velocity_embedding(
   r.adata, basis="tsne", color="cellType", figsize=(12, 12),
-  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+  arrow_length=6, arrow_size=3, scale=2, dpi=300, show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 #### UMAP
 
 ```{python plot-velo-umap, fig.height=12, fig.width=12}
-scv.pl.velocity_embedding(
+ax = scv.pl.velocity_embedding(
   r.adata, basis="umap", color="cellType", figsize=(12, 12),
-  arrow_length=6, arrow_size=3, scale=2, dpi=300)
+  arrow_length=6, arrow_size=3, scale=2, dpi=300, show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 ### 隐时间 {.tabset}
@@ -250,38 +379,72 @@ scv.pl.velocity_embedding(
 > scVelo’s latent time is based only on its transcriptional dynamics and represents
 the cell’s internal clock. It captures aspects of the actual time better than similarity-based diffusion pseudo-time.
 
+```{r}
+scv$tl$latent_time(adata, min_likelihood=NULL)
+```
+
 #### t-SNE
 
 ```{python plot-latent-time-tsne, fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, basis="tsne",
+ax = scv.pl.scatter(r.adata, basis="tsne",
   color='latent_time', color_map='gnuplot',
-  size=20, figsize=(7, 7))
+  size=20, figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 #### UMAP
 
 ```{python plot-latent-time-umap, fig.height=7, fig.width=7}
-scv.pl.scatter(r.adata, basis="umap",
+ax = scv.pl.scatter(r.adata, basis="umap",
   color='latent_time', color_map='gnuplot',
-  size=20, figsize=(7, 7))
+  size=20, figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 ### 速度与连贯性 {.tabset}
 
-#### t-SNE
-
-```{python plot-confidence-tsne, fig.height=7, fig.width=14}
-scv.tl.velocity_confidence(r.adata)
-keys = 'velocity_length', 'velocity_confidence'
-scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="tsne", perc=[5, 95])
+```{r run-velocity-confidence}
+scv$tl$velocity_confidence(adata)
+sce_sub$velocity_length <- adata$obs$velocity_length
+sce_sub$velocity_confidence <- adata$obs$velocity_confidence
 ```
 
 #### UMAP
 
-```{python plot-confidence-umap, fig.height=7, fig.width=14}
-scv.tl.velocity_confidence(r.adata)
-keys = 'velocity_length', 'velocity_confidence'
-scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="umap", perc=[5, 95])
+```{r plot-confidence-tsne, fig.height=7, fig.width=14}
+p1 <- scater::plotReducedDim(sce_sub, dimred = "TSNE", point_size = 0.5,
+                       colour_by = "velocity_length") +
+  ggplot2::scale_colour_gradientn(colours = c("blue", "grey", "red")) +
+  ggplot2::ggtitle("Velocity length") +
+  ggplot2::coord_fixed()
+
+p2 <- scater::plotReducedDim(sce_sub, dimred = "TSNE", point_size = 0.5,
+                       colour_by = "velocity_confidence") +
+  ggplot2::scale_colour_gradientn(colours = c("blue", "grey", "red")) +
+  ggplot2::ggtitle("Velocity confidence") +
+  ggplot2::coord_fixed()
+
+p1 + p2
+```
+
+#### UMAP
+
+```{r plot-confidence-umap, fig.height=7, fig.width=14}
+p1 <- scater::plotReducedDim(sce_sub, dimred = "UMAP", point_size = 0.5,
+                       colour_by = "velocity_length") +
+  ggplot2::scale_colour_gradientn(colours = c("blue", "grey", "red")) +
+  ggplot2::ggtitle("Velocity length") +
+  ggplot2::coord_fixed()
+
+p2 <- scater::plotReducedDim(sce_sub, dimred = "UMAP", point_size = 0.5,
+                       colour_by = "velocity_confidence") +
+  ggplot2::scale_colour_gradientn(colours = c("blue", "grey", "red")) +
+  ggplot2::ggtitle("Velocity confidence") +
+  ggplot2::coord_fixed()
+
+p1 + p2
 ```
 
 ### 速率图 {.tabset}
@@ -289,13 +452,21 @@ scv.pl.scatter(r.adata, c=keys, cmap='coolwarm', basis="umap", perc=[5, 95])
 #### t-SNE
 
 ```{python plot-velo-graph-tsne, fig.height=7, fig.width=7}
-scv.pl.velocity_graph(r.adata, threshold=0.8, basis="tsne", color="cellType", figsize=(7, 7))
+ax = scv.pl.velocity_graph(
+  r.adata, threshold=0.8, basis="tsne",
+  color="cellType", figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 #### UMAP
 
 ```{python plot-velo-graph-umap, fig.height=7, fig.width=7}
-scv.pl.velocity_graph(r.adata, threshold=.8, basis="umap", color="cellType", figsize=(7, 7))
+ax = scv.pl.velocity_graph(
+  r.adata, threshold=0.8, basis="umap",
+  color="cellType", figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 ### PAGA 图 {.tabset}
@@ -305,46 +476,114 @@ r.adata.uns['neighbors']['distances'] = r.adata.obsp['distances']
 r.adata.uns['neighbors']['connectivities'] = r.adata.obsp['connectivities']
 
 scv.tl.paga(r.adata, groups='cellType')
-df = scv.get_df(r.adata, 'paga/transitions_confidence', precision=2).T
-```
-
-```{r}
-reticulate::py$df
 ```
 
 #### t-SNE
 
 ```{python plot-paga-tsne, fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='tsne', size=50, alpha=.1, legend_loc='on data',
-            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
+ax = scv.pl.paga(r.adata, basis='tsne', size=50, alpha=.1, legend_loc='on data',
+            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
 #### UMAP
 
 ```{python plot-paga-umap, fig.width=7, fig.height=7}
-scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1, legend_loc='on data',
-            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7))
+ax = scv.pl.paga(r.adata, basis='umap', size=50, alpha=.1, legend_loc='on data',
+            min_edge_width=2, node_size_scale=1.5, figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
 ```
 
-## 3 2DPI 样本分析
+## 2 PNR2 样本分析
 
 ```{r}
-sce_sub <- sce[, sce$time == "2DPI"]
+sce_pnr2 <- sce[, sce$treatment == "PNR2" | sce$time == "0DPI"]
+
+sce_pnr2 <- sce_pnr2[, sce_pnr2$cluster_id %in% c(
+  paste0("Me_", 1:6), paste0("Va_", 1:4),
+  "MPV_1", "MPV_2", "BS")]
+
+embed_umap <- reducedDim(sce_pnr2, "UMAP")
+
+sce_pnr2 <- sce_pnr2[,
+  embed_umap[, 1L] < 8
+    & embed_umap[, 1L] > -8
+    & embed_umap[, 2L] < 8
+]
+
+sce_pnr2$cluster_id <- droplevels(sce_pnr2$cluster_id)
+sce_pnr2$cellType <- droplevels(sce_pnr2$cellType)
+
+sce_sub <- sce_pnr2
 ```
+
+### 降维可视化 {.tabset}
+
+```{r}
+<<run-dimred>>
+```
+
+#### t-SNE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### UMAP
+
+```{r}
+<<plot-dimred-umap>>
+```
+
+#### PHATE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<plot-dimred-dc>>
+```
+
+### 三维可视化 {.tabset}
+
+```{r}
+<<cell-3d-colors>>
+```
+
+#### PHATE
+
+```{r}
+<<dimred-3d-phate>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<dimred-3d-dc>>
+```
+
+### 运行算法
 
 ```{r}
 adata <- cache_pickle(
-  file = "scvelo_adata_2dpi.pickle",
+  file = "unitvelo_adata_pnr2.pickle",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = runScVelo(
-    sce_sub,
-    mode = "dynamical",
+  expr = runUniTVelo(
+    sce_pnr2,
+    label_key = "cluster_id",
     use.dimred = "HARMONY",
     assay.X = "logcounts",
-    scvelo.params = list(
-      filter_and_normalize = list(
-        min_shared_counts = 20L, n_top_genes = 2000L),
-      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
     )
   )
 )
@@ -416,15 +655,19 @@ adata <- cache_pickle(
 
 ### 速度与连贯性 {.tabset}
 
+```{r}
+<<run-velocity-confidence>>
+```
+
 #### t-SNE
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-tsne>>
 ```
 
 #### UMAP
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-umap>>
 ```
 
@@ -460,25 +703,95 @@ adata <- cache_pickle(
 <<plot-paga-umap>>
 ```
 
-## 4 3DPI 样本分析
+
+## 3 TR4 样本分析
 
 ```{r}
-sce_sub <- sce[, sce$time == "3DPI"]
+sce_tr4 <- sce[, sce$treatment == "TR4" | sce$time == "0DPI"]
+
+sce_tr4 <- sce_tr4[, sce_tr4$cluster_id %in% c(
+  paste0("Me_", 1:6), paste0("Va_", 1:4),
+  "MPV_1", "MPV_2", "BS")]
+
+embed_umap <- reducedDim(sce_tr4, "UMAP")
+
+sce_tr4 <- sce_tr4[,
+  embed_umap[, 1L] < 8
+    & embed_umap[, 1L] > -8
+    & embed_umap[, 2L] < 8
+]
+
+sce_tr4$cluster_id <- droplevels(sce_tr4$cluster_id)
+sce_tr4$cellType <- droplevels(sce_tr4$cellType)
+
+sce_sub <- sce_tr4
 ```
+
+### 降维可视化 {.tabset}
+
+```{r}
+<<run-dimred>>
+```
+
+#### t-SNE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### UMAP
+
+```{r}
+<<plot-dimred-umap>>
+```
+
+#### PHATE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<plot-dimred-dc>>
+```
+
+### 三维可视化 {.tabset}
+
+```{r}
+<<cell-3d-colors>>
+```
+
+#### PHATE
+
+```{r}
+<<dimred-3d-phate>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<dimred-3d-dc>>
+```
+
+### 运行算法
 
 ```{r}
 adata <- cache_pickle(
-  file = "scvelo_adata_3dpi.pickle",
+  file = "unitvelo_adata_tr4.pickle",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = runScVelo(
-    sce_sub,
-    mode = "dynamical",
+  expr = runUniTVelo(
+    sce_tr4,
+    label_key = "cluster_id",
     use.dimred = "HARMONY",
     assay.X = "logcounts",
-    scvelo.params = list(
-      filter_and_normalize = list(
-        min_shared_counts = 20L, n_top_genes = 2000L),
-      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
     )
   )
 )
@@ -550,15 +863,19 @@ adata <- cache_pickle(
 
 ### 速度与连贯性 {.tabset}
 
+```{r}
+<<run-velocity-confidence>>
+```
+
 #### t-SNE
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-tsne>>
 ```
 
 #### UMAP
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-umap>>
 ```
 
@@ -594,26 +911,94 @@ adata <- cache_pickle(
 <<plot-paga-umap>>
 ```
 
-
-## 5 MOCK 样本分析
+## 4 1DPI 样本分析
 
 ```{r}
-sce_sub <- sce[, sce$treatment == "MOCK"]
+sce_1dpi <- sce[, sce$time == "1DPI"]
+
+sce_1dpi <- sce_1dpi[, sce_1dpi$cluster_id %in% c(
+  paste0("Me_", 1:6), paste0("Va_", 1:4),
+  "MPV_1", "MPV_2", "BS")]
+
+embed_umap <- reducedDim(sce_1dpi, "UMAP")
+
+sce_1dpi <- sce_1dpi[,
+  embed_umap[, 1L] < 8
+    & embed_umap[, 1L] > -8
+    & embed_umap[, 2L] < 8
+]
+
+sce_1dpi$cluster_id <- droplevels(sce_1dpi$cluster_id)
+sce_1dpi$cellType <- droplevels(sce_1dpi$cellType)
+
+sce_sub <- sce_1dpi
 ```
+
+### 降维可视化 {.tabset}
+
+```{r}
+<<run-dimred>>
+```
+
+#### t-SNE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### UMAP
+
+```{r}
+<<plot-dimred-umap>>
+```
+
+#### PHATE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<plot-dimred-dc>>
+```
+
+### 三维可视化 {.tabset}
+
+```{r}
+<<cell-3d-colors>>
+```
+
+#### PHATE
+
+```{r}
+<<dimred-3d-phate>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<dimred-3d-dc>>
+```
+
+### 运行算法
 
 ```{r}
 adata <- cache_pickle(
-  file = "scvelo_adata_mock.pickle",
+  file = "unitvelo_adata_1dpi.pickle",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = runScVelo(
-    sce_sub,
-    mode = "dynamical",
+  expr = runUniTVelo(
+    sce_1dpi,
+    label_key = "cluster_id",
     use.dimred = "HARMONY",
     assay.X = "logcounts",
-    scvelo.params = list(
-      filter_and_normalize = list(
-        min_shared_counts = 20L, n_top_genes = 2000L),
-      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
     )
   )
 )
@@ -685,15 +1070,19 @@ adata <- cache_pickle(
 
 ### 速度与连贯性 {.tabset}
 
+```{r}
+<<run-velocity-confidence>>
+```
+
 #### t-SNE
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-tsne>>
 ```
 
 #### UMAP
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-umap>>
 ```
 
@@ -729,26 +1118,94 @@ adata <- cache_pickle(
 <<plot-paga-umap>>
 ```
 
-
-## 6 PNR2 样本分析
+## 5 2DPI 样本分析
 
 ```{r}
-sce_sub <- sce[, sce$treatment == "PNR2"]
+sce_2dpi <- sce[, sce$time == "2DPI"]
+
+sce_2dpi <- sce_2dpi[, sce_2dpi$cluster_id %in% c(
+  paste0("Me_", 1:6), paste0("Va_", 1:4),
+  "MPV_1", "MPV_2", "BS")]
+
+embed_umap <- reducedDim(sce_2dpi, "UMAP")
+
+sce_2dpi <- sce_2dpi[,
+  embed_umap[, 1L] < 8
+    & embed_umap[, 1L] > -8
+    & embed_umap[, 2L] < 8
+]
+
+sce_2dpi$cluster_id <- droplevels(sce_2dpi$cluster_id)
+sce_2dpi$cellType <- droplevels(sce_2dpi$cellType)
+
+sce_sub <- sce_2dpi
 ```
+
+### 降维可视化 {.tabset}
+
+```{r}
+<<run-dimred>>
+```
+
+#### t-SNE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### UMAP
+
+```{r}
+<<plot-dimred-umap>>
+```
+
+#### PHATE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<plot-dimred-dc>>
+```
+
+### 三维可视化 {.tabset}
+
+```{r}
+<<cell-3d-colors>>
+```
+
+#### PHATE
+
+```{r}
+<<dimred-3d-phate>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<dimred-3d-dc>>
+```
+
+### 运行算法
 
 ```{r}
 adata <- cache_pickle(
-  file = "scvelo_adata_pnr2.pickle",
+  file = "unitvelo_adata_2dpi.pickle",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = runScVelo(
-    sce_sub,
-    mode = "dynamical",
+  expr = runUniTVelo(
+    sce_2dpi,
+    label_key = "cluster_id",
     use.dimred = "HARMONY",
     assay.X = "logcounts",
-    scvelo.params = list(
-      filter_and_normalize = list(
-        min_shared_counts = 20L, n_top_genes = 2000L),
-      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
     )
   )
 )
@@ -820,15 +1277,19 @@ adata <- cache_pickle(
 
 ### 速度与连贯性 {.tabset}
 
+```{r}
+<<run-velocity-confidence>>
+```
+
 #### t-SNE
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-tsne>>
 ```
 
 #### UMAP
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-umap>>
 ```
 
@@ -864,26 +1325,94 @@ adata <- cache_pickle(
 <<plot-paga-umap>>
 ```
 
-
-## 7 TR4 样本分析
+## 6 3DPI 样本分析
 
 ```{r}
-sce_sub <- sce[, sce$treatment == "TR4"]
+sce_3dpi <- sce[, sce$time == "3DPI"]
+
+sce_3dpi <- sce_3dpi[, sce_3dpi$cluster_id %in% c(
+  paste0("Me_", 1:6), paste0("Va_", 1:4),
+  "MPV_1", "MPV_2", "BS")]
+
+embed_umap <- reducedDim(sce_3dpi, "UMAP")
+
+sce_3dpi <- sce_3dpi[,
+  embed_umap[, 1L] < 8
+    & embed_umap[, 1L] > -8
+    & embed_umap[, 2L] < 8
+]
+
+sce_3dpi$cluster_id <- droplevels(sce_3dpi$cluster_id)
+sce_3dpi$cellType <- droplevels(sce_3dpi$cellType)
+
+sce_sub <- sce_3dpi
 ```
+
+### 降维可视化 {.tabset}
+
+```{r}
+<<run-dimred>>
+```
+
+#### t-SNE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### UMAP
+
+```{r}
+<<plot-dimred-umap>>
+```
+
+#### PHATE
+
+```{r}
+<<plot-dimred-tsne>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<plot-dimred-dc>>
+```
+
+### 三维可视化 {.tabset}
+
+```{r}
+<<cell-3d-colors>>
+```
+
+#### PHATE
+
+```{r}
+<<dimred-3d-phate>>
+```
+
+#### DiffusionMap
+
+```{r}
+<<dimred-3d-dc>>
+```
+
+### 运行算法
 
 ```{r}
 adata <- cache_pickle(
-  file = "scvelo_adata_tr4.pickle",
+  file = "unitvelo_adata_3dpi.pickle",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = runScVelo(
-    sce_sub,
-    mode = "dynamical",
+  expr = runUniTVelo(
+    sce_3dpi,
+    label_key = "cluster_id",
     use.dimred = "HARMONY",
     assay.X = "logcounts",
-    scvelo.params = list(
-      filter_and_normalize = list(
-        min_shared_counts = 20L, n_top_genes = 2000L),
-      moments = list(n_pcs = 30L, n_neighbors = 30L)
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
     )
   )
 )
@@ -955,15 +1484,19 @@ adata <- cache_pickle(
 
 ### 速度与连贯性 {.tabset}
 
+```{r}
+<<run-velocity-confidence>>
+```
+
 #### t-SNE
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-tsne>>
 ```
 
 #### UMAP
 
-```{python fig.height=7, fig.width=14}
+```{r fig.height=7, fig.width=14}
 <<plot-confidence-umap>>
 ```
 
@@ -998,4 +1531,5 @@ adata <- cache_pickle(
 ```{python fig.width=7, fig.height=7}
 <<plot-paga-umap>>
 ```
+
 
