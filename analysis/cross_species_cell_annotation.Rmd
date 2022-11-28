@@ -41,7 +41,7 @@ homolog_df <- readr::read_csv("../tmp/wheat_homolog.csv")
 
 ### 小麦同源基因
 
-```{r dev="svglite"}
+```{r dev="svg"}
 library(org.Taestivum.iwgsc.db)
 
 fit <- eulerr::euler(
@@ -59,7 +59,7 @@ plot(fit, quantities = list(type = c("percent", "counts")), legend = TRUE)
 
 ### 拟南芥同源基因
 
-```{r dev="svglite"}
+```{r dev="svg"}
 library(org.At.tair.db)
 
 ath_genes <- readLines("../tmp/TAIR10_all_gene_models") %>%

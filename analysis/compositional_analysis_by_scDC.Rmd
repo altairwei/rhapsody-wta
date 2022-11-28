@@ -5,15 +5,114 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 ```
 
-## 1 差异成分分析
+## 1 发育中细胞比例变化
+
+### 1.1 数据准备
+
+```{r}
+obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+```
+
+```{r}
+exprsMat <- Seurat::GetAssayData(obj_mock, "data")
+subject <- obj_mock$sample
+cellTypes <- Seurat::Idents(obj_mock)
+cond <- obj_mock$group
+```
+
+### 1.2 估计细胞类型比例
+
+```{r}
+ca_res_nonclust <- xfun::cache_rds(
+  file = "ca_res_nonclust_objmock.rds",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = local({
+    res <- scDC::scDC_noClustering(
+      cellTypes, subject,
+      nboot = 500,
+      calCI = TRUE,
+      calCI_method = c("percentile", "BCa", "multinom"),
+      ncores = 4
+    )
+
+    res$results$cond <- cond[match(res$results$subject, subject)]
+    res$info$cond <- cond[match(res$info$subject, subject)]
+
+    res
+  })
+)
+```
+
+### 1.3 可视化置信区间
+
+```{r}
+plot_bootstrap_distribution_for_mock <- function(
+  res, clusters = NULL,
+  facet_by = "cellTypes", ncol = NULL, nrow = NULL
+) {
+  # Use BCa as CI
+  df_to_plot <- res$results %>%
+    tibble::as_tibble() %>%
+    dplyr::filter(method == "BCa") %>%
+    dplyr::mutate(
+      time = sapply(strsplit(cond, split = "-"), "[", 1),
+      rep = sapply(strsplit(as.character(subject), split = "-"),
+        function(x) paste(x[2:3], collapse = "-")),
+      treatment = sapply(strsplit(cond, split = "-"), "[", 2)
+    )
+
+  prop_df <- res$thetastar %>%
+    as.data.frame()
+
+  colnames(prop_df) <- paste("BS_", seq_len(ncol(res$thetastar)), sep = "")
+
+  df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
+    tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
+
+  if (!is.null(clusters)) {
+    df_to_plot <- dplyr::filter(df_to_plot, cellTypes %in% clusters)
+    df_to_plot$cellTypes <- factor(df_to_plot$cellTypes, levels = clusters)
+  }
+
+  p <- ggplot2::ggplot(df_to_plot,
+      ggplot2::aes(x = time, y = prop)) +
+    ggplot2::geom_boxplot(
+      width = 0.2, outlier.shape = NA,
+      position = ggplot2::position_dodge(width = 0.4)) +
+    ggplot2::geom_line(
+      mapping = ggplot2::aes(group = treatment),
+      stat = "summary", fun = median,
+      position = ggplot2::position_dodge(width = 0.4)) +
+    ggplot2::scale_y_continuous(labels = scales::percent) +
+    ggplot2::theme_bw() +
+    NULL
+
+  if (!is.null(facet_by))
+    p <- p + ggplot2::facet_wrap(facet_by, scales = "free_y", ncol = ncol, nrow = nrow, drop = FALSE)
+  
+  p
+}
+```
+
+```{r fig.height=8, fig.width=13, dev="svg"}
+p <- plot_bootstrap_distribution_for_mock(ca_res_nonclust) +
+  #ggplot2::scale_color_manual(values = treat_colors) +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 16)
+  )
+
+p
+```
+
+## 2 侵染中差异成分分析
 
 使用 [scDC](https://github.com/SydneyBioX/scDC) 来做单细胞差异成分分析。
 
-### 1.1 数据准备
+### 2.1 数据准备
 
 首先加载 Seurat 对象：
 
@@ -21,7 +120,7 @@ library(magrittr)
 obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
 
-#### 1.1.1 数据类型
+#### 2.1.1 数据类型
 
 scDC 需要三种数据：表达矩阵、样本名、组名、细胞类型，要计算的是细胞类型和分组之间的交互作用。
 
@@ -46,7 +145,7 @@ cellTypes <- Seurat::Idents(obj)
 cond <- obj$group
 ```
 
-#### 1.1.2 表达矩阵
+#### 2.1.2 表达矩阵
 
 然后检查一下表达矩阵的维度：
 
@@ -60,7 +159,7 @@ dim(exprsMat)
 
 这正好可以是 Seurat 使用 LogNormalization 标准化并整合后的表达矩阵。
 
-#### 1.1.3 细胞数据
+#### 2.1.3 细胞数据
 
 检查样本的细胞类型数量：
 
@@ -74,9 +173,9 @@ table(subject, cellTypes)
 table(cond, cellTypes)
 ```
 
-### 1.2 获取置细胞类型比例的信区间
+### 2.2 获取置细胞类型比例的信区间
 
-#### 1.2.1 开始 bootstrap
+#### 2.2.1 开始 bootstrap
 
 这里需要思考一个问题：为什么 scDC 可以不用聚类？在其文章 (Cao, Y. et al., BMC Bioinformatics, 2019) 中明明是这样说的：
 
@@ -91,7 +190,6 @@ table(cond, cellTypes)
 ```{r run-bootstrap}
 ca_res_nonclust <- xfun::cache_rds(
   file = "ca_res_nonclust.rds",
-  rerun = FALSE,
   dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = local({
     res <- scDC::scDC_noClustering(
@@ -108,12 +206,11 @@ ca_res_nonclust <- xfun::cache_rds(
     res
   })
 )
-
 ```
 
 上面这一步似乎特别消耗内存，有空优化一下。
 
-#### 1.2.2 查看运行结果的结构
+#### 2.2.2 查看运行结果的结构
 
 ```{r}
 str(ca_res_nonclust)
@@ -253,7 +350,7 @@ p
 ```
 
 
-#### 1.2.4 统计显著性
+#### 2.2.4 统计显著性
 
 只拟合固定效应的 GLM 模型，主要是 `lme4::glmer` 太耗时了。
 
@@ -277,7 +374,7 @@ ca_res_nonclust_glm <- xfun::cache_rds(
 summary(ca_res_nonclust_glm$pool_res_fixed) %>% knitr::kable()
 ```
 
-#### 1.2.5 可视化结果
+#### 2.2.5 可视化结果
 
 ```{r fig.height=6, fig.width=14}
 barplotCI <- function(res, clusters = NULL, samples = NULL){

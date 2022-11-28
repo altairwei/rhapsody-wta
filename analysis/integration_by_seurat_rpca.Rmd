@@ -257,7 +257,7 @@ CIBER <- RNAMagnet::runCIBERSORT(
 
 ### 6.3 可视化细胞种群比例
 
-```{r fig.height=6, fig.width=8, dev='svglite'}
+```{r fig.height=6, fig.width=8, dev='svg'}
 ggplot2::ggplot(
     data = CIBER,
     mapping = ggplot2::aes(

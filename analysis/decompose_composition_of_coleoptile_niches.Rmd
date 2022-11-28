@@ -118,7 +118,7 @@ CIBER <- RNAMagnet::runCIBERSORT(
 
 > The algorithm excels at comparing relative cell type abundancies between niches (i.e. ‘cell type X localizes to niche A over niche B and niche C’), but performs only moderately at estimating cell type proportions within a single niche (i.e. it cannot draw statements like ‘niche A consists to 70% of cell type X and 30% of cell type Y’)
 
-```{r fig.height=7, fig.width=8, dev='svglite'}
+```{r fig.height=7, fig.width=8, dev='svg'}
 ggplot2::ggplot(
     data = CIBER,
     mapping = ggplot2::aes(

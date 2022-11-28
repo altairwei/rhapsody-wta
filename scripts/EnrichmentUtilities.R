@@ -240,15 +240,19 @@ performMarkerCompareORA <- function(
   comp_enr
 }
 
-#' Print comparative ORA enrichment results as table
+#' Print Compare ORA Enrichment Results by Cluster
 #'
 #' @param enr Comparative ORA enrichment results.
 #' @param heading Markdown heading symbols.
-print_enrich_table <- function(enr, heading) {
+printCompareORAByCluster <- function(enr, heading) {
   df <- enr@compareClusterResult |>
     dplyr::select(
       cluster, ID, Description,
       Count, p.adjust, geneID) |>
+    dplyr::mutate(
+      p.adjust = format(p.adjust, scientific = TRUE, digits = 2),
+      geneList = sapply(openssl::md5(geneID), function(x) substr(x, 1, 9))
+    ) |>
     dplyr::group_by(cluster)
   
   df_list <- dplyr::group_split(df)
@@ -258,16 +262,31 @@ print_enrich_table <- function(enr, heading) {
     cat(heading, clr, "\n\n")
     print(
       htmltools::tagList(
+        htmltools::tags$button(
+          "Download as CSV",
+          onclick = sprintf(
+            "Reactable.downloadDataCSV('%s', '%s')",
+            clr, clr)
+        ),
         reactable::reactable(
           df_list[[clr]],
+          elementId = clr,
           columns = list(
             "cluster" = reactable::colDef(maxWidth = 80),
             "ID" = reactable::colDef(maxWidth = 120),
             "Description" = reactable::colDef(minWidth = 100),
             "Count" = reactable::colDef(maxWidth = 80),
             "p.adjust" = reactable::colDef(
-              maxWidth = 80, format = reactable::colFormat(digits = 2)),
-            "geneID" = reactable::colDef(minWidth = 250)
+              maxWidth = 100, format = reactable::colFormat(digits = 2)),
+            "geneID" = reactable::colDef(minWidth = 250, show = FALSE),
+            "geneList" = reactable::colDef(
+              maxWidth = 140,
+              details = function(row_idx) {
+                reactable::reactable(
+                  data.frame(geneID = df_list[[clr]][row_idx, "geneID"]),
+                  outlined = FALSE, fullWidth = TRUE)
+              }
+            )
           )
         )
       )
@@ -297,4 +316,144 @@ performDACompareORA <- function(da, sets,
     comp_enr <- clusterProfiler::simplify(comp_enr)
 
   comp_enr
+}
+
+#' Print GSEA Results with Reactable
+#'
+#' @param gsea GSEA result object
+#' @return Reactable object
+printGSEATable <- function(gsea) {
+  enrichdf <- gsea@result |>
+    tibble::remove_rownames() |>
+    dplyr::mutate(
+      p.adjust = format(p.adjust, scientific = TRUE, digits = 2),
+      Count = length(strsplit(core_enrichment, "/")[[1]]),
+      geneList = sapply(openssl::md5(core_enrichment), function(x) substr(x, 1, 9))) |>
+    dplyr::select(ID, Description, NES,
+                  Count, p.adjust, geneList, core_enrichment)
+
+  htmltools::tagList(
+    htmltools::tags$button(
+      "Download as CSV",
+      onclick = "Reactable.downloadDataCSV('GSEATable', 'GSEATable.csv')"
+    ),
+    reactable::reactable(
+      enrichdf,
+      elementId = "GSEATable",
+      columns = list(
+        "ID" = reactable::colDef(maxWidth = 120),
+        "Description" = reactable::colDef(minWidth = 100),
+        "NES" = reactable::colDef(maxWidth = 80,
+                                  format = reactable::colFormat(digits = 2)),
+        "Count" = reactable::colDef(maxWidth = 80),
+        "p.adjust" = reactable::colDef(maxWidth = 100),
+        "core_enrichment" = reactable::colDef(show = FALSE),
+        "geneList" = reactable::colDef(
+          maxWidth = 140,
+          details = function(row_idx) {
+            reactable::reactable(
+              data.frame(geneID = enrichdf[row_idx, "core_enrichment"]),
+              outlined = FALSE, fullWidth = TRUE)
+          }
+        )
+      )
+    )
+  )
+}
+
+printCompareORATable <- function(ora) {
+  enrichdf <- ora@compareClusterResult |>
+    tibble::remove_rownames() |>
+    dplyr::mutate(
+      p.adjust = format(p.adjust, scientific = TRUE, digits = 2),
+      geneList = sapply(openssl::md5(geneID), function(x) substr(x, 1, 9))) |>
+    dplyr::select(Cluster, ID, Description, GeneRatio,
+                  Count, p.adjust, geneID, geneList)
+
+  htmltools::tagList(
+    htmltools::tags$button(
+      "Download as CSV",
+      onclick = "Reactable.downloadDataCSV('ORATable', 'ORATable.csv')"
+    ),
+    reactable::reactable(
+      enrichdf,
+      elementId = "ORATable",
+      columns = list(
+        "Cluster" = reactable::colDef(maxWidth = 120),
+        "ID" = reactable::colDef(maxWidth = 120),
+        "Description" = reactable::colDef(minWidth = 100),
+        "GeneRatio" = reactable::colDef(maxWidth = 100),
+        "Count" = reactable::colDef(maxWidth = 80),
+        "p.adjust" = reactable::colDef(
+          maxWidth = 100, format = reactable::colFormat(digits = 2)),
+        "geneID" = reactable::colDef(show = FALSE),
+        "geneList" = reactable::colDef(
+          maxWidth = 140,
+          details = function(row_idx) {
+            reactable::reactable(
+              data.frame(geneID = enrichdf[row_idx, "geneID"]),
+              outlined = FALSE, fullWidth = TRUE)
+          }
+        )
+      )
+    )
+  )
+}
+
+
+#' Calculate Pathway Activity
+#'
+#' @param sce A \code{SingleCellExperiment} object.
+#' @param pathways Gene sets provided as a \code{list} object.
+#' @param annotation A \code{data.frame} object of pathway annotation.
+#' Rownames should be the pathway id same to names of \code{pathways} list.
+#' @param by_exprs_values Which kind of expression used for calculation.
+#' @param method The way to calculate activity. \code{sum} means summed
+#' expression of genes in each pathway. \code{gsva} means GSVA enrichment
+#' scores.
+#' @param ... Arguments passed to \code{\link[GSVA]{gsva}}
+#' @return A \code{SingleCellExperiment} object
+calcPathwayActivity <- function(
+    sce, pathways, annotation = NULL,
+    by_exprs_values = "logcounts",
+    method = c("sum", "gsva"), ...) {
+  
+  expr <- assay(sce, by_exprs_values)
+  
+  method <- match.arg(method)
+  pathway_expr <- switch(method,
+    sum = t(vapply(
+     X = pathways,
+     FUN = function(genes)
+       Matrix::colSums(expr[genes,]),
+     FUN.VALUE = numeric(ncol(expr))
+    )),
+    gsva = GSVA::gsva(
+     expr[unlist(pathways), ], pathways,
+     method = "gsva", ...)
+  )
+  
+  SingleCellExperiment(
+    assays = list(activity = pathway_expr),
+    reducedDims = reducedDims(sce),
+    rowData = annotation[rownames(pathway_expr),]
+  )
+}
+
+#' Plot Pathway Activation on Cell Embeddings
+#'
+#' @param sce SingleCellExperiment object with pathway ID as rows.
+#' @param id Pathway ID to plot.
+#' @param order Order cells according to activity score.
+#' @param ... Arguments passed to \code{\link[scater]{plotReducedDim}}
+#'
+#' @return A ggplot object
+plotPathwayActivation <- function(sce, id, order = TRUE, ...) {
+  pathac <- assay(sce, "activity")[id,]
+  scater::plotReducedDim(
+    if (order) sce[, order(pathac)] else sce,
+    by_exprs_values = "activity",
+    colour_by = id, ...) +
+    ggplot2::scale_color_gradient(low = "grey", high = "blue") +
+    ggplot2::ggtitle(rowData(sce)[id, "Description"])
 }

@@ -125,7 +125,7 @@ p
 #### 标志基因表格 {.tabset}
 
 ```{r results='asis'}
-print_enrich_table(enr, "#####")
+printCompareORAByCluster(enr, "#####")
 ```
 
 ### 其余细胞类型
@@ -161,5 +161,5 @@ p
 #### 标志基因表格 {.tabset}
 
 ```{r results='asis'}
-print_enrich_table(enr, "#####")
+printCompareORAByCluster(enr, "#####")
 ```

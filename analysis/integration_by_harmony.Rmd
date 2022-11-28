@@ -137,7 +137,7 @@ obj_mock_combined <- xfun::cache_rds(
 clustree::clustree(obj_mock_combined, prefix = "RNA_snn_res.")
 ```
 
-### 将聚类树覆盖到降维空间中 {.tabset}
+### 聚类树叠加 {.tabset}
 
 #### t-SNE
 
@@ -278,7 +278,7 @@ CIBER <- deconvLCM(
   )
 ```
 
-```{r fig.height=6, fig.width=8, dev='svglite'}
+```{r fig.height=6, fig.width=8, dev='svg'}
 deconvScatter(CIBER, LCM_design)
 ```
 
@@ -366,24 +366,54 @@ p2 <- Seurat::DimPlot(obj_mock_annotated, reduction = "tsne", group.by = "sample
 p1 + p2
 ```
 
+### 3D 降维图 {.tabset}
 
-## 8 细胞类型比例
+```{r message=FALSE, eval=TRUE}
+obj_mock_annotated <- Seurat::RunTSNE(
+  obj_mock_annotated, reduction = "harmony",
+  dims = 1:20, dim.embed = 3,
+  reduction.name = "tsne3d", reduction.key = "tSNE3D_",
+  check_duplicates = FALSE, verbose = FALSE)
+obj_mock_annotated <- Seurat::RunUMAP(
+  obj_mock_annotated, reduction = "harmony",
+  reduction.name = "umap3d", reduction.key = "UMAP3D_",
+  dims = 1:20, n.components = 3, verbose = FALSE)
+
+Dim3DPlot <- function(obj_annotated, dim_prefix, cols) {
+  d1 <- paste0(dim_prefix, "1")
+  d2 <- paste0(dim_prefix, "2")
+  d3 <- paste0(dim_prefix, "3")
+
+  df_to_plot <- Seurat::FetchData(obj_annotated, vars = c(d1, d2, d3, "ident"))
+  
+  plotly::plot_ly(
+    df_to_plot,
+    x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
+    color = ~ ident,
+    colors = cols,
+    type = "scatter3d",
+    mode = "markers",
+    marker = list(size = 4)
+  )
+}
+```
+
+#### UMAP
 
 ```{r}
-rhapsodykit::barplot_cluster_abundance(obj_mock_annotated) +
-  ggplot2::scale_fill_discrete(type = ident_cols)
+Dim3DPlot(obj_mock_annotated, "UMAP3D_", cols = ident_cols)
 ```
 
-```{r fig.height=7, fig.width=14}
-rhapsodykit::barplot_cluster_abundance(obj_mock_annotated, position = "dodge") +
-  ggplot2::theme(
-    strip.text.x = ggplot2::element_text(size = 16)
-  )
+#### t-SNE
+
+```{r}
+Dim3DPlot(obj_mock_annotated, "tSNE3D_", cols = ident_cols)
 ```
 
-## 9 新标志基因选定
 
-### 计算标志基因
+## 8 检验注释结果
+
+### 重新计算标志基因
 
 ```{r}
 marker_cosg <- COSG::cosg(
@@ -405,6 +435,59 @@ markers_df <- xfun::cache_rds(
     logfc.threshold = 0.25, verbose = TRUE)
 )
 ```
+
+```{r}
+marker_cosg$scores |>
+  tidyr::pivot_longer(tidyselect::everything(), names_to = "cluster", values_to = "scores") |>
+  ggplot2::ggplot(ggplot2::aes(x = scores, y = cluster)) +
+  #ggridges::geom_density_ridges(scale = 2) +
+  #ggridges::theme_ridges() +
+  ggplot2::geom_boxplot() +
+  NULL
+```
+
+
+### LCM 注释图
+
+```{r}
+CIBER <- deconvLCM(
+  seurat = obj_mock_annotated,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
+  design = LCM_design,
+  mc.cores = 4
+)
+```
+
+```{r fig.height=6, fig.width=8, message=FALSE, warning=FALSE, dev='svg'}
+deconvScatter(CIBER, LCM_design)
+```
+
+### 细胞聚类树
+
+```{r}
+obj_mock_annotated$RNA_snn_res.0.6 <- Seurat::Idents(obj_mock_annotated)
+```
+
+```{r fig.height=7, fig.width=10}
+clustree::clustree(obj_mock_annotated, prefix = "RNA_snn_res.")
+```
+
+## 9 细胞类型比例
+
+```{r}
+rhapsodykit::barplot_cluster_abundance(obj_mock_annotated) +
+  ggplot2::scale_fill_discrete(type = ident_cols)
+```
+
+```{r fig.height=7, fig.width=14}
+rhapsodykit::barplot_cluster_abundance(obj_mock_annotated, position = "dodge") +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 16)
+  )
+```
+
+## 10 新标志基因选定
 
 ### 挑选标志基因 {.tabset}
 
@@ -694,7 +777,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Gu_genes) +
     )
 ```
 
-## 10 特征基因的功能法分析
+## 11 特征基因的功能法分析
 
 ```{r message=FALSE, warning=FALSE, results="hide"}
 library(org.Taestivum.iwgsc.db)
@@ -739,7 +822,7 @@ p
 #### 标志基因表格 {.tabset}
 
 ```{r results='asis'}
-print_enrich_table(enr, "#####")
+printCompareORAByCluster(enr, "#####")
 ```
 
 
@@ -776,7 +859,7 @@ p
 #### 标志基因表格 {.tabset}
 
 ```{r results='asis'}
-print_enrich_table(enr, "#####")
+printCompareORAByCluster(enr, "#####")
 ```
 
 ### 其他细胞
@@ -812,67 +895,6 @@ p
 #### 标志基因表格 {.tabset}
 
 ```{r results='asis'}
-print_enrich_table(enr, "#####")
-```
-
-## 11 LCM 注释图
-
-```{r}
-CIBER <- deconvLCM(
-  seurat = obj_mock_annotated,
-  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
-  markers = unique(unlist(marker_cosg$names)),
-  design = LCM_design,
-  mc.cores = 4
-)
-```
-
-```{r fig.height=6, fig.width=8, message=FALSE, warning=FALSE, dev='svglite'}
-deconvScatter(CIBER, LCM_design)
-```
-
-## 12 细胞 3D 降维图 {.tabset}
-
-二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
-
-```{r message=FALSE, eval=TRUE}
-obj_mock_annotated <- Seurat::RunTSNE(
-  obj_mock_annotated, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
-obj_mock_annotated <- Seurat::RunUMAP(obj_mock_annotated, dims = 1:20, n.components = 3, verbose = FALSE)
-
-gg_color_hue <- function(n) {
-  hues <- seq(15, 375, length = n + 1)
-  hcl(h = hues, l = 65, c = 100)[1:n]
-}
-
-Dim3DPlot <- function(obj_annotated, dim_prefix, cols) {
-  d1 <- paste0(dim_prefix, "1")
-  d2 <- paste0(dim_prefix, "2")
-  d3 <- paste0(dim_prefix, "3")
-
-  df_to_plot <- Seurat::FetchData(obj_annotated, vars = c(d1, d2, d3, "ident"))
-  
-  plotly::plot_ly(
-    df_to_plot,
-    x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
-    color = ~ ident,
-    colors = cols,
-    type = "scatter3d",
-    mode = "markers",
-    marker = list(size = 4)
-  )
-}
-```
-
-### UMAP
-
-```{r}
-Dim3DPlot(obj_mock_annotated, "UMAP_", cols = ident_cols)
-```
-
-### t-SNE
-
-```{r}
-Dim3DPlot(obj_mock_annotated, "tSNE_", cols = ident_cols)
+printCompareORAByCluster(enr, "#####")
 ```
 

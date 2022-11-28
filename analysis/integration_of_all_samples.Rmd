@@ -1,5 +1,5 @@
 ---
-title: "Integration of Stimulating Samples"
+title: "Integration of All Samples"
 author: "Altair Wei"
 date: "2022/5/5"
 output: html_document
@@ -9,6 +9,11 @@ output: html_document
 library(magrittr)
 knitr::opts_chunk$set(echo = TRUE)
 source("../scripts/UtilityFunctions.R")
+source("../scripts/EnrichmentUtilities.R")
+
+library(reactable)
+# setup reactable HTML dependencies
+reactable::reactable(iris)
 ```
 
 # 整合 MOCK 和 Stim 样本
@@ -108,6 +113,15 @@ ggplot2::ggplot(df, ggplot2::aes(
   )
 ```
 
+```{r}
+ggplot2::ggplot(df, ggplot2::aes(
+    x = predicted.id, y = prediction.score.max)) +
+  ggplot2::geom_boxplot(outlier.size = .5) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(
+    angle = 45, hjust = 1)) +
+  NULL
+```
+
 
 ## 2 使用 Harmony 整合所有样本
 
@@ -197,7 +211,7 @@ obj_merged <- xfun::cache_rds(
 clustree::clustree(obj_merged, prefix = "RNA_snn_res.")
 ```
 
-### 3.2 将聚类树覆盖到降维空间中 {.tabset}
+### 3.2 聚类树叠加 {.tabset}
 
 #### t-SNE
 
@@ -329,7 +343,7 @@ CIBER <- deconvLCM(
 )
 ```
 
-```{r fig.height=6, fig.width=8, dev='svglite'}
+```{r fig.height=6, fig.width=8, dev='svg'}
 deconvScatter(CIBER, LCM_design)
 ```
 
@@ -471,6 +485,50 @@ p2 <- Seurat::DimPlot(obj_annotated, reduction = "tsne", group.by = "sample") +
 p1 + p2
 ```
 
+### 6.4 3D 降维图 {.tabset}
+
+```{r message=FALSE, eval=TRUE}
+obj_annotated <- Seurat::RunTSNE(
+  obj_annotated, reduction = "harmony",
+  dims = 1:20, dim.embed = 3,
+  reduction.name = "tsne3d", reduction.key = "tSNE3D_",
+  check_duplicates = FALSE, verbose = FALSE)
+obj_annotated <- Seurat::RunUMAP(
+  obj_annotated, reduction = "harmony",
+  reduction.name = "umap3d", reduction.key = "UMAP3D_",
+  dims = 1:20, n.components = 3, verbose = FALSE)
+
+Dim3DPlot <- function(obj_annotated, dim_prefix, cols) {
+  d1 <- paste0(dim_prefix, "1")
+  d2 <- paste0(dim_prefix, "2")
+  d3 <- paste0(dim_prefix, "3")
+
+  df_to_plot <- Seurat::FetchData(obj_annotated, vars = c(d1, d2, d3, "ident"))
+  
+  plotly::plot_ly(
+    df_to_plot,
+    x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
+    color = ~ ident,
+    colors = cols,
+    type = "scatter3d",
+    mode = "markers",
+    marker = list(size = 4)
+  )
+}
+```
+
+#### UMAP
+
+```{r}
+Dim3DPlot(obj_annotated, "UMAP3D_", cols = ident_cols)
+```
+
+#### t-SNE
+
+```{r}
+Dim3DPlot(obj_annotated, "tSNE3D_", cols = ident_cols)
+```
+
 ## 7 细胞注释检查
 
 ### 7.1 重新计算标识基因
@@ -504,7 +562,7 @@ CIBER <- deconvLCM(
 )
 ```
 
-```{r fig.height=6, fig.width=8, message=FALSE, warning=FALSE, dev='svglite'}
+```{r fig.height=6, fig.width=8, message=FALSE, warning=FALSE, dev='svg'}
 deconvScatter(CIBER, LCM_design)
 ```
 
@@ -525,7 +583,31 @@ overlap_df <- Seurat::FetchData(obj_annotated, vars = c(
 ggplot2::ggplot(overlap_df, ggplot2::aes(
     x = ident, y = predicted.id, color = mean, size = n)) +
   ggplot2::geom_point() +
-  ggplot2::scale_color_gradientn(colours = c("white", "blue"))
+  ggplot2::scale_color_gradientn(colours = c("white", "blue")) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+Seurat::FetchData(obj_annotated, vars = c(
+                "ident", "predicted.id",
+                "prediction.score.max")) %>%
+  dplyr::select(ident, predicted.id, prediction.score.max) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = ident, y = prediction.score.max)) +
+  ggplot2::geom_boxplot() +
+  #ggplot2::scale_color_gradientn(colours = c("white", "blue")) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+```
+
+
+### 7.5 细胞聚类树
+
+```{r}
+obj_annotated$RNA_snn_res.0.6 <- Seurat::Idents(obj_annotated)
+```
+
+```{r fig.height=7, fig.width=10}
+clustree::clustree(obj_annotated, prefix = "RNA_snn_res.")
 ```
 
 ## 8 细胞类型比例
@@ -542,47 +624,123 @@ rhapsodykit::barplot_cluster_abundance(obj_annotated, position = "dodge") +
   )
 ```
 
-## 9 3D 降维图 {.tabset}
+## 9 特征基因功能分析
 
-二维嵌入和三维嵌入会产生不一样的结果，下面这个交互式的 3D 散点图就只在需要的时候执行了。我们主要使用其他 R 包截取 3D 散点图的几个侧面，用来刻画某几个视角就够了。
-
-```{r message=FALSE, eval=TRUE}
-obj_annotated <- Seurat::RunTSNE(
-  obj_annotated, dims = 1:20, dim.embed = 3, check_duplicates = FALSE, verbose = FALSE)
-obj_annotated <- Seurat::RunUMAP(obj_annotated, dims = 1:20, n.components = 3, verbose = FALSE)
-
-gg_color_hue <- function(n) {
-  hues <- seq(15, 375, length = n + 1)
-  hcl(h = hues, l = 65, c = 100)[1:n]
-}
-
-Dim3DPlot <- function(obj_annotated, dim_prefix, cols) {
-  d1 <- paste0(dim_prefix, "1")
-  d2 <- paste0(dim_prefix, "2")
-  d3 <- paste0(dim_prefix, "3")
-
-  df_to_plot <- Seurat::FetchData(obj_annotated, vars = c(d1, d2, d3, "ident"))
-  
-  plotly::plot_ly(
-    df_to_plot,
-    x = df_to_plot[[d1]], y = df_to_plot[[d2]], z = df_to_plot[[d3]],
-    color = ~ ident,
-    colors = cols,
-    type = "scatter3d",
-    mode = "markers",
-    marker = list(size = 4)
-  )
-}
+```{r message=FALSE, warning=FALSE, results="hide"}
+library(org.Taestivum.iwgsc.db)
+orgdb <- org.Taestivum.iwgsc.db
+background <- rownames(Seurat::GetAssayData(obj_annotated, assay = "RNA", slot = "count"))
 ```
-
-### UMAP
 
 ```{r}
-Dim3DPlot(obj_annotated, "UMAP_", cols = ident_cols)
+markerlist <- marker_cosg$names
 ```
 
-### t-SNE
+### 维管束
 
 ```{r}
-Dim3DPlot(obj_annotated, "tSNE_", cols = ident_cols)
+vascular_clusters <- c(paste0("Va_", 1:4), "MPV_1", "MPV_2", "BS", "CC")
 ```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  vascular_clusters,
+  background
+)
+```
+
+```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 70, offset_tiplab = 34,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+printCompareORAByCluster(enr, "#####")
+```
+
+### 叶肉细胞
+
+```{r}
+mesophyll_clusters <- paste0("Me_", 1:6)
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  mesophyll_clusters,
+  background
+)
+```
+
+```{r fig.height=14, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+printCompareORAByCluster(enr, "#####")
+```
+
+### 其他细胞
+
+```{r}
+other_clusters <- c("Ep_1", "Ep_2", "Gu")
+```
+
+#### 富集分析
+
+```{r}
+enr <- performMarkerCompareORA(
+  markerlist,
+  other_clusters,
+  background
+)
+```
+
+```{r fig.height=9, fig.width=12, message=FALSE, warning=FALSE}
+p <- enr %>%
+  enrichplot::pairwise_termsim() %>%
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    size = "count",
+    offset = 40, offset_tiplab = 12,
+    label_format_cladelab = 5,
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 2)) +
+  ggplot2::coord_cartesian()
+p
+```
+
+#### 标志基因表格 {.tabset}
+
+```{r results='asis'}
+printCompareORAByCluster(enr, "#####")
+```
+

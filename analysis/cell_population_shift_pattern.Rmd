@@ -279,14 +279,14 @@ plot_cell_score <- function(
 
 ### 1.3 总图
 
-```{r fig.height=10, fig.width=12, dev="svglite"}
+```{r fig.height=10, fig.width=12, dev="svg"}
 plot_bootstrap_distribution(ca_res_nonclust) +
   ggplot2::theme(
     strip.text.x = ggplot2::element_text(size = 16)
   )
 ```
 
-```{r fig.height=10, fig.width=10, dev="svglite"}
+```{r fig.height=10, fig.width=10, dev="svg"}
 plot_mds_by_cluster(pb_mds_df) +
   ggplot2::theme(
     strip.text.x = ggplot2::element_text(size = 16)

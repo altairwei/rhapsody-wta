@@ -219,7 +219,7 @@ CIBER <- deconvLCM(
   )
 ```
 
-```{r fig.height=6, fig.width=8, dev='svglite'}
+```{r fig.height=6, fig.width=8, dev='svg'}
 deconvScatter(CIBER, LCM_design)
 ```
 

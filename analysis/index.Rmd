@@ -18,7 +18,7 @@ editor_options:
   - [Integration by FastMNN](integration_by_FastMNN.html)
   - [Integration by Seurat v3 RPCA](integration_by_seurat_rpca.html)
   - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
-  - [Integration of Stimulating Samples](integration_of_stimulating_samples.html)
+  - [Integration adn Annotation of All Samples](integration_of_all_samples.html)
   - [Sample Correlation Analysis](sample_correlation_analysis.html)
   - [Integrated Analysis of Mock Samples](analysis_of_mock_samples.html)
   - [Integrated Analysis of All Samples](analysis_of_all_samples.html)
