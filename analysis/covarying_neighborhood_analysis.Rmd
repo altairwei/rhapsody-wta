@@ -10,6 +10,9 @@ knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
 library(magrittr)
 library(Matrix)
 library(ggplot2) # Fix {ggtreeExtra} error
+source("../scripts/AbundanceUtilities.R")
+source("../scripts/EnrichmentUtilities.R")
+source("../scripts/TrajectoryUtilities.R")
 ```
 
 ## 算法探索
@@ -30,67 +33,109 @@ library(org.Taestivum.iwgsc.db)
 orgdb <- org.Taestivum.iwgsc.db
 ```
 
-## 工具函数
-
 ```{r}
-coffGeneList <- function(ncorrs, exprs) {
-  ncorrs <- as(matrix(ncorrs, ncol = 1), "dgCMatrix")
-  genes <- qlcMatrix::corSparse(ncorrs, exprs)
-  genes <- structure(as.numeric(genes), names = colnames(exprs))
-  genes <- sort(genes, decreasing = TRUE)
-  genes
-}
+obj$cellType <- Seurat::Idents(obj)
+sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+sce <- muscat::prepSCE(sce,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
 ```
 
 ```{r}
-runGSEA <- function(x) {
-  rankLists <- x
-  stopifnot(length(rankLists) > 0)
-
-  if (length(rankLists) == 1) {
-    gsea <- clusterProfiler::gseGO(
-      geneList = rankLists[[1]],
-      ont = "BP",
-      OrgDb = org.Taestivum.iwgsc.db,
-      keyType = "GID"
-    )
-  } else {
-    gsea <- clusterProfiler::compareCluster(
-      geneClusters = rankLists,
-      fun = "gseGO",
-      ont = "BP",
-      OrgDb = org.Taestivum.iwgsc.db,
-      keyType = "GID"
-    )
-  }
-
-  gsea <- clusterProfiler::simplify(gsea)
-
-  gsea
-}
+rm(obj)
+gc()
 ```
-
-```{r}
-gseaTable <- function(gsea) {
-  digits_2 <- reactable::colFormat(digits = 2)
-  gsea@compareClusterResult %>%
-    dplyr::select(Cluster, ID, Description, setSize,
-                  enrichmentScore, NES, pvalue, p.adjust,
-                  qvalues, rank, leading_edge) %>%
-    reactable::reactable(columns = list(
-      "ID" = reactable::colDef(minWidth = 120),
-      "Description" = reactable::colDef(minWidth = 200),
-      "enrichmentScore" = reactable::colDef(format = digits_2, maxWidth = 80),
-      "NES" = reactable::colDef(format = digits_2, maxWidth = 70),
-      "pvalue" = reactable::colDef(format = digits_2, maxWidth = 50),
-      "p.adjust" = reactable::colDef(format = digits_2, maxWidth = 50),
-      "qvalues" = reactable::colDef(format = digits_2, maxWidth = 50)
-    ))
-}
-```
-
 
 ## MOCK 发育规律
+
+```{r}
+sce_mock <- sce[, sce$treatment == "MOCK"]
+
+sce_mock$sample_id <- droplevels(sce_mock$sample_id)
+sce_mock$group_id <- droplevels(sce_mock$group_id)
+sce_mock$cluster_id <- droplevels(sce_mock$cluster_id)
+```
+
+### 降维可视化 {.tabset}
+
+```{r}
+sce_mock <- runPHATE(sce_mock, dimred = "HARMONY", seed = 1130L)
+```
+
+#### UMAP
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+
+#### t-SNE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### PHATE
+
+```{r}
+scater::plotReducedDim(sce_mock, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+### 时间序列降维 {.tabset}
+
+#### UMAP
+
+```{r fig.height=7, fig.width=28}
+scater::plotReducedDim(
+    sce_mock, dimred = "UMAP",
+    colour_by = "cellType",
+    text_by = "cellType", text_size = 5,
+    other_fields = "time") +
+  ggplot2::coord_fixed() +
+  ggplot2::facet_wrap(~ time, nrow = 1) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 4))) +
+  NULL
+```
+
+#### t-SNE
+
+```{r fig.height=7, fig.width=28}
+scater::plotReducedDim(
+    sce_mock, dimred = "TSNE",
+    colour_by = "cellType",
+    text_by = "cellType", text_size = 5,
+    other_fields = "time") +
+  ggplot2::coord_fixed() +
+  ggplot2::facet_wrap(~ time, nrow = 1) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 4))) +
+  NULL
+```
+
+### 运行 CNA 方法
 
 关于有序离散变量：https://github.com/immunogenomics/cna/issues/12
 
@@ -99,28 +144,41 @@ gseaTable <- function(gsea) {
 CNA 假设有序离散变量之间的富集差异是线性的。
 
 ```{r}
-obj_mock <- subset(obj, subset = group %in% c("0DPI-MOCK", "1DPI-MOCK", "2DPI-MOCK", "3DPI-MOCK"))
-obj_mock$time_val <- as.numeric(factor(obj_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
-obj_mock <- Seurat::FindNeighbors(obj_mock, reduction = "harmony")
+sce_mock$time_val <- as.numeric(factor(
+  sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
 
-obj_mock <- rcna::association.Seurat(
-  seurat_object = obj_mock,
-  test_var = "time_val",
-  samplem_key = "sample",
-  graph_use = "RNA_nn",
-  batches = NULL,
-  covs = NULL
+cnaObj <- createCNAObject(
+  sce_mock, 
+  samplem_key = "sample_id",
+  samplem_vars = c(
+    "time", "time_val"
+  )
 )
+
+cnaRes <- rcna::association(
+  data = cnaObj,
+  y = cnaObj$samplem$time_val,
+  batches = NULL,
+  return_nam = TRUE
+)
+
+sce_mock$time_ncorrs <- cnaRes$ncorrs[colnames(sce_mock), , drop=TRUE]
+sce_mock$time_ncorrs_fdr05 <- rep(0, ncol(sce_mock))
+if (!is.null(cnaRes$fdr_5p_t)) {
+    idx_passed <- which(abs(sce_mock$time_ncorrs) >= cnaRes$fdr_5p_t)
+    sce_mock$time_ncorrs_fdr05[idx_passed] <- sce_mock$time_ncorrs[idx_passed]
+}
+
+sce_mock$time_ncorrs_fdr10 <- rep(0, ncol(sce_mock))
+if (!is.null(cnaRes$fdr_10p_t)) {
+    idx_passed <- which(abs(sce_mock$time_ncorrs) >= cnaRes$fdr_10p_t)
+    sce_mock$time_ncorrs_fdr10[idx_passed] <- sce_mock$time_ncorrs[idx_passed]
+}
 ```
 
-### Time Series
 
-```{r fig.height=3, fig.width=11}
-Seurat::DimPlot(obj_mock, reduction = "tsne", split.by = "time") &
-  ggplot2::coord_fixed()
-```
 
-### Association results {.tabset}
+### 表型关联结果 {.tabset}
 
 ```{r}
 blue_to_orange <- rev(ggthemes::ggthemes_data[[
@@ -129,85 +187,87 @@ blue_to_orange <- rev(ggthemes::ggthemes_data[[
 
 在下面的图中，每个细胞根据其邻域系数着色，即颜色对应于每个细胞相应邻域的丰度与样本属性的相关性。由于我们将时间编码成了数字，因此从蓝色到橙红色代表了 0DPI ~ 3DPI 的邻域系数。
 
-#### t-SNE
-
-```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_mock, reduction = "tsne", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
-  ggplot2::coord_fixed()
-
-p2 <- Seurat::DimPlot(obj_mock, reduction = "tsne", group = "group") &
-  ggplot2::coord_fixed()
-
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
-```
-
 #### UMAP
 
-```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_mock, reduction = "umap", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+```{r}
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
   ggplot2::coord_fixed()
-
-p2 <- Seurat::DimPlot(obj_mock, reduction = "umap", group = "group") &
-  ggplot2::coord_fixed()
-
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
 ```
 
-### Neighborhood loadings of NAM PCs
-
-查看源代码可知，`NAM_nbhdXpc` 等于 `NAM_embeddings`，而 `NAM_sampleXpc` 等于 `NAM_loadings` 。
-
-```{r fig.height=8, fig.width=14}
-p <- Seurat::FeaturePlot(
-    obj_mock, reduction = "tsne",
-    features = paste0("NAMPC_", 1:6),
-    ncol = 3, order = TRUE) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
-  ggplot2::coord_fixed()
-
-p
-```
-
-### Variance explained by NAM PCs
+#### t-SNE
 
 ```{r}
-data.frame(
-  sig2 = obj_mock@reductions$cna@misc$NAM_svs
-          / sum(obj_mock@reductions$cna@misc$NAM_svs)) %>% 
-    tibble::rowid_to_column('PC') %>% 
-    ggplot2::ggplot(ggplot2::aes(PC, sig2)) + 
-        ggplot2::geom_point() + 
-        ggplot2::geom_line() + 
-        ggplot2::theme_classic(base_size = 14) + 
-        ggplot2::labs(y = 'Fraction of variance explained', x = 'NAM PC') + 
-        ggplot2::scale_x_continuous(breaks = 1:20)
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
 ```
 
-### Per-gene correlations to neighborhood coefficient
+#### PHATE
 
 ```{r}
-ncorrs <- as(matrix(obj_mock$cna_ncorrs, ncol = 1), "dgCMatrix")
-genes <- qlcMatrix::corSparse(ncorrs, t(obj_mock@assays$RNA@counts))
-genes <- structure(as.numeric(genes), names = rownames(obj_mock@assays$RNA@counts))
+scater::plotReducedDim(
+    sce_mock[, sample(seq_len(ncol(sce_mock)))],
+    dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+### 邻域系数
+
+#### 细胞群体分布
+
+```{r message=FALSE, warning=FALSE, dev="svg"}
+data.frame(time_ncorrs = sce_mock$time_ncorrs,
+           cellType = sce_mock$cellType) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = time_ncorrs, y = forcats::fct_reorder(cellType, time_ncorrs),
+    fill = cellType)) +
+  ggplot2::ylab("cellType") +
+  ggridges::geom_density_ridges(scale = 4) +
+  ggplot2::geom_vline(xintercept = cnaRes$fdr_5p_t, linetype="dashed") +
+  ggplot2::geom_vline(xintercept = -cnaRes$fdr_5p_t, linetype="dashed") +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  ggridges::theme_ridges()
+```
+
+#### 关联基因富集分析
+
+```{r}
+ncorrs <- as(matrix(cnaRes$ncorrs, ncol = 1), "dgCMatrix")
+genes <- qlcMatrix::corSparse(ncorrs, t(logcounts(sce_mock)))
+genes <- structure(as.numeric(genes), names = rownames(logcounts(sce_mock)))
 genes <- sort(genes, decreasing = TRUE)
 ```
 
 ```{r}
 gsea <- clusterProfiler::gseGO(
-  genes,
-  ont = "BP",
+  genes, ont = "BP",
   OrgDb = org.Taestivum.iwgsc.db,
-  keyType = "GID"
-)
+  keyType = "GID")
 
-gsea <- clusterProfiler::simplify(gsea)
+gsea <- clusterProfiler::simplify(gsea, cutoff = 0.5)
 ```
 
-```{r fig.height=10, fig.width=10}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
+```{r fig.height=10, fig.width=10, dev="svg"}
+p <- gsea |>
+  enrichplot::pairwise_termsim() |>
   enrichplot::treeplot(
     showCategory = 40, nCluster = 12,
     offset = 20, offset_tiplab = 1,
@@ -219,656 +279,709 @@ p <- gsea %>%
 p
 ```
 
-从上面的 GO 词条来看，这确实像是发育程序。
+```{r}
+printGSEATable(gsea)
+```
 
-### Sample loadings of NAM PCs
+```{r fig.height=12, fig.width=14}
+enrichplot::ridgeplot(gsea, showCategory = 100, label_format = 100) +
+  ggplot2::ggtitle("Correlation distributions of core enriched genes") +
+  ggplot2::xlab("Pearson's R")
+```
+
+### 邻域负荷
+
+#### 方差解释
+
+查看源代码可知，`NAM_nbhdXpc` 等于 `NAM_embeddings`，而 `NAM_sampleXpc` 等于 `NAM_loadings` 。
 
 ```{r}
-sample_df <- as.data.frame(obj_mock@reductions$cna@feature.loadings[, 1:2])
-sample_df$sample <- stringr::str_extract(rownames(sample_df), "\\dDPI-MOCK")
+data.frame(sig2 = cnaRes$NAM_svs / sum(cnaRes$NAM_svs)) |>
+  tibble::rowid_to_column('PC') |>
+  ggplot2::ggplot(ggplot2::aes(PC, sig2)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_line() +
+  ggplot2::theme_classic(base_size = 14) +
+  ggplot2::labs(y = 'Fraction of variance explained', x = 'NAM PC') +
+  ggplot2::scale_x_continuous(breaks = 1:20)
+```
 
-ggplot2::ggplot(sample_df, ggplot2::aes(NAMPC_1, NAMPC_2, color = sample)) +
-  ggplot2::geom_point()
+#### 细胞投影
+
+```{r}
+nampcs <- paste0("NAM", colnames(cnaRes$NAM_embeddings))
+colData(sce_mock)[, nampcs] <- as.data.frame(cnaRes$NAM_embeddings)
+```
+
+```{r fig.height=8, fig.width=16}
+lapply(nampcs, function(pcname) {
+  scater::plotReducedDim(
+    sce_mock,
+    dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = pcname,
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::ggtitle(pcname) +
+  ggplot2::coord_fixed()
+}) |> patchwork::wrap_plots(nrow = 2)
+```
+
+### 样本负荷
+
+#### 样本间的距离
+
+```{r}
+rownames(cnaRes$NAM_loadings) <- as.character(cnaObj$samplem[[cnaObj$samplem_key]])
+
+df_to_plot <- data.frame(
+  PC1 = cnaRes$NAM_loadings[, 1],
+  PC2 = cnaRes$NAM_loadings[, 2],
+  PC3 = cnaRes$NAM_loadings[, 3],
+  Time = cnaObj$samplem$time
+)
+
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ PC1, y = ~ PC2, z = ~ PC3,
+  color = ~ Time,
+  #colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
+)
+```
+
+#### 细胞类型丰度关联
+
+> Correlation across samples between the sample loadings for each NAM-PC and the abundances of each of the five main cell types in the dataset.
+
+```{r}
+cluster_prop <- t(prop.table(table(sce_mock$cluster_id, sce_mock$sample_id), 2))
+cluster_prop
+```
+
+```{r}
+corres <- psych::corr.test(
+  x = cnaRes$NAM_loadings[rownames(cluster_prop),],
+  y = cluster_prop, method = "pearson"
+)
+ComplexHeatmap::Heatmap(
+    corres$r,
+    name = "Pearson \nCorrelation",
+    col = c("blue", "white", "red"),
+    row_names_side = "right",
+    row_dend_side = "left",
+    column_names_side = "bottom",
+    column_dend_side = "top",
+    column_names_rot = 45,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+      if (corres$p[i, j] < 0.05)
+        grid::grid.text(
+          sprintf("%.2f", corres$r[i, j]),
+          x, y, gp = grid::gpar(fontsize = 10)
+        )
+    }
+  )
 ```
 
 ## PH-1 侵染反应
 
 ```{r}
-obj_pnr2 <- subset(obj, subset = group %in% c("0DPI-MOCK", "1DPI-PNR2", "2DPI-PNR2", "3DPI-PNR2"))
-obj_pnr2$time_val <- as.numeric(factor(obj_pnr2$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
-obj_pnr2 <- Seurat::FindNeighbors(obj_pnr2, reduction = "harmony")
+sce_pnr2 <- sce[, sce$treatment == "PNR2" | sce$time == "0DPI"]
 
-obj_pnr2 <- rcna::association.Seurat(
-  seurat_object = obj_pnr2,
-  test_var = "time_val",
-  samplem_key = "sample",
-  graph_use = "RNA_nn",
-  batches = NULL,
-  covs = NULL
-)
+sce_pnr2$sample_id <- droplevels(sce_pnr2$sample_id)
+sce_pnr2$group_id <- droplevels(sce_pnr2$group_id)
+sce_pnr2$cluster_id <- droplevels(sce_pnr2$cluster_id)
 ```
 
-### Association results {.tabset}
+### 降维可视化 {.tabset}
+
+#### UMAP
+
+```{r}
+scater::plotReducedDim(sce_pnr2, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
 
 #### t-SNE
 
-```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_pnr2, reduction = "tsne", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+```{r}
+scater::plotReducedDim(sce_pnr2, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
   ggplot2::coord_fixed()
+```
 
-p2 <- Seurat::DimPlot(obj_pnr2, reduction = "tsne", group = "group") &
-  ggplot2::coord_fixed()
+### 时间序列降维 {.tabset}
 
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+#### UMAP
+
+```{r fig.height=7, fig.width=28}
+scater::plotReducedDim(
+    sce_pnr2, dimred = "UMAP",
+    colour_by = "cellType",
+    text_by = "cellType", text_size = 5,
+    other_fields = "time") +
+  ggplot2::coord_fixed() +
+  ggplot2::facet_wrap(~ time, nrow = 1) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 4))) +
+  NULL
+```
+
+#### t-SNE
+
+```{r fig.height=7, fig.width=28}
+scater::plotReducedDim(
+    sce_pnr2, dimred = "TSNE",
+    colour_by = "cellType",
+    text_by = "cellType", text_size = 5,
+    other_fields = "time") +
+  ggplot2::coord_fixed() +
+  ggplot2::facet_wrap(~ time, nrow = 1) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 4))) +
+  NULL
+```
+
+### 运行 CNA 方法
+
+```{r}
+sce_pnr2$time_val <- as.numeric(factor(
+  sce_pnr2$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+
+cnaObj <- createCNAObject(
+  sce_pnr2, 
+  samplem_key = "sample_id",
+  samplem_vars = c(
+    "time", "time_val"
+  )
+)
+
+cnaRes <- rcna::association(
+  data = cnaObj,
+  y = cnaObj$samplem$time_val,
+  batches = NULL,
+  return_nam = TRUE
+)
+
+sce_pnr2$time_ncorrs <- cnaRes$ncorrs[colnames(sce_pnr2), , drop=TRUE]
+sce_pnr2$time_ncorrs_fdr05 <- rep(0, ncol(sce_pnr2))
+if (!is.null(cnaRes$fdr_5p_t)) {
+    idx_passed <- which(abs(sce_pnr2$time_ncorrs) >= cnaRes$fdr_5p_t)
+    sce_pnr2$time_ncorrs_fdr05[idx_passed] <- sce_pnr2$time_ncorrs[idx_passed]
+}
+
+sce_pnr2$time_ncorrs_fdr10 <- rep(0, ncol(sce_pnr2))
+if (!is.null(cnaRes$fdr_10p_t)) {
+    idx_passed <- which(abs(sce_pnr2$time_ncorrs) >= cnaRes$fdr_10p_t)
+    sce_pnr2$time_ncorrs_fdr10[idx_passed] <- sce_pnr2$time_ncorrs[idx_passed]
+}
+```
+
+### 表型关联结果 {.tabset}
+
+```{r}
+blue_to_orange <- rev(ggthemes::ggthemes_data[[
+  c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
 ```
 
 #### UMAP
 
+```{r}
+scater::plotReducedDim(
+    sce_pnr2[, sample(seq_len(ncol(sce_pnr2)))],
+    dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+#### t-SNE
+
+```{r}
+scater::plotReducedDim(
+    sce_pnr2[, sample(seq_len(ncol(sce_pnr2)))],
+    dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+### 邻域系数
+
+#### 细胞群体分布
+
+```{r message=FALSE, warning=FALSE, dev="svg"}
+data.frame(time_ncorrs = sce_pnr2$time_ncorrs,
+           cellType = sce_pnr2$cellType) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = time_ncorrs, y = forcats::fct_reorder(cellType, time_ncorrs),
+    fill = cellType)) +
+  ggplot2::ylab("cellType") +
+  ggridges::geom_density_ridges(scale = 4) +
+  ggplot2::geom_vline(xintercept = cnaRes$fdr_5p_t, linetype="dashed") +
+  ggplot2::geom_vline(xintercept = -cnaRes$fdr_5p_t, linetype="dashed") +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  ggridges::theme_ridges()
+```
+
+#### 关联基因富集分析
+
+```{r}
+ncorrs <- as(matrix(cnaRes$ncorrs, ncol = 1), "dgCMatrix")
+genes <- qlcMatrix::corSparse(ncorrs, t(logcounts(sce_pnr2)))
+genes <- structure(as.numeric(genes), names = rownames(logcounts(sce_pnr2)))
+genes <- sort(genes, decreasing = TRUE)
+```
+
+```{r}
+gsea <- clusterProfiler::gseGO(
+  genes, ont = "BP",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID")
+
+gsea <- clusterProfiler::simplify(gsea, cutoff = 0.5)
+```
+
+```{r fig.height=10, fig.width=10, dev="svg"}
+p <- gsea |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 20, offset_tiplab = 1,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+```{r}
+printGSEATable(gsea)
+```
+
+```{r fig.height=12, fig.width=14}
+enrichplot::ridgeplot(gsea, showCategory = 100, label_format = 100) +
+  ggplot2::ggtitle("Correlation distributions of core enriched genes") +
+  ggplot2::xlab("Pearson's R")
+```
+
+### 邻域负荷
+
+#### 方差解释
+
+查看源代码可知，`NAM_nbhdXpc` 等于 `NAM_embeddings`，而 `NAM_sampleXpc` 等于 `NAM_loadings` 。
+
+```{r}
+data.frame(sig2 = cnaRes$NAM_svs / sum(cnaRes$NAM_svs)) |>
+  tibble::rowid_to_column('PC') |>
+  ggplot2::ggplot(ggplot2::aes(PC, sig2)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_line() +
+  ggplot2::theme_classic(base_size = 14) +
+  ggplot2::labs(y = 'Fraction of variance explained', x = 'NAM PC') +
+  ggplot2::scale_x_continuous(breaks = 1:20)
+```
+
+#### 细胞投影
+
+```{r}
+nampcs <- paste0("NAM", colnames(cnaRes$NAM_embeddings))
+colData(sce_pnr2)[, nampcs] <- as.data.frame(cnaRes$NAM_embeddings)
+```
+
 ```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_pnr2, reduction = "umap", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+lapply(nampcs, function(pcname) {
+  scater::plotReducedDim(
+    sce_pnr2,
+    dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = pcname,
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::ggtitle(pcname) +
   ggplot2::coord_fixed()
+}) |> patchwork::wrap_plots(nrow = 2)
+```
 
-p2 <- Seurat::DimPlot(obj_pnr2, reduction = "umap", group = "group") &
-  ggplot2::coord_fixed()
+### 样本负荷
 
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+#### 样本间的距离
+
+```{r}
+rownames(cnaRes$NAM_loadings) <- as.character(cnaObj$samplem[[cnaObj$samplem_key]])
+
+df_to_plot <- data.frame(
+  PC1 = cnaRes$NAM_loadings[, 1],
+  PC2 = cnaRes$NAM_loadings[, 2],
+  PC3 = cnaRes$NAM_loadings[, 3],
+  Time = cnaObj$samplem$time
+)
+
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ PC1, y = ~ PC2, z = ~ PC3,
+  color = ~ Time,
+  #colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
+)
+```
+
+#### 细胞类型丰度关联
+
+> Correlation across samples between the sample loadings for each NAM-PC and the abundances of each of the five main cell types in the dataset.
+
+```{r}
+cluster_prop <- t(prop.table(table(sce_pnr2$cluster_id, sce_pnr2$sample_id), 2))
+cluster_prop
+```
+
+```{r}
+corres <- psych::corr.test(
+  x = cnaRes$NAM_loadings[rownames(cluster_prop),],
+  y = cluster_prop, method = "pearson"
+)
+ComplexHeatmap::Heatmap(
+    corres$r,
+    name = "Pearson \nCorrelation",
+    col = c("blue", "white", "red"),
+    row_names_side = "right",
+    row_dend_side = "left",
+    column_names_side = "bottom",
+    column_dend_side = "top",
+    column_names_rot = 45,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+      if (corres$p[i, j] < 0.05)
+        grid::grid.text(
+          sprintf("%.2f", corres$r[i, j]),
+          x, y, gp = grid::gpar(fontsize = 10)
+        )
+    }
+  )
 ```
 
 ## TR4 侵染反应
 
 ```{r}
-obj_tr4 <- subset(obj, subset = group %in% c("0DPI-MOCK", "1DPI-TR4", "2DPI-TR4", "3DPI-TR4"))
-obj_tr4$time_val <- as.numeric(factor(obj_tr4$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
-obj_tr4 <- Seurat::FindNeighbors(obj_tr4, reduction = "harmony")
+sce_tr4 <- sce[, sce$treatment == "TR4" | sce$time == "0DPI"]
 
-obj_tr4 <- rcna::association.Seurat(
-  seurat_object = obj_tr4,
-  test_var = "time_val",
-  samplem_key = "sample",
-  graph_use = "RNA_nn",
-  batches = NULL,
-  covs = NULL
-)
+sce_tr4$sample_id <- droplevels(sce_tr4$sample_id)
+sce_tr4$group_id <- droplevels(sce_tr4$group_id)
+sce_tr4$cluster_id <- droplevels(sce_tr4$cluster_id)
 ```
 
-### Association results {.tabset}
+### 降维可视化 {.tabset}
+
+#### UMAP
+
+```{r}
+scater::plotReducedDim(sce_tr4, dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
 
 #### t-SNE
 
-```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_tr4, reduction = "tsne", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+```{r}
+scater::plotReducedDim(sce_tr4, dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
   ggplot2::coord_fixed()
+```
 
-p2 <- Seurat::DimPlot(obj_tr4, reduction = "tsne", group = "group") &
-  ggplot2::coord_fixed()
+### 时间序列降维 {.tabset}
 
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+#### UMAP
+
+```{r fig.height=7, fig.width=28}
+scater::plotReducedDim(
+    sce_tr4, dimred = "UMAP",
+    colour_by = "cellType",
+    text_by = "cellType", text_size = 5,
+    other_fields = "time") +
+  ggplot2::coord_fixed() +
+  ggplot2::facet_wrap(~ time, nrow = 1) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 4))) +
+  NULL
+```
+
+#### t-SNE
+
+```{r fig.height=7, fig.width=28}
+scater::plotReducedDim(
+    sce_tr4, dimred = "TSNE",
+    colour_by = "cellType",
+    text_by = "cellType", text_size = 5,
+    other_fields = "time") +
+  ggplot2::coord_fixed() +
+  ggplot2::facet_wrap(~ time, nrow = 1) +
+  ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 4))) +
+  NULL
+```
+
+### 运行 CNA 方法
+
+关于有序离散变量：https://github.com/immunogenomics/cna/issues/12
+
+> Continuous variables should work fine -- just plug them in. Ordered categorical variables are a bit trickier -- you can always just code the categories as {1,2,3...} and plug them in since they're ordered, but be aware that they will be fit via a linear model so the assumption is that whatever enrichment differentiates category 1 from category 2 will also equally differentiate category 2 from category 3.
+
+CNA 假设有序离散变量之间的富集差异是线性的。
+
+```{r}
+sce_tr4$time_val <- as.numeric(factor(
+  sce_tr4$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+
+cnaObj <- createCNAObject(
+  sce_tr4, 
+  samplem_key = "sample_id",
+  samplem_vars = c(
+    "time", "time_val"
+  )
+)
+
+cnaRes <- rcna::association(
+  data = cnaObj,
+  y = cnaObj$samplem$time_val,
+  batches = NULL,
+  return_nam = TRUE
+)
+
+sce_tr4$time_ncorrs <- cnaRes$ncorrs[colnames(sce_tr4), , drop=TRUE]
+sce_tr4$time_ncorrs_fdr05 <- rep(0, ncol(sce_tr4))
+if (!is.null(cnaRes$fdr_5p_t)) {
+    idx_passed <- which(abs(sce_tr4$time_ncorrs) >= cnaRes$fdr_5p_t)
+    sce_tr4$time_ncorrs_fdr05[idx_passed] <- sce_tr4$time_ncorrs[idx_passed]
+}
+
+sce_tr4$time_ncorrs_fdr10 <- rep(0, ncol(sce_tr4))
+if (!is.null(cnaRes$fdr_10p_t)) {
+    idx_passed <- which(abs(sce_tr4$time_ncorrs) >= cnaRes$fdr_10p_t)
+    sce_tr4$time_ncorrs_fdr10[idx_passed] <- sce_tr4$time_ncorrs[idx_passed]
+}
+```
+
+
+### 表型关联结果 {.tabset}
+
+```{r}
+blue_to_orange <- rev(ggthemes::ggthemes_data[[
+  c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
 ```
 
 #### UMAP
 
+```{r}
+scater::plotReducedDim(
+    sce_tr4[, sample(seq_len(ncol(sce_tr4)))],
+    dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+#### t-SNE
+
+```{r}
+scater::plotReducedDim(
+    sce_tr4[, sample(seq_len(ncol(sce_tr4)))],
+    dimred = "TSNE",
+    point_size = 0.5,
+    colour_by = "time_ncorrs",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed()
+```
+
+### 邻域系数
+
+#### 细胞群体分布
+
+```{r message=FALSE, warning=FALSE, dev="svg"}
+data.frame(time_ncorrs = sce_tr4$time_ncorrs,
+           cellType = sce_tr4$cellType) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = time_ncorrs, y = forcats::fct_reorder(cellType, time_ncorrs),
+    fill = cellType)) +
+  ggplot2::ylab("cellType") +
+  ggridges::geom_density_ridges(scale = 4) +
+  ggplot2::geom_vline(xintercept = cnaRes$fdr_5p_t, linetype="dashed") +
+  ggplot2::geom_vline(xintercept = -cnaRes$fdr_5p_t, linetype="dashed") +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  ggridges::theme_ridges()
+```
+
+#### 关联基因富集分析
+
+```{r}
+ncorrs <- as(matrix(cnaRes$ncorrs, ncol = 1), "dgCMatrix")
+genes <- qlcMatrix::corSparse(ncorrs, t(logcounts(sce_tr4)))
+genes <- structure(as.numeric(genes), names = rownames(logcounts(sce_tr4)))
+genes <- sort(genes, decreasing = TRUE)
+```
+
+```{r}
+gsea <- clusterProfiler::gseGO(
+  genes, ont = "BP",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID")
+
+gsea <- clusterProfiler::simplify(gsea, cutoff = 0.5)
+```
+
+```{r fig.height=10, fig.width=10, dev="svg"}
+p <- gsea |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::treeplot(
+    showCategory = 40, nCluster = 12,
+    offset = 20, offset_tiplab = 1,
+    label_format_cladelab = 5, color = "NES",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  ggplot2::coord_cartesian()
+p
+```
+
+```{r}
+printGSEATable(gsea)
+```
+
+```{r fig.height=12, fig.width=14}
+enrichplot::ridgeplot(gsea, showCategory = 100, label_format = 100) +
+  ggplot2::ggtitle("Correlation distributions of core enriched genes") +
+  ggplot2::xlab("Pearson's R")
+```
+
+### 邻域负荷
+
+#### 方差解释
+
+查看源代码可知，`NAM_nbhdXpc` 等于 `NAM_embeddings`，而 `NAM_sampleXpc` 等于 `NAM_loadings` 。
+
+```{r}
+data.frame(sig2 = cnaRes$NAM_svs / sum(cnaRes$NAM_svs)) |>
+  tibble::rowid_to_column('PC') |>
+  ggplot2::ggplot(ggplot2::aes(PC, sig2)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_line() +
+  ggplot2::theme_classic(base_size = 14) +
+  ggplot2::labs(y = 'Fraction of variance explained', x = 'NAM PC') +
+  ggplot2::scale_x_continuous(breaks = 1:20)
+```
+
+#### 细胞投影
+
+```{r}
+nampcs <- paste0("NAM", colnames(cnaRes$NAM_embeddings))
+colData(sce_tr4)[, nampcs] <- as.data.frame(cnaRes$NAM_embeddings)
+```
+
 ```{r fig.height=8, fig.width=16}
-p1 <- Seurat::FeaturePlot(obj_tr4, reduction = "umap", features = c("cna_ncorrs")) &
-  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+lapply(nampcs, function(pcname) {
+  scater::plotReducedDim(
+    sce_tr4,
+    dimred = "UMAP",
+    point_size = 0.5,
+    colour_by = pcname,
+    text_by = "cellType",
+    text_size = 3,
+    show_violin = TRUE) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::ggtitle(pcname) +
   ggplot2::coord_fixed()
-
-p2 <- Seurat::DimPlot(obj_tr4, reduction = "umap", group = "group") &
-  ggplot2::coord_fixed()
-
-p1[[1]] + p2 + patchwork::plot_layout(nrow = 1)
+}) |> patchwork::wrap_plots(nrow = 2)
 ```
 
-```{r}
-knitr::knit_exit()
-```
+### 样本负荷
 
-## 病原菌诱导的总体应激反应
+#### 样本间的距离
 
 ```{r}
-obj$is_pnr2 <- as.numeric(obj$treatment == "PNR2")
-obj$is_tr4 <- as.numeric(obj$treatment == "TR4")
-obj$is_mock <- as.numeric(obj$treatment == "MOCK")
-obj$time_val <- as.numeric(factor(obj$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+rownames(cnaRes$NAM_loadings) <- as.character(cnaObj$samplem[[cnaObj$samplem_key]])
 
-# Use normalized expression data
-tExprs <- t(obj@assays$RNA@data)
-```
-
-```{r}
-cna_all <- rcna::create_object.Seurat(
-  seurat_object = obj,
-  samplem_key = "sample",
-  samplem_vars = c(
-    "group", "time", "treatment", "time_val",
-    "is_pnr2", "is_tr4", "is_mock"
-  ),
-  graph_use = "RNA_nn"
+df_to_plot <- data.frame(
+  PC1 = cnaRes$NAM_loadings[, 1],
+  PC2 = cnaRes$NAM_loadings[, 2],
+  PC3 = cnaRes$NAM_loadings[, 3],
+  Time = cnaObj$samplem$time
 )
 
-res_pnr2 <- rcna::association(
-  data = cna_all,
-  y = cna_all$samplem$is_pnr2,
-  covs = "time_val",
-  batches = NULL,
-  return_nam = TRUE
-)
-
-res_tr4 <- rcna::association(
-  data = cna_all,
-  y = cna_all$samplem$is_tr4,
-  covs = "time_val",
-  batches = NULL,
-  return_nam = TRUE
-)
-
-res_mock <- rcna::association(
-  data = cna_all,
-  y = cna_all$samplem$is_mock,
-  covs = "time_val",
-  batches = NULL,
-  return_nam = TRUE
+plotly::plot_ly(
+  df_to_plot,
+  x = ~ PC1, y = ~ PC2, z = ~ PC3,
+  color = ~ Time,
+  #colors = cellTypeColors,
+  type = "scatter3d",
+  mode = "markers",
+  marker = list(size = 4)
 )
 ```
 
-```{r}
-obj$pnr2_cna_ncorrs <- res_pnr2$ncorrs[colnames(obj), , drop=TRUE]
-obj$tr4_cna_ncorrs <- res_tr4$ncorrs[colnames(obj), , drop=TRUE]
-obj$mock_cna_ncorrs <- res_mock$ncorrs[colnames(obj), , drop=TRUE]
-```
+#### 细胞类型丰度关联
 
-### Association results
-
-```{r fig.height=10, fig.width=10}
-p1 <- Seurat::FeaturePlot(obj, reduction = "tsne", features = c('pnr2_cna_ncorrs')) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
-  ggplot2::coord_fixed()
-
-p2 <- Seurat::FeaturePlot(obj, reduction = "tsne", features = c('tr4_cna_ncorrs')) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
-  ggplot2::coord_fixed()
-
-p3 <- Seurat::FeaturePlot(obj, reduction = "tsne", features = c('mock_cna_ncorrs')) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
-  ggplot2::coord_fixed()
-
-p4 <- Seurat::DimPlot(obj, reduction = "tsne", group = "treatment") &
-  ggthemes::scale_color_tableau("Tableau 20") &
-  ggplot2::coord_fixed()
-
-p1[[1]] + p2[[1]] + p3[[1]] + p4 + patchwork::plot_layout(nrow = 2)
-```
-
-### Per-gene correlation
+> Correlation across samples between the sample loadings for each NAM-PC and the abundances of each of the five main cell types in the dataset.
 
 ```{r}
-genePNR2 <- coffGeneList(res_pnr2$ncorrs, tExprs)
-geneTR4 <- coffGeneList(res_tr4$ncorrs, tExprs)
-geneMOCK <- coffGeneList(res_mock$ncorrs, tExprs)
+cluster_prop <- t(prop.table(table(sce_tr4$cluster_id, sce_tr4$sample_id), 2))
+cluster_prop
 ```
 
 ```{r}
-gsea <- runGSEA(
-  list(
-    PNR2 = genePNR2,
-    TR4  = geneTR4,
-    MOCK = geneMOCK
+corres <- psych::corr.test(
+  x = cnaRes$NAM_loadings[rownames(cluster_prop),],
+  y = cluster_prop, method = "pearson"
+)
+ComplexHeatmap::Heatmap(
+    corres$r,
+    name = "Pearson \nCorrelation",
+    col = c("blue", "white", "red"),
+    row_names_side = "right",
+    row_dend_side = "left",
+    column_names_side = "bottom",
+    column_dend_side = "top",
+    column_names_rot = 45,
+    cell_fun = function(j, i, x, y, width, height, fill) {
+      if (corres$p[i, j] < 0.05)
+        grid::grid.text(
+          sprintf("%.2f", corres$r[i, j]),
+          x, y, gp = grid::gpar(fontsize = 10)
+        )
+    }
   )
-)
 ```
-
-```{r fig.height=12, fig.width=8}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 15,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
-### Top positive correlated genes {.tabset}
-
-#### PNR2
-
-```{r fig.height=8, fig.width=8}
-Seurat::DefaultAssay(obj) <- "RNA"
-Seurat::FeaturePlot(
-    obj,
-    features = names(head(genePNR2, n = 4L)),
-    reduction = "tsne",
-    order = TRUE) &
-  ggplot2::coord_fixed()
-```
-
-#### TR4
-
-```{r fig.height=8, fig.width=8}
-Seurat::DefaultAssay(obj) <- "RNA"
-Seurat::FeaturePlot(
-    obj,
-    features = names(head(geneTR4, n = 4L)),
-    reduction = "tsne",
-    order = TRUE) &
-  ggplot2::coord_fixed()
-```
-
-#### MOCK
-
-```{r fig.height=8, fig.width=8}
-Seurat::DefaultAssay(obj) <- "RNA"
-Seurat::FeaturePlot(
-    obj,
-    features = names(head(geneMOCK, n = 4L)),
-    reduction = "tsne",
-    order = TRUE) &
-  ggplot2::coord_fixed()
-```
-
-### Top negative correlated genes {.tabset}
-
-#### PNR2
-
-```{r fig.height=8, fig.width=8}
-Seurat::DefaultAssay(obj) <- "RNA"
-Seurat::FeaturePlot(
-    obj,
-    features = names(tail(genePNR2, n = 4L)),
-    reduction = "tsne",
-    order = TRUE) &
-  ggplot2::coord_fixed()
-```
-
-#### TR4
-
-```{r fig.height=8, fig.width=8}
-Seurat::DefaultAssay(obj) <- "RNA"
-Seurat::FeaturePlot(
-    obj,
-    features = names(tail(geneTR4, n = 4L)),
-    reduction = "tsne",
-    order = TRUE) &
-  ggplot2::coord_fixed()
-```
-
-#### MOCK
-
-```{r fig.height=8, fig.width=8}
-Seurat::DefaultAssay(obj) <- "RNA"
-Seurat::FeaturePlot(
-    obj,
-    features = names(tail(geneMOCK, n = 4L)),
-    reduction = "tsne",
-    order = TRUE) &
-  ggplot2::coord_fixed()
-```
-
-### Sample loadings of NAM PCs
-
-```{r}
-sample_df <- as.data.frame(res_mock$NAM_loadings[, 1:2])
-sample_df$sample <- cna_all$samplem$sample
-sample_df$treatment <- cna_all$samplem$treatment
-sample_df$time <- cna_all$samplem$time
-
-ggplot2::ggplot(sample_df, ggplot2::aes(PC1, PC2, color = treatment, shape = time)) +
-  ggplot2::geom_point()
-```
-
-### Characterizing PNR2 NAM-PC1
-
-```{r}
-quanitfy_correlation <-function(sel_gene, expr_mat, ncorrs){
-    my_expr = expr_mat[match(sel_gene, rownames(expr_mat)),]
-    my_data = data.frame(ncorrs, my_expr)
-    colnames(my_data) = c("corrs", "expr")
-    new_summary = summary(lm(corrs ~ expr, data = my_data))
-    new_p = new_summary$coefficients[2,4]
-    new_coeff = new_summary$coefficients[2,1]
-    new_corr = cor(my_expr, ncorrs)
-    return(c(new_corr, new_p))
-}
-```
-
-```{r}
-pnr2_pcs <- list(
-  pnr2_pc1_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC1"], tExprs),
-  pnr2_pc2_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC2"], tExprs),
-  pnr2_pc3_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC3"], tExprs),
-  pnr2_pc4_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC4"], tExprs),
-  pnr2_pc5_corr = coffGeneList(res_pnr2$NAM_embeddings[, "PC5"], tExprs)
-)
-```
-
-```{r}
-head(pnr2_pcs$pnr2_pc1_corr)
-```
-
-```{r}
-all(rownames(tExprs) == rownames(res_pnr2$NAM_embeddings))
-quanitfy_correlation("TraesCS6D02G389400", obj@assays$RNA@data, res_pnr2$NAM_embeddings[, "PC1"])
-quanitfy_correlation("TraesCS6B02G450000", obj@assays$RNA@data, res_pnr2$NAM_embeddings[, "PC1"])
-```
-
-```{r}
-gsea <- runGSEA(pnr2_pcs)
-```
-
-```{r fig.height=16, fig.width=8}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 18,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
-
-## 1DPI 分析
-
-```{r}
-obj_sub <- subset(obj, subset = group %in% c("1DPI-MOCK", "1DPI-PNR2", "1DPI-TR4"))
-```
-
-```{r factorize}
-obj_sub <- Seurat::FindNeighbors(obj_sub, reduction = "harmony")
-obj_sub$is_pnr2 <- as.numeric(obj_sub$treatment == "PNR2")
-obj_sub$is_tr4 <- as.numeric(obj_sub$treatment == "TR4")
-obj_sub$is_mock <- as.numeric(obj_sub$treatment == "MOCK")
-# Use normalized expression data
-tExprs <- t(obj_sub@assays$RNA@data)
-```
-
-```{r run-cna, message=FALSE, warning=FALSE}
-cna_all <- rcna::create_object.Seurat(
-  seurat_object = obj_sub,
-  samplem_key = "sample",
-  samplem_vars = c(
-    "group", "time", "treatment",
-    "is_pnr2", "is_tr4", "is_mock"
-  ),
-  graph_use = "RNA_nn"
-)
-
-res_pnr2 <- rcna::association(
-  data = cna_all,
-  y = cna_all$samplem$is_pnr2,
-  covs = NULL,
-  batches = NULL,
-  return_nam = TRUE
-)
-
-res_tr4 <- rcna::association(
-  data = cna_all,
-  y = cna_all$samplem$is_tr4,
-  covs = NULL,
-  batches = NULL,
-  return_nam = TRUE
-)
-
-res_mock <- rcna::association(
-  data = cna_all,
-  y = cna_all$samplem$is_mock,
-  covs = NULL,
-  batches = NULL,
-  return_nam = TRUE
-)
-```
-
-```{r assign-ncorr}
-obj_sub$pnr2_cna_ncorrs <- res_pnr2$ncorrs[colnames(obj_sub), , drop=TRUE]
-obj_sub$tr4_cna_ncorrs <- res_tr4$ncorrs[colnames(obj_sub), , drop=TRUE]
-obj_sub$mock_cna_ncorrs <- res_mock$ncorrs[colnames(obj_sub), , drop=TRUE]
-```
-
-### Association results
-
-```{r asso-results, fig.height=12, fig.width=12, message=FALSE, warning=FALSE}
-p1 <- Seurat::FeaturePlot(obj_sub, reduction = "tsne", features = c('pnr2_cna_ncorrs')) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
-  ggplot2::coord_fixed()
-
-p2 <- Seurat::FeaturePlot(obj_sub, reduction = "tsne", features = c('tr4_cna_ncorrs')) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
-  ggplot2::coord_fixed()
-
-p3 <- Seurat::FeaturePlot(obj_sub, reduction = "tsne", features = c('mock_cna_ncorrs')) &
-  ggthemes::scale_color_gradient2_tableau(trans = "reverse") &
-  ggplot2::coord_fixed()
-
-p4 <- Seurat::DimPlot(obj_sub, reduction = "tsne", group = "treatment") &
-  ggthemes::scale_color_tableau("Tableau 20") &
-  ggplot2::coord_fixed()
-
-p1[[1]] + p2[[1]] + p3[[1]] + p4 + patchwork::plot_layout(nrow = 2)
-```
-
-### Per-gene correlation
-
-```{r asso-gsea, message=FALSE, warning=FALSE}
-genePNR2 <- coffGeneList(res_pnr2$ncorrs, tExprs)
-geneTR4 <- coffGeneList(res_tr4$ncorrs, tExprs)
-geneMOCK <- coffGeneList(res_mock$ncorrs, tExprs)
-
-gsea <- runGSEA(
-  list(
-    PNR2 = genePNR2,
-    TR4  = geneTR4,
-    MOCK = geneMOCK
-  )
-)
-```
-
-```{r plot-gsea, fig.height=12, fig.width=8, message=FALSE, warning=FALSE}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 15,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
-```{r}
-all_coff_list <- list(
-  "1DPI-PNR2" = genePNR2,
-  "1DPI-TR4"  = geneTR4,
-  "1DPI-MOCK" = geneMOCK
-)
-```
-
-## 2DPI 分析
-
-```{r}
-obj_sub <- subset(obj, subset = group %in% c("2DPI-MOCK", "2DPI-PNR2", "2DPI-TR4"))
-```
-
-```{r}
-<<factorize>>
-```
-
-```{r, message=FALSE, warning=FALSE}
-<<run-cna>>
-```
-
-```{r}
-<<assign-ncorr>>
-```
-
-### Association results
-
-```{r fig.height=12, fig.width=12, message=FALSE, warning=FALSE}
-<<asso-results>>
-```
-
-### Per-gene correlation
-
-```{r message=FALSE, warning=FALSE}
-<<asso-gsea>>
-```
-
-```{r, fig.height=12, fig.width=8, message=FALSE, warning=FALSE}
-<<plot-gsea>>
-```
-
-```{r}
-all_coff_list[["2DPI-PNR2"]] <- genePNR2
-all_coff_list[["2DPI-TR4"]] <- geneTR4
-all_coff_list[["2DPI-MOCK"]] <- geneMOCK
-```
-
-## 3DPI 分析
-
-```{r, message=FALSE, warning=FALSE}
-obj_sub <- subset(obj, subset = group %in% c("3DPI-MOCK", "3DPI-PNR2", "3DPI-TR4"))
-```
-
-```{r}
-<<factorize>>
-```
-
-```{r, message=FALSE, warning=FALSE}
-<<run-cna>>
-```
-
-```{r}
-<<assign-ncorr>>
-```
-
-### Association results
-
-```{r fig.height=12, fig.width=12, message=FALSE, warning=FALSE}
-<<asso-results>>
-```
-
-### Per-gene correlation
-
-```{r message=FALSE, warning=FALSE}
-<<asso-gsea>>
-```
-
-```{r, fig.height=12, fig.width=8, message=FALSE, warning=FALSE}
-<<plot-gsea>>
-```
-
-```{r}
-all_coff_list[["3DPI-PNR2"]] <- genePNR2
-all_coff_list[["3DPI-TR4"]] <- geneTR4
-all_coff_list[["3DPI-MOCK"]] <- geneMOCK
-```
-
-## 时间线分析 {.tabset}
-
-### PNR2
-
-```{r message=FALSE, warning=FALSE}
-gsea <- runGSEA(all_coff_list[c("1DPI-PNR2", "2DPI-PNR2", "3DPI-PNR2")])
-```
-
-```{r}
-gseaTable(gsea)
-```
-
-```{r fig.height=16, fig.width=10, message=FALSE, warning=FALSE}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 20,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
-### TR4
-
-```{r message=FALSE, warning=FALSE}
-gsea <- runGSEA(all_coff_list[c("1DPI-TR4", "2DPI-TR4", "3DPI-TR4")])
-```
-
-```{r}
-gseaTable(gsea)
-```
-
-```{r fig.height=16, fig.width=10, message=FALSE, warning=FALSE}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 20,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
-### MOCK
-
-```{r message=FALSE, warning=FALSE}
-gsea <- runGSEA(all_coff_list[c("1DPI-MOCK", "2DPI-MOCK", "3DPI-MOCK")])
-```
-
-```{r}
-gseaTable(gsea)
-```
-
-```{r fig.height=16, fig.width=10, message=FALSE, warning=FALSE}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 20,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
-
-## 共同比较
-
-```{r message=FALSE, warning=FALSE}
-gsea <- runGSEA(all_coff_list)
-```
-
-```{r}
-gseaTable(gsea)
-```
-
-```{r fig.height=18, fig.width=10, message=FALSE, warning=FALSE}
-p <- gsea %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 40, offset_tiplab = 20,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
-  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
-p
-```
-
 

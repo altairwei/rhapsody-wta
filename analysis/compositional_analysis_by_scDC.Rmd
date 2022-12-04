@@ -79,7 +79,7 @@ plot_bootstrap_distribution_for_mock <- function(
   }
 
   p <- ggplot2::ggplot(df_to_plot,
-      ggplot2::aes(x = time, y = prop)) +
+      ggplot2::aes(x = time, y = prop, fill = cond)) +
     ggplot2::geom_boxplot(
       width = 0.2, outlier.shape = NA,
       position = ggplot2::position_dodge(width = 0.4)) +

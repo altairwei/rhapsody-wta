@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 source("../scripts/UtilityFunctions.R")
 source("../scripts/EnrichmentUtilities.R")
-
 library(reactable)
 # setup reactable HTML dependencies
 reactable::reactable(iris)
@@ -446,6 +445,18 @@ marker_cosg$scores |>
   NULL
 ```
 
+```{r}
+htmltools::tagList(
+  htmltools::tags$button(
+    "Download as CSV",
+    onclick = "Reactable.downloadDataCSV('MarkersTable', 'MarkersTable.csv')"
+  ),
+  reactable::reactable(
+    formatCosgTable(marker_cosg),
+    elementId = "MarkersTable"
+  )
+)
+```
 
 ### LCM 注释图
 

@@ -304,9 +304,9 @@ runScanorama <- function(sce, nfeatures = 2000L, ..., convert = TRUE) {
   results
 }
 
-plotSlingshotCurveOnReduc <- function(sce, reduction = "UMAP", ...) {
-  if (!is.null(colnames(reducedDim(sce, reduction))))
-    colnames(reducedDim(sce, reduction)) <- NULL
+plotSlingshotCurveOnReduc <- function(sce, dimred = "UMAP", path_size = 3, ...) {
+  if (!is.null(colnames(reducedDim(sce, dimred))))
+    colnames(reducedDim(sce, dimred)) <- NULL
 
   pseudo.paths <- slingshot::slingPseudotime(sce)
 
@@ -317,9 +317,11 @@ plotSlingshotCurveOnReduc <- function(sce, reduction = "UMAP", ...) {
 
   # Need to loop over the paths and add each one separately.
   dots <- list(...)
-  dimred <- reduction
-  if ("ncomponents" %in% names(dots))
-    dimred <- reducedDim(sce, reduction)[, dots$ncomponents]
+  if ("ncomponents" %in% names(dots)) {
+    ncomps <- if (length(dots$ncomponents) == 1)
+      seq_len(dots$ncomponents) else dots$ncomponents
+    dimred <- reducedDim(sce, dimred)[, ncomps]
+  }
 
   embedded <- slingshot::embedCurves(sce, dimred)
   embedded <- slingshot::slingCurves(embedded)
@@ -332,15 +334,15 @@ plotSlingshotCurveOnReduc <- function(sce, reduction = "UMAP", ...) {
   else
     curve_list <- list()
 
+
   p <- scater::plotReducedDim(
-    sce, reduction, colour_by = I(shared.pseudo), ...) +
-    ggplot2::coord_fixed()
+    sce, dimred = dimred, colour_by = I(shared.pseudo), ...)
 
   for (curve in curve_list)
     p <- p + ggplot2::geom_path(
       data = curve,
       mapping = ggplot2::aes(x = Dim.1, y = Dim.2),
-      size = 1.2)
+      size = path_size)
 
   p
 }
@@ -387,7 +389,7 @@ plotLineagesOnReduc <- function(
   embedded <- slingshot::slingCurves(
     slingshot::embedCurves(sce, embeddings))
   names(embedded) <- colnames(pseudo.paths)
-  
+
   piclist <- purrr::imap(embedded, function(emb, name) {
     scater::plotReducedDim(
       sce, dimred = dimred, ncomponents = ncomponents,

@@ -529,6 +529,36 @@ Dim3DPlot(obj_annotated, "UMAP3D_", cols = ident_cols)
 Dim3DPlot(obj_annotated, "tSNE3D_", cols = ident_cols)
 ```
 
+### 6.5 样品拆分 {.tabset}
+
+#### UMAP
+
+```{r fig.height=14, fig.width=18}
+df_to_plot <- SeuratObject::FetchData(obj_annotated, vars = c("ident", "UMAP_1", "UMAP_2", "time", "treatment"))
+ggplot2::ggplot(df_to_plot, ggplot2::aes(x = UMAP_1, y = UMAP_2, color = ident)) +
+  ggplot2::geom_point(size = 0.1) +
+  ggplot2::facet_grid(treatment ~ time) +
+  ggplot2::scale_color_manual(values = ident_cols) +
+  ggplot2::coord_fixed() +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 3), title = "Cell Type")) +
+  cowplot::theme_cowplot()
+```
+
+#### t-SNE
+
+```{r fig.height=14, fig.width=18}
+df_to_plot <- SeuratObject::FetchData(obj_annotated, vars = c("ident", "tSNE_1", "tSNE_2", "time", "treatment"))
+ggplot2::ggplot(df_to_plot, ggplot2::aes(x = tSNE_1, y = tSNE_2, color = ident)) +
+  ggplot2::geom_point(size = 0.1) +
+  ggplot2::facet_grid(treatment ~ time) +
+  ggplot2::scale_color_manual(values = ident_cols) +
+  ggplot2::coord_fixed() +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 3), title = "Cell Type")) +
+  cowplot::theme_cowplot()
+```
+
 ## 7 细胞注释检查
 
 ### 7.1 重新计算标识基因
@@ -541,6 +571,29 @@ marker_cosg <- COSG::cosg(
  slot = 'data',
  mu = 1,
  n_genes_user = 300
+)
+```
+
+```{r}
+marker_cosg$scores |>
+  tidyr::pivot_longer(tidyselect::everything(), names_to = "cluster", values_to = "scores") |>
+  ggplot2::ggplot(ggplot2::aes(x = scores, y = cluster)) +
+  #ggridges::geom_density_ridges(scale = 2) +
+  #ggridges::theme_ridges() +
+  ggplot2::geom_boxplot() +
+  NULL
+```
+
+```{r}
+htmltools::tagList(
+  htmltools::tags$button(
+    "Download as CSV",
+    onclick = "Reactable.downloadDataCSV('MarkersTable', 'MarkersTable.csv')"
+  ),
+  reactable::reactable(
+    formatCosgTable(marker_cosg),
+    elementId = "MarkersTable"
+  )
 )
 ```
 

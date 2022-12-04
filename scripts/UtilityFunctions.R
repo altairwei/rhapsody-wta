@@ -374,3 +374,12 @@ treatment_colors <- c(
   "TR4"  = "forestgreen"
 )
 
+formatCosgTable <- function(cosg_res) {
+  lapply(names(cosg_res$names), function(cls) {
+    data.frame(
+      cluster = cls,
+      names = cosg_res$names[[cls]],
+      scores = cosg_res$scores[[cls]]
+    )
+  }) |> dplyr::bind_rows()
+}
