@@ -252,8 +252,8 @@ sce_me_da_1dpi <- xfun::cache_rds(
   dir = "../results/ObjectCache/TrajectoryInference/",
   expr = slingshot::slingshot(sce_me_da_1dpi,
     clusterLabels = sce_me_da_1dpi$cluster_id,
-    reducedDim = "UMAP", start.clus = "Me_1",
-    approx_points = 500)
+    reducedDim = "UMAP", approx_points = 500,
+    start.clus = "Me_4", end.clus = c("Me_1", "Me_2"))
 )
 ```
 
@@ -989,11 +989,10 @@ scv.pl.velocity_embedding_stream(
 sce_me_da_2dpi <- xfun::cache_rds(
   file = "slingshot_me_da_2dpi.rds",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  rerun = TRUE,
   expr = slingshot::slingshot(sce_me_da_2dpi,
     clusterLabels = sce_me_da_2dpi$cluster_id,
-    reducedDim = "UMAP", start.clus = "Me_1",
-    approx_points = 500)
+    reducedDim = "UMAP", approx_points = 500,
+    start.clus = "Me_4", end.clus = c("Me_1", "Me_2"))
 )
 ```
 
@@ -1440,9 +1439,7 @@ sce_me_da_3dpi <- xfun::cache_rds(
   expr = slingshot::slingshot(sce_me_da_3dpi,
     clusterLabels = sce_me_da_3dpi$cluster_id,
     reducedDim = "UMAP", approx_points = 500,
-    start.clus = "Me_1", end.clus = c("Me_2", "Me_4"),
-    #extend = "n", reweight = FALSE, reassign = FALSE
-    )
+    start.clus = "Me_4", end.clus = c("Me_1", "Me_2"))
 )
 ```
 
@@ -1876,6 +1873,17 @@ ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
       strip.background = ggplot2::element_rect(fill = "white"))
 ```
 
+```{r fig.height=3, fig.width=7}
+dplyr::filter(psts, !is.na(pseudotime)) |>
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+    ggplot2::geom_density(alpha = .5) +
+    ggplot2::scale_fill_brewer(type = "qual") +
+    ggplot2::facet_grid(lineages~time, scales = "free_x") +
+    ggridges::theme_ridges() +
+    ggplot2::theme(
+      strip.background = ggplot2::element_rect(fill = "white"))
+```
+
 ```{r fig.height=5, fig.width=14}
 plotLineagesOnReduc(sce_me_all, dimred = "PHATE")
 ```
@@ -1924,5 +1932,196 @@ sdss$mapping <- matrix(rep(1:2, each = 3), nrow = 2, ncol = 3, byrow = TRUE)
 sds <- do.call(condiments::merge_sds, sdss)
 ```
 
+### 4.2 外鞘世系
 
+```{r}
+cells_chosen <- sce$cluster_id %in% c(
+  "Me_4", "Me_5", "Me_6", "Va_2", "Va_3", "Va_4")
+sce_os_all <- sce[, cells_chosen]
+sce_os_all <- sce_os_all[
+  Matrix::rowSums(counts(sce_os_all) > 0) > 10, ]
+```
+
+#### 降维可视化 {.tabset}
+
+```{r}
+sce_os_all <- scater::runUMAP(sce_os_all, dimred = "HARMONY", ncomponents = 30L)
+sce_os_all <- runDiffusionMap(sce_os_all, dimred = "HARMONY", seed = 1201, ncomponents = 2, n_eigs = 2)
+sce_os_all <- runPHATE(sce_os_all, dimred = "HARMONY", seed = 1201, knn = 15, t = 30)
+```
+
+##### PHATE
+
+```{r}
+scater::plotReducedDim(
+    sce_os_all,
+    dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+##### DiffusionMap
+
+```{r}
+sce_os_all$cellType <- droplevels(sce_os_all$cellType)
+```
+
+```{r}
+scater::plotReducedDim(
+    sce_os_all,
+    dimred = "DiffusionMap",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### 轨迹推断
+
+```{r}
+sce_os_all <- xfun::cache_rds(
+  file = "slingshot_os_all.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = slingshot::slingshot(sce_os_all,
+    clusterLabels = sce_os_all$cluster_id,
+    reducedDim = "UMAP", start.clus = "Me_4",
+    approx_points = 500)
+)
+```
+
+##### 细胞世系 {.tabset}
+
+###### PHATE
+
+```{r fig.height=10, fig.width=12}
+plotLineagesOnReduc(sce_os_all, dimred = "PHATE",
+                    path_size = 1, point_size = 0.5,
+                    text_by = "cellType") +
+  patchwork::plot_layout(ncol = 2)
+```
+
+###### DiffusionMap
+
+```{r fig.height=7, fig.width=12}
+plotLineagesOnReduc(sce_os_all, dimred = "DiffusionMap",
+                    path_size = 1, point_size = 0.5,
+                    text_by = "cellType") +
+  patchwork::plot_layout(ncol = 3)
+```
+
+
+```{r}
+plotLineageCurveOnReduc(sce_os_all, 1, dimred = "DiffusionMap",
+                        point_size = 0.5, text_by = "cellType", text_size = 3) +
+  ggplot2::ggtitle("Lineage1") +
+  ggplot2::coord_fixed()
+```
+
+```{r}
+plotLineageCurveOnReduc(sce_os_all, 2, dimred = "DiffusionMap",
+                        point_size = 0.5, text_by = "cellType", text_size = 3) +
+  ggplot2::ggtitle("Lineage2") +
+  ggplot2::coord_fixed()
+```
+
+```{r}
+plotLineageCurveOnReduc(sce_os_all, 3, dimred = "DiffusionMap",
+                        point_size = 0.5, text_by = "cellType", text_size = 3) +
+  ggplot2::ggtitle("Lineage3") +
+  ggplot2::coord_fixed()
+```
+
+##### 拟时间分布
+
+```{r fig.height=3, fig.width=7}
+psts <- slingshot::slingPseudotime(sce_os_all) |>
+  as.data.frame() |>
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      values_to = "pseudotime", names_to = "lineages")
+
+ggplot2::ggplot(psts, ggplot2::aes(x = pseudotime, fill = lineages)) +
+  ggplot2::geom_density(alpha = .5) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  ggplot2::facet_wrap(~lineages, scales = "free_x") +
+  cowplot::theme_cowplot() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white")
+  )
+```
+
+```{r}
+psts <- slingshot::slingPseudotime(sce_os_all$slingshot) %>%
+  as.data.frame() %>%
+  dplyr::mutate(
+    cells = rownames(.),
+    conditions = sce_os_all$treatment,
+    time = sce_os_all$time,
+    cellType = sce_os_all$cellType) %>%
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+    values_to = "pseudotime", names_to = "lineages")
+```
+
+```{r fig.height=3, fig.width=7}
+dplyr::filter(psts, !is.na(pseudotime)) |>
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+    #ggplot2::geom_density(alpha = .5) +
+    ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+    ggplot2::scale_fill_brewer(type = "qual") +
+    ggplot2::facet_grid(lineages~time, scales = "free_x") +
+    ggridges::theme_ridges() +
+    ggplot2::theme(
+      strip.background = ggplot2::element_rect(fill = "white"))
+```
+
+```{r fig.height=3, fig.width=7}
+dplyr::filter(psts, !is.na(pseudotime)) |>
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+    ggplot2::geom_density(alpha = .5) +
+    ggplot2::scale_fill_brewer(type = "qual") +
+    ggplot2::facet_grid(lineages~time, scales = "free_x") +
+    ggridges::theme_ridges() +
+    ggplot2::theme(
+      strip.background = ggplot2::element_rect(fill = "white"))
+```
+
+```{r}
+psts <- slingshot::slingPseudotime(sce_os_all$slingshot)
+colnames(psts) <- paste0(colnames(psts), "_pseudotime")
+cwts <- slingshot::slingCurveWeights(sce_os_all$slingshot)
+colnames(cwts) <- paste0(colnames(cwts), "_curveweights")
+
+curve_data <- as.data.frame(cbind(psts, cwts)) %>%
+  dplyr::mutate(
+    cells = rownames(.),
+    conditions = sce_os_all$treatment,
+    time = sce_os_all$time,
+    cellType = sce_os_all$cellType) %>%
+  tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                      names_to = c("lineages", "type"),
+                      names_sep = "_",
+                      values_to = "value") %>%
+  tidyr::pivot_wider(names_from = type, values_from = value)
+```
+
+```{r fig.height=3, fig.width=7}
+dplyr::filter(curve_data, !is.na(pseudotime)) |>
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, color = cellType)) +
+  ggplot2::geom_jitter(ggplot2::aes(
+    y = forcats::fct_reorder(cellType, pseudotime, .desc = TRUE),
+    alpha = curveweights)) +
+  ggplot2::ylab("cellType") +
+  ggthemes::scale_color_tableau() +
+  ggplot2::facet_wrap(~lineages, scales = "free_x", ncol = 3) +
+  ggridges::theme_ridges() +
+  ggplot2::theme(
+    strip.background = ggplot2::element_rect(fill = "white"))
+```
 

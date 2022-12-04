@@ -327,7 +327,7 @@ printGSEATable <- function(gsea) {
     tibble::remove_rownames() |>
     dplyr::mutate(
       p.adjust = format(p.adjust, scientific = TRUE, digits = 2),
-      Count = length(strsplit(core_enrichment, "/")[[1]]),
+      Count = sapply(strsplit(core_enrichment, "/"), length),
       geneList = sapply(openssl::md5(core_enrichment), function(x) substr(x, 1, 9))) |>
     dplyr::select(ID, Description, NES,
                   Count, p.adjust, geneList, core_enrichment)
@@ -449,11 +449,11 @@ calcPathwayActivity <- function(
 #'
 #' @return A ggplot object
 plotPathwayActivation <- function(sce, id, order = TRUE, ...) {
-  pathac <- assay(sce, "activity")[id,]
+  #Require scater >= 1.26.0
   scater::plotReducedDim(
-    if (order) sce[, order(pathac)] else sce,
+    sce,
     by_exprs_values = "activity",
-    colour_by = id, ...) +
+    colour_by = id, order_by = id, ...) +
     ggplot2::scale_color_gradient(low = "grey", high = "blue") +
     ggplot2::ggtitle(rowData(sce)[id, "Description"])
 }
