@@ -1,0 +1,49 @@
+```{r setup, include=FALSE}
+library(SingleCellExperiment)
+source("../scripts/TrajectoryUtilities.R")
+```
+
+```{r}
+sce <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/sce_spliced_*.rds"))
+```
+
+```{r}
+sce_3dpi <- sce[, sce$time == "3DPI"]
+
+sce_3dpi <- sce_3dpi[, sce_3dpi$cluster_id %in% c(
+  paste0("Me_", 1:6), paste0("Va_", 1:4),
+  "MPV_1", "MPV_2", "BS")]
+
+embed_umap <- reducedDim(sce_3dpi, "UMAP")
+
+sce_3dpi <- sce_3dpi[,
+  embed_umap[, 1L] < 8
+    & embed_umap[, 1L] > -8
+    & embed_umap[, 2L] < 8
+]
+
+sce_3dpi$cluster_id <- droplevels(sce_3dpi$cluster_id)
+sce_3dpi$cellType <- droplevels(sce_3dpi$cellType)
+```
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_3dpi.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  rerun = TRUE,
+  expr = runUniTVelo(
+    sce_3dpi,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```

@@ -148,7 +148,7 @@ runScVelo <- function(x,
 
 runDynamoVelocity <- function(x,
   dimred = NULL, use.dimred = NULL,
-  assay.X="counts", assay.spliced="spliced", assay.unspliced="unspliced",
+  assay.X = "counts", assay.spliced = "spliced", assay.unspliced = "unspliced",
   mode = c("deterministic", "stochastic", "negbin"),
   n_top_genes = 2000L, py.params = list(),
   ...) {
@@ -220,10 +220,11 @@ runDynamoVelocity <- function(x,
   adata
 }
 
-runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL,
-  assay.X="counts", assay.spliced="spliced", assay.unspliced="unspliced",
-  mode = c("unified-time", "independent"), GPU = -1L, label = "cellType", normalize=TRUE,
-  ncomponents = 30, return_sce = FALSE
+runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL, ncomponents = 30,
+  assay.X = "counts", assay.spliced = "spliced", assay.unspliced = "unspliced",
+  mode = c("unified-time", "independent"), label_key = "cellType",
+  GPU = -1L, normalize = TRUE,
+  return_sce = FALSE, config = list()
 ) {
   if (is.null(dimred)) {
     if (!is.null(use.dimred)) {
@@ -236,7 +237,8 @@ runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL,
   X <- assay(x, assay.X)
 
   refdim <- as.integer(dim(spliced))
-  if (!identical(refdim, as.integer(dim(unspliced))) || !identical(refdim, as.integer(dim(X)))) {
+  if (!identical(refdim, as.integer(dim(unspliced)))
+        || !identical(refdim, as.integer(dim(X)))) {
     stop("matrices in 'x' must have the same dimensions")
   }
 
@@ -248,7 +250,7 @@ runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL,
   adata <- and$AnnData(X, layers=list(spliced=spliced, unspliced=unspliced))
   adata$obs_names <- rownames(spliced)
   adata$var_names <- colnames(spliced)
-  adata$obs$cellType <- colData(x)[[label]]
+  adata$obs$cellType <- colData(x)[[label_key]]
 
   if (!is.null(dimred)) {
     adata$obsm <- list(X_pca = dimred)
@@ -259,16 +261,19 @@ runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL,
   velo <- utv$config$Configuration()
   velo$R2_ADJUST <- TRUE
   velo$IROOT <- NULL
-  velo$FIT_OPTION <- if (mode == "unified-time") '1' else '2'
+  velo$FIT_OPTION <- if (mode == "unified-time") "1" else "2"
   velo$GPU <- GPU
   velo$BASIS <- "pca"
 
+  for (key in names(config))
+    velo[[key]] <- config[[key]]
+
   do.call(utv$run_model, list(
-    adata=adata, label="cellType",
-    config_file=velo, normalize=normalize))
+    adata = adata, label = "cellType",
+    config_file = velo, normalize = normalize))
 
   if (return_sce)
-    return(AnnData2SCE(adata))
+    return(zellkonverter::AnnData2SCE(adata))
   else
     return(adata)
 }

@@ -1,0 +1,146 @@
+```{r setup, include=FALSE}
+library(SingleCellExperiment)
+source("../scripts/TrajectoryUtilities.R")
+```
+
+```{r}
+sce_mock <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/sce_mock_spliced_*.rds"))
+```
+
+```{r}
+sce_mock <- sce_mock[, sce_mock$cluster_id %in% c(
+  "Me_α", "Me_β", "Me_γ", "Me_δ", "Me_ε",
+  "BS", "MPV", "Va_α", "Va_β", "Va_γ", "Va_δ"
+)]
+
+embed_umap <- reducedDim(sce_mock, "UMAP")
+
+sce_mock <- sce_mock[,
+  embed_umap[, 1L] < 10
+    & embed_umap[, 1L] > -10
+    & embed_umap[, 2L] < 10
+]
+```
+
+```{r}
+createCNAObject <- function(x, samplem_key, samplem_vars, dimred = "PCA", ...) {
+  samplem_vars <- c(samplem_vars, samplem_key)
+  colDf <- as.data.frame(colData(x))
+
+  samplem_df <- colDf |>
+    dplyr::select(tidyselect::one_of(samplem_vars)) |>
+    unique() |>
+    tibble::remove_rownames()
+
+  obs_df <- tibble::rownames_to_column(colDf, 'CellID')
+
+  if (nrow(samplem_df) == nrow(obs_df)) {
+    stop(
+        'Sample-level metadata is same length as cell-level metadata.
+         Please check that samplem_vars are sample-level covariates.'
+    )
+  }
+
+  nngraph <- Seurat::FindNeighbors(
+    reducedDim(x, dimred)[, 1:10], compute.SNN = FALSE,
+    return.neighbor = FALSE, ...)$nn
+
+  rcna_object <- list(
+    samplem = samplem_df,
+    obs = obs_df, 
+    connectivities = nngraph,
+    samplem_key = samplem_key,
+    obs_key = 'CellID',
+    N = nrow(samplem_df)
+  )
+
+  rcna_object
+}
+
+sce_mock$time_val <- as.numeric(factor(
+  sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+
+cnaObj <- createCNAObject(
+  sce_mock, 
+  samplem_key = "sample_id",
+  samplem_vars = c(
+    "time", "time_val"
+  )
+)
+
+cnaRes <- rcna::association(
+  data = cnaObj,
+  y = cnaObj$samplem$time_val,
+  batches = NULL,
+  return_nam = TRUE
+)
+
+sce_mock$time_ncorrs <- cnaRes$ncorrs[colnames(sce_mock), , drop=TRUE]
+```
+
+```{r}
+adata  <-  cache_pickle(
+  file  =  "unitvelo_mock_config_random_2.pickle",
+  dir  =  "../results/ObjectCache/TrajectoryInference/",
+  rerun = TRUE,
+  expr  =  runUniTVelo(
+    sce_mock,
+    label_key  =  "cluster_id",
+    use.dimred  =  "HARMONY",
+    assay.X  =  "logcounts",
+    GPU  =  0L,
+    config  =  list(
+      R2_ADJUST  =  TRUE,
+      IROOT  =  "Me_γ",
+      FIT_OPTION  =  "1",
+      AGENES_R2  =  1L
+    )
+  )
+)
+```
+
+```{r}
+adata$obsm$update(list(
+  X_umap = reducedDim(sce_mock, "UMAP")
+))
+
+adata$obs$cellType <- droplevels(sce_mock$cluster_id)
+```
+
+```{python fig.height=7, fig.width=7}
+import scvelo as scv
+scv.pl.velocity_embedding_stream(
+  r.adata, basis="umap", color="cellType", dpi=100, title='', figsize=(7, 7))
+```
+
+```{r}
+scv <- reticulate::import("scvelo")
+scv$tl$latent_time(adata, min_likelihood=NULL)
+sce_mock$latent_time <- adata$obs$latent_time
+```
+
+```{r}
+colData(sce_mock) |>
+  as.data.frame() |>
+  dplyr::sample_frac(1) |>
+  ggpubr::ggscatter(
+    x = "time_ncorrs", y = "latent_time", group = NULL,
+    color = "time", conf.int = TRUE,
+    cor.coef = TRUE, cor.method = "pearson") +
+  ggplot2::geom_smooth(method = lm, color = "black", fill = 'lightblue') +
+  NULL
+```
+
+
+```{python}
+r.adata.uns['neighbors']['distances'] = r.adata.obsp['distances']
+r.adata.uns['neighbors']['connectivities'] = r.adata.obsp['connectivities']
+
+scv.tl.paga(r.adata, groups='cellType')
+```
+
+```{r fig.width=7, fig.height=7}
+plotPagaArrow(adata, basis = "umap", threshold = 0, edge_cex = 4, node_cex = 6, point_alpha = 0.3) +
+  ggplot2::coord_fixed()
+```
