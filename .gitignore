@@ -26,6 +26,7 @@ _targets_r/
 .Rapp.history
 .DS_Store
 analysis/figure
+analysis/figures
 analysis/*png
 analysis/*html
 analysis/*_cache

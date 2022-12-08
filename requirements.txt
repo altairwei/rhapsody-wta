@@ -230,7 +230,7 @@ typing_extensions==4.2.0
 tzdata==2022.1
 tzlocal==4.2
 umap-learn==0.5.3
-unitvelo==0.2.3
+unitvelo==0.2.5
 urllib3==1.26.9
 velocyto==0.17.17
 virtualenv==20.16.3
