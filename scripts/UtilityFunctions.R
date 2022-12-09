@@ -383,3 +383,19 @@ formatCosgTable <- function(cosg_res) {
     )
   }) |> dplyr::bind_rows()
 }
+
+ggpreview <- function(ggobj, ...) {
+  temp.file <- paste0(tempfile(), ".png")
+  ggplot2::ggsave(filename = temp.file, plot = ggobj, ...)
+  utils::browseURL(temp.file)
+}
+
+plotpreview <- function(x, width = 7, height = 7, res = 300, ...) {
+  temp.file <- paste0(tempfile(), ".png")
+  png(filename = temp.file, units = "in",
+      width = width, height = height, res = res, ...)
+  print(x)
+  dev.off()
+  utils::browseURL(temp.file)
+  invisible()
+}

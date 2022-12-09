@@ -213,6 +213,26 @@ dplyr::filter(gsva_df,
   NULL
 ```
 
+### 糖酵解
+
+```{r fig.height=8, fig.width=16}
+dplyr::filter(gsva_df,
+    Pathway %in% c("glycolysis", "gluconeogenesis")) |>
+  ggplot2::ggplot(
+    ggplot2::aes(
+        x = cellType,
+        y = ES,
+        group = treatment,
+        color = treatment,
+        fill = treatment
+      )) +
+  ggplot2::geom_polygon(size = 1, alpha = .1) +
+  ggplot2::geom_point() +
+  see::coord_radar() +
+  ggplot2::facet_grid(vars(Pathway), vars(time)) +
+  see::theme_radar() +
+  NULL
+```
 
 ### 其他
 

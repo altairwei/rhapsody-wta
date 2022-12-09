@@ -510,6 +510,7 @@ scater::plotReducedDim(
   ggplot2::scale_color_gradientn(colours = blue_to_orange) +
   ggplot2::coord_fixed()
 ```
+
 #### t-SNE
 
 ```{r}
