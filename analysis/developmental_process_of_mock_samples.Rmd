@@ -258,12 +258,13 @@ sce_raw$time_val <- as.numeric(factor(
   sce_raw$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
 sce_raw$sample <- as.character(sce_raw$sample_id)
 
-cnaObj <- createCNAObject(
+cnaObj <- create_object.SingleCellExperiment(
   sce_raw, 
   samplem_key = "sample_id",
   samplem_vars = c(
     "time", "time_val"
-  )
+  ),
+  dimred = "HARMONY"
 )
 
 cnaRes <- rcna::association(
@@ -397,7 +398,7 @@ p
 ```{r}
 enrichdf <- gsea@result |>
   tibble::remove_rownames() |>
-  dplyr::mutate(Count = length(strsplit(core_enrichment, "/")[[1]])) |>
+  dplyr::mutate(Count = sapply(strsplit(core_enrichment, "/"), length)) |>
   dplyr::select(ID, Description, NES,
                 Count, p.adjust, core_enrichment)
 ```
@@ -427,122 +428,12 @@ reactable::reactable(
 )
 ```
 
+TODO: use density heatmap instead?
+
 ```{r fig.height=12, fig.width=10}
 enrichplot::ridgeplot(showCategory = 100, gsea, label_format = 100) +
   ggplot2::ggtitle("Correlation distributions of core enriched genes") +
   ggplot2::xlab("Pearson's R")
-```
-
-#### 通路活性
-
-对通路表达求和，然后再计算与邻域系数的相关性。
-
-```{r}
-GO_DATA <- clusterProfiler:::get_GO_data(org.Taestivum.iwgsc.db, "BP", "GID")
-
-pathways <- GO_DATA$PATHID2EXTID |>
-  tibble::enframe(name = "GO", value = "Gene") |>
-  tidyr::unnest(Gene) |>
-  dplyr::filter(Gene %in% rownames(sce_raw)) |>
-  dplyr::group_by(GO) |>
-  dplyr::summarise(Gene = list(Gene)) |>
-  tibble::deframe()
-
-pathways <- pathways[gsea@result$ID]
-```
-
-```{r}
-pathway_summed <- calcPathwayActivity(
-  sce_raw, pathways, method = "sum",
-  annotation = gsea@result)
-```
-
-```{r eval=FALSE}
-pathway_gsva <- xfun::cache_rds(
-  file = "sce_mock_pathway_gsva.rds",
-  dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = calcPathwayActivity(
-    sce_raw, pathways, method = "gsva",
-    annotation = gsea@result)
-)
-```
-
-```{r}
-corres <-  psych::corr.test(
-  x = matrix(cnaRes$ncorrs, ncol = 1),
-  y = t(assay(pathway_summed, "activity")),
-  method = "pearson")
-```
-
-```{r}
-tibble::tibble(
-    ID = names(corres$r[1, ,drop = TRUE]),
-    # Do not use clusterProfiler::go2term, because it reorders GO IDs
-    Description = gsea@result[names(corres$r[1, ,drop = TRUE]),]$Description,
-    r = corres$r[1, ,drop = TRUE],
-    p = corres$p.adj[1, ,drop = TRUE] |>
-      format(scientific = TRUE, digits = 2),
-    p.adj = corres$p.adj[1, ,drop = TRUE] |>
-      format(scientific = TRUE, digits = 2)) |>
-  reactable::reactable(columns = list(
-    "ID" = reactable::colDef(maxWidth = 120),
-    "Description" = reactable::colDef(minWidth = 200),
-    "r" = reactable::colDef(maxWidth = 80,
-        format = reactable::colFormat(digits = 2)),
-    "p" = reactable::colDef(maxWidth = 100),
-    "p.adj" = reactable::colDef(maxWidth = 100)
-  ))
-```
-
-GSVA 算出来的活性，与 Time ncorrs 的相关性似乎更高点，但没有本质性的差别。
-
-#### 关键通路
-
-Positive correlation:
-
-```{r}
-poscorr <- c(
-  "GO:0002181", "GO:0006833", "GO:0042219", "GO:1901658")
-```
-
-```{r}
-enrichplot::gseaplot2(gsea, subplots = 1:2, geneSetID = poscorr)
-```
-
-Negative correlation:
-
-```{r}
-negcorr <- c(
-    "GO:0045927", "GO:0010214", "GO:0031647",
-    "GO:0030004", "GO:0009408", "GO:0051259")
-```
-
-```{r}
-enrichplot::gseaplot2(gsea, subplots = 1:2, geneSetID = negcorr)
-```
-
-
-```{r fig.height=8, fig.width=10}
-piclist <- lapply(poscorr, function(GO) {
-  plotPathwayActivation(
-    pathway_summed, GO,
-    dimred = "UMAP", point_size = 0.5) +
-  ggplot2::coord_fixed()
-})
-
-patchwork::wrap_plots(piclist, ncol = 2)
-```
-
-
-```{r fig.height=8, fig.width=14}
-piclist <- lapply(negcorr, function(GO) {
-  plotPathwayActivation(
-    pathway_summed, GO,
-    dimred = "UMAP", point_size = 0.5) +
-  ggplot2::coord_fixed()
-})
-
-patchwork::wrap_plots(piclist, ncol = 3)
 ```
 
 ### 邻域负荷
@@ -718,12 +609,13 @@ sce_mock$time_val <- as.numeric(factor(
   sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
 sce_mock$sample <- as.character(sce_mock$sample_id)
 
-cnaObj <- createCNAObject(
+cnaObj <- create_object.SingleCellExperiment(
   sce_mock, 
   samplem_key = "sample_id",
   samplem_vars = c(
     "time", "time_val"
-  )
+  ),
+  dimred = "HARMONY"
 )
 
 cnaRes <- rcna::association(

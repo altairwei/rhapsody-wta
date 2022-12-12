@@ -7,6 +7,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
+source("../scripts/AbundanceUtilities.R")
 ```
 
 ## 1 发育中细胞比例变化
@@ -48,55 +49,6 @@ ca_res_nonclust <- xfun::cache_rds(
 ```
 
 ### 1.3 可视化置信区间
-
-```{r}
-plot_bootstrap_distribution_for_mock <- function(
-  res, clusters = NULL,
-  facet_by = "cellTypes", ncol = NULL, nrow = NULL
-) {
-  # Use BCa as CI
-  df_to_plot <- res$results %>%
-    tibble::as_tibble() %>%
-    dplyr::filter(method == "BCa") %>%
-    dplyr::mutate(
-      time = sapply(strsplit(cond, split = "-"), "[", 1),
-      rep = sapply(strsplit(as.character(subject), split = "-"),
-        function(x) paste(x[2:3], collapse = "-")),
-      treatment = sapply(strsplit(cond, split = "-"), "[", 2)
-    )
-
-  prop_df <- res$thetastar %>%
-    as.data.frame()
-
-  colnames(prop_df) <- paste("BS_", seq_len(ncol(res$thetastar)), sep = "")
-
-  df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
-    tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
-
-  if (!is.null(clusters)) {
-    df_to_plot <- dplyr::filter(df_to_plot, cellTypes %in% clusters)
-    df_to_plot$cellTypes <- factor(df_to_plot$cellTypes, levels = clusters)
-  }
-
-  p <- ggplot2::ggplot(df_to_plot,
-      ggplot2::aes(x = time, y = prop, fill = cond)) +
-    ggplot2::geom_boxplot(
-      width = 0.2, outlier.shape = NA,
-      position = ggplot2::position_dodge(width = 0.4)) +
-    ggplot2::geom_line(
-      mapping = ggplot2::aes(group = treatment),
-      stat = "summary", fun = median,
-      position = ggplot2::position_dodge(width = 0.4)) +
-    ggplot2::scale_y_continuous(labels = scales::percent) +
-    ggplot2::theme_bw() +
-    NULL
-
-  if (!is.null(facet_by))
-    p <- p + ggplot2::facet_wrap(facet_by, scales = "free_y", ncol = ncol, nrow = nrow, drop = FALSE)
-  
-  p
-}
-```
 
 ```{r fig.height=8, fig.width=13, dev="svg"}
 p <- plot_bootstrap_distribution_for_mock(ca_res_nonclust) +
@@ -275,69 +227,6 @@ plot_cell_population_by_time(ca_res_nonclust) +
 参考 (Cao, Y. et al., BMC Bioinformatics, 2019) 文章中的 Fig. 5 ，绘制 Cell Proportion Bootstrap Distribution 以及 Average Cell Proportion Across Subjects 。尤其是后者，它让我们可以用折线图来表示 Treatment 模式的变化。
 
 Cell Proportion Bootstrap Distribution
-
-```{r}
-plot_bootstrap_distribution <- function(
-  res, clusters = NULL,
-  facet_by = "cellTypes", ncol = NULL, nrow = NULL
-) {
-  # Use BCa as CI
-  df_to_plot <- res$results %>%
-    tibble::as_tibble() %>%
-    dplyr::filter(method == "BCa") %>%
-    dplyr::mutate(
-      time = sapply(strsplit(cond, split = "-"), "[", 1),
-      rep = sapply(strsplit(as.character(subject), split = "-"),
-        function(x) paste(x[2:3], collapse = "-")),
-      treatment = sapply(strsplit(cond, split = "-"), "[", 2)
-    )
-
-  prop_df <- res$thetastar %>%
-    as.data.frame()
-
-  colnames(prop_df) <- paste("BS_", seq_len(ncol(res$thetastar)), sep = "")
-
-  df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
-    tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
-
-  #df_to_plot <- df_to_plot %>%
-  #  dplyr::group_by(time, treatment, cellTypes) %>%
-  #  dplyr::summarise(mean = mean(prop), sd = sd(prop))
-
-  df_to_plot <- dplyr::bind_rows(
-    df_to_plot,
-    df_to_plot %>%
-      dplyr::filter(time == "0DPI") %>%
-      dplyr::mutate(treatment = "PNR2"),
-    df_to_plot %>%
-      dplyr::filter(time == "0DPI") %>%
-      dplyr::mutate(treatment = "TR4")
-  )
-
-  if (!is.null(clusters)) {
-    df_to_plot <- dplyr::filter(df_to_plot, cellTypes %in% clusters)
-    df_to_plot$cellTypes <- factor(df_to_plot$cellTypes, levels = clusters)
-  }
-
-  p <- ggplot2::ggplot(df_to_plot,
-      ggplot2::aes(x = time, y = prop, color = treatment)) +
-    ggplot2::geom_boxplot(
-      width = 0.2, outlier.shape = NA,
-      position = ggplot2::position_dodge(width = 0.4)) +
-    ggplot2::geom_line(
-      mapping = ggplot2::aes(group = treatment),
-      stat = "summary", fun = median,
-      position = ggplot2::position_dodge(width = 0.4)) +
-    ggplot2::scale_y_continuous(labels = scales::percent) +
-    ggplot2::theme_bw() +
-    NULL
-
-  if (!is.null(facet_by))
-    p <- p + ggplot2::facet_wrap(facet_by, scales = "free_y", ncol = ncol, nrow = nrow, drop = FALSE)
-  
-  p
-}
-```
 
 ```{r fig.height=8, fig.width=13, dev="svg"}
 p <- plot_bootstrap_distribution(ca_res_nonclust) +

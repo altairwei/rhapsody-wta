@@ -1,6 +1,7 @@
 ```{r setup, include=FALSE}
 library(SingleCellExperiment)
 source("../scripts/TrajectoryUtilities.R")
+source("../scripts/AbundanceUtilities.R")
 ```
 
 ```{r}
@@ -24,49 +25,16 @@ sce_mock <- sce_mock[,
 ```
 
 ```{r}
-createCNAObject <- function(x, samplem_key, samplem_vars, dimred = "PCA", ...) {
-  samplem_vars <- c(samplem_vars, samplem_key)
-  colDf <- as.data.frame(colData(x))
-
-  samplem_df <- colDf |>
-    dplyr::select(tidyselect::one_of(samplem_vars)) |>
-    unique() |>
-    tibble::remove_rownames()
-
-  obs_df <- tibble::rownames_to_column(colDf, 'CellID')
-
-  if (nrow(samplem_df) == nrow(obs_df)) {
-    stop(
-        'Sample-level metadata is same length as cell-level metadata.
-         Please check that samplem_vars are sample-level covariates.'
-    )
-  }
-
-  nngraph <- Seurat::FindNeighbors(
-    reducedDim(x, dimred)[, 1:10], compute.SNN = FALSE,
-    return.neighbor = FALSE, ...)$nn
-
-  rcna_object <- list(
-    samplem = samplem_df,
-    obs = obs_df, 
-    connectivities = nngraph,
-    samplem_key = samplem_key,
-    obs_key = 'CellID',
-    N = nrow(samplem_df)
-  )
-
-  rcna_object
-}
-
 sce_mock$time_val <- as.numeric(factor(
   sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
 
-cnaObj <- createCNAObject(
+cnaObj <- create_object.SingleCellExperiment(
   sce_mock, 
   samplem_key = "sample_id",
   samplem_vars = c(
     "time", "time_val"
-  )
+  ),
+  dimred = "HARMONY"
 )
 
 cnaRes <- rcna::association(

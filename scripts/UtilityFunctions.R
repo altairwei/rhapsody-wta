@@ -399,3 +399,42 @@ plotpreview <- function(x, width = 7, height = 7, res = 300, ...) {
   utils::browseURL(temp.file)
   invisible()
 }
+
+rotate_x_labels <- function(...) {
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(
+      angle = 45, hjust = 1),
+    ...)
+}
+
+verticalize_x_labels <- function(...) {
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(
+      angle = 90, vjust = 0.5, hjust = 1),
+    ...)
+}
+
+center_plot_title <- function(...) {
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, ...))
+}
+
+remove_axis <- function(...) {
+  ggplot2::theme(
+    axis.title = ggplot2::element_blank(),
+    axis.text = ggplot2::element_blank(),
+    axis.ticks = ggplot2::element_blank(),
+    axis.line = ggplot2::element_blank(),
+    ...)
+}
+
+remove_legend <- function(...) {
+  ggplot2::theme(
+    legend.position = "none", validate = TRUE, ...)
+}
+
+empty_strip <- function(...) {
+  ggplot2::theme(
+    strip.background = ggplot2::element_blank(),
+    ...
+  )
+}

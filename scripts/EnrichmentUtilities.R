@@ -416,7 +416,7 @@ printCompareORATable <- function(ora) {
 calcPathwayActivity <- function(
     sce, pathways, annotation = NULL,
     by_exprs_values = "logcounts",
-    method = c("sum", "gsva"), ...) {
+    method = c("sum", "gsva", "moduleScore"), ...) {
   
   expr <- assay(sce, by_exprs_values)
   
@@ -430,7 +430,9 @@ calcPathwayActivity <- function(
     )),
     gsva = GSVA::gsva(
      expr[unlist(pathways), ], pathways,
-     method = "gsva", ...)
+     method = "gsva", ...),
+    moduleScore = calculateModuleScore(
+      expr, pathways, ...)
   )
   
   SingleCellExperiment(
@@ -456,4 +458,214 @@ plotPathwayActivation <- function(sce, id, order = TRUE, ...) {
     colour_by = id, order_by = id, ...) +
     ggplot2::scale_color_gradient(low = "grey", high = "blue") +
     ggplot2::ggtitle(rowData(sce)[id, "Description"])
+}
+
+lengthCheck <- function(values, cutoff = 0) {
+  return(vapply(
+    X = values,
+    FUN = function(x) {
+      return(length(x) > cutoff)
+    },
+    FUN.VALUE = logical(1)
+  ))
+}
+
+caseMatch <- function(search, match) {
+  search.match <- sapply(
+    X = search,
+    FUN = function(s) {
+      return(grep(
+        pattern = paste0('^', s, '$'),
+        x = match,
+        ignore.case = TRUE,
+        perl = TRUE,
+        value = TRUE
+      ))
+    }
+  )
+  return(unlist(x = search.match))
+}
+
+#' Calculate module scores for feature expression programs in single cells
+#'
+#' Inspired by https://www.waltermuskovic.com/2021/04/15/seurat-s-addmodulescore-function/
+#'
+#' Calculate the average expression levels of each program (cluster) on single
+#' cell level, subtracted by the aggregated expression of control feature sets.
+#' All analyzed features are binned based on averaged expression, and the
+#' control features are randomly selected from each bin.
+#'
+#' @param object A genes × cells expression matrix
+#' @param features A (named) list of vectors of features for expression programs;
+#' each entry should be a vector of feature names
+#' @param pool List of features to check expression levels against, defaults to
+#' \code{rownames(x = object)}
+#' @param nbin Number of bins of aggregate expression levels for all
+#' analyzed features
+#' @param ctrl Number of control features selected from the same bin per
+#' analyzed feature
+#' @param name Name for the expression programs; If \code{features} is not named,
+#' \{name} will append a number to the end for each entry in \code{features} (eg.
+#' if \code{features} has three programs, the results will be stored as \code{name1},
+#' \code{name2}, \code{name3}, respectively).
+#' @param seed Set a random seed. If NULL, seed is not set.
+#'
+#' @return Returns a modules × cells matrix of module scores
+#'
+#' @references Tirosh et al, Science (2016)
+calculateModuleScore <- function(
+    object,
+    features,
+    pool = NULL,
+    nbin = 24,
+    ctrl = 100,
+    assay = NULL,
+    name = 'Cluster',
+    seed = 1,
+    ...
+) {
+  if (!is.null(seed))
+    set.seed(seed)
+
+  if (is.null(x = features)) {
+    stop("Missing input feature list")
+  }
+
+  features <- lapply(
+    X = features,
+    FUN = function(x) {
+      missing.features <- setdiff(x, y = rownames(object))
+      if (length(missing.features) > 0) {
+        warning(
+          "The following features are not present in the object: ",
+          paste(missing.features, collapse = ", "),
+          call. = FALSE,
+          immediate. = TRUE
+        )
+      }
+      return(intersect(x, rownames(object)))
+    }
+  )
+
+  cluster.length <- length(features)
+
+  if (!all(lengthCheck(features))) {
+    warning(paste(
+      'Could not find enough features in the object from the following feature lists:',
+      paste(names(which(!lengthCheck(features)))),
+      'Attempting to match case...'
+    ))
+    features <- lapply(
+      X = features.old,
+      FUN = caseMatch,
+      match = rownames(object)
+    )
+  }
+
+  if (!all(lengthCheck(features))) {
+    stop(paste(
+      'The following feature lists do not have enough features present in the object:',
+      paste(names(x = which(x = !lengthCheck(features)))),
+      'exiting...'
+    ))
+  }
+
+  if (is.null(pool))
+    pool = rownames(object)
+
+  # Get the average expression across all cells (named vector)
+  data.avg <- Matrix::rowMeans(object[pool, ])
+  # Order genes from lowest average expression to highest average expression
+  data.avg <- data.avg[order(data.avg)]
+
+  # Use ggplot2's cut_number function to make n groups with (approximately) equal
+  # numbers of observations. The 'rnorm(n = length(data.avg))/1e+30' part adds a
+  # tiny bit of noise to the data, presumably to break ties.
+  data.cut <- ggplot2::cut_number(
+    x = data.avg + rnorm(length(data.avg)) / 1e+30,
+    n = nbin, labels = FALSE, right = FALSE)
+
+  # Set the names of the cuts as the gene names
+  names(data.cut) <- names(data.avg)
+
+  # Create an empty list the same length as the number of input gene sets. This will
+  # contain the names of the control genes
+  ctrl.use <- vector(mode = "list", length = cluster.length)
+
+  for (i in 1:cluster.length) {
+    # Get the gene names from the input gene set as a character vector  
+    features.use <- features[[i]]
+
+    # Loop through the provided genes (1:num_genes) and for each gene, find ctrl
+    # (default=100) genes from the same expression bin (by looking in data.cut):
+    for (j in 1:length(features.use)) {
+      # Within this loop, 'data.cut[features.use[j]]' gives us the expression bin
+      # number. We then sample `ctrl` genes from that bin without replacement and
+      # add the gene names to ctrl.use.
+      ctrl.use[[i]] <- c(
+        ctrl.use[[i]],
+        names(sample(
+          data.cut[which(data.cut == data.cut[features.use[j]])],
+          size = ctrl, replace = FALSE)
+        )
+      )
+    }
+  }
+
+  # Remove any repeated gene names - even though we set replace=FALSE when we
+  # sampled genes from the same expression bin, there may be more than two genes
+  # in our input gene list that fall in the same expression bin, so we can end
+  # up sampling the same gene more than once.
+  ctrl.use <- lapply(X = ctrl.use, FUN = unique)
+
+  ## Get control gene scores
+
+  # Create an empty matrix with dimensions;
+  # number of rows equal to the number of gene sets (just one here)
+  # number of columns equal to number of cells in input Seurat object
+  ctrl.scores <- matrix(data = numeric(length = 1L),
+                        nrow = length(ctrl.use),
+                        ncol = ncol(object))
+
+  # Loop through each provided gene set and add to the empty matrix the mean
+  # expression of the control genes in each cell
+  for (i in 1:length(ctrl.use)) {
+    # Get control gene names as a vector  
+    features.use <- ctrl.use[[i]]
+    # For each cell, calculate the mean expression of *all* of the control genes 
+    ctrl.scores[i, ] <- Matrix::colMeans(object[features.use,])
+  }
+
+  ## Get scores for input gene sets
+
+  # Similar to the above, create an empty matrix
+  features.scores <- matrix(data = numeric(length = 1L),
+                            nrow = cluster.length,
+                            ncol = ncol(x = object))
+
+  # Loop through input gene sets and calculate the mean expression of these
+  # genes for each cell
+  for (i in 1:cluster.length) {
+    features.use <- features[[i]]
+    data.use <- object[features.use, , drop = FALSE]
+    features.scores[i, ] <- Matrix::colMeans(x = data.use)
+  }
+
+  # Subtract the control scores from the feature scores - the idea is that
+  # if there is no enrichment of the genes in the geneset in a cell, then the
+  # result of this subtraction should be ~ 0
+  features.scores.use <- features.scores - ctrl.scores
+
+  # Name the result the "name" variable + whatever the position the geneset was
+  # in the input list, e.g. "Cluster1"
+  module_names <- names(features)
+  if (!is.null(module_names) && length(module_names) == cluster.length)
+    rownames(features.scores.use) <- names(features)
+  else
+    rownames(features.scores.use) <- paste0(name, 1:cluster.length)
+
+  # Give the rows of the matrix, the names of the cells
+  colnames(features.scores.use) <- colnames(object)
+
+  features.scores.use
 }

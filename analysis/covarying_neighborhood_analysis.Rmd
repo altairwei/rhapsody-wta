@@ -147,12 +147,13 @@ CNA 假设有序离散变量之间的富集差异是线性的。
 sce_mock$time_val <- as.numeric(factor(
   sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
 
-cnaObj <- createCNAObject(
-  sce_mock, 
+cnaObj <- create_object.SingleCellExperiment(
+  sce_mock,
   samplem_key = "sample_id",
   samplem_vars = c(
     "time", "time_val"
-  )
+  ),
+  dimred = "HARMONY"
 )
 
 cnaRes <- rcna::association(
@@ -461,12 +462,13 @@ scater::plotReducedDim(
 sce_pnr2$time_val <- as.numeric(factor(
   sce_pnr2$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
 
-cnaObj <- createCNAObject(
+cnaObj <- create_object.SingleCellExperiment(
   sce_pnr2, 
   samplem_key = "sample_id",
   samplem_vars = c(
     "time", "time_val"
-  )
+  ),
+  dimred = "HARMONY"
 )
 
 cnaRes <- rcna::association(
@@ -763,12 +765,13 @@ CNA 假设有序离散变量之间的富集差异是线性的。
 sce_tr4$time_val <- as.numeric(factor(
   sce_tr4$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
 
-cnaObj <- createCNAObject(
+cnaObj <- create_object.SingleCellExperiment(
   sce_tr4, 
   samplem_key = "sample_id",
   samplem_vars = c(
     "time", "time_val"
-  )
+  ),
+  dimred = "HARMONY"
 )
 
 cnaRes <- rcna::association(

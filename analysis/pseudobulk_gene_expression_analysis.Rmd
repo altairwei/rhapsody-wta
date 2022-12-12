@@ -51,6 +51,8 @@ obj <- readRDS(Sys.glob(
   "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
 
+CPM 其实与 LogNormalize 非常接近，只是不进行 log 转化。
+
 ```{r}
 expr <- xfun::cache_rds(
   file = "pseudobulk_cpm_mean.rds",
