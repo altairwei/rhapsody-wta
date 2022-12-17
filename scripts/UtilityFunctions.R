@@ -1,3 +1,6 @@
+# Make {renv} records pkg {R.utils}
+loadNamespace("R.utils")
+
 #' Display cluster markers in a html table
 #'
 #' @param df Data frame returned by Seurat::FindAllMarkers
@@ -225,6 +228,26 @@ choose_indent_res <- function(obj, meta_col) {
   obj
 }
 
+centerPopulationStimData <- function(sce) {
+  sce <- sce[, sce$cluster_id %in% c(
+    paste0("Me_", 1:6), paste0("Va_", 1:4),
+    "MPV_1", "MPV_2", "BS")]
+
+  embed_umap <- reducedDim(sce, "UMAP")
+
+  sce <- sce[,
+     embed_umap[, 1L] < 8
+     & embed_umap[, 1L] > -8
+     & embed_umap[, 2L] < 8
+  ]
+
+  sce$cluster_id <- droplevels(sce$cluster_id)
+  if (!is.null(sce$cellType))
+    sce$cellType <- droplevels(sce$cellType)
+
+  sce
+}
+
 #' Deconvolution of LCM Samples
 #'
 #' @param seurat Seurat object
@@ -437,4 +460,11 @@ empty_strip <- function(...) {
     strip.background = ggplot2::element_blank(),
     ...
   )
+}
+
+legend_override <- function(legend_key, overrides) {
+  args <- list()
+  args[[legend_key]] <- ggplot2::guide_legend(
+    override.aes = overrides)
+  do.call(ggplot2::guides, args)
 }

@@ -141,7 +141,7 @@ table(cond, cellTypes)
 
 ```{r run-bootstrap}
 ca_res_nonclust <- xfun::cache_rds(
-  file = "ca_res_nonclust.rds",
+  file = "ca_res_nonclust_all.rds",
   dir = "../results/ObjectCache/DifferentialAbundance/",
   expr = local({
     res <- scDC::scDC_noClustering(

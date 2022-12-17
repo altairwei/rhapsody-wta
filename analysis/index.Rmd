@@ -38,3 +38,5 @@ editor_options:
   - [RNA Velocity Estimation of All Samples](rna_velocity_estimation.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - TODO: GRN of trajectory
+- Presentation Documents
+  - [Midterm Report for PhD Program](midterm_report.html)

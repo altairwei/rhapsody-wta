@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(SingleCellExperiment)
 source("../scripts/TrajectoryUtilities.R")
+source("../scripts/UtilityFunctions.R")
 plt <- reticulate::import("matplotlib.pyplot")
 scv <- reticulate::import("scvelo")
 ```
@@ -126,6 +127,7 @@ sce <- xfun::cache_rds(
 rm(obj, data_list, spliced, unspliced, ambiguous)
 gc()
 ```
+
 
 ## 2 MOCK 样品分析
 
@@ -1532,4 +1534,425 @@ adata <- cache_pickle(
 <<plot-paga-umap>>
 ```
 
+## 1DPI-MOCK 样本分析
 
+```{r}
+sce_1dpi_mock <- sce[, sce$group_id == "1DPI-MOCK"]
+sce_1dpi_mock <- centerPopulationStimData(sce_1dpi_mock)
+sce_sub <- sce_1dpi_mock
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_1dpi_mock.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_1dpi_mock,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r update-adata-embedding}
+adata$obsm$update(list(
+  X_umap = reducedDim(sce_sub, "UMAP")
+))
+
+adata$obs$cellType <- droplevels(sce_sub$cluster_id)
+adata$obs$sample <- droplevels(sce_sub$sample_id)
+```
+
+```{python plot-embed-stream, fig.height=7, fig.width=7}
+ax = scv.pl.velocity_embedding_stream(
+  r.adata, basis="umap", color="cellType", dpi=100, title='', figsize=(7, 7), show=False)
+ax.set_aspect('equal', 'box')
+plt.show()
+```
+
+```{r}
+rm(sce_sub, sce_1dpi_mock)
+gc()
+```
+
+## 1DPI-PNR2 样本分析
+
+```{r}
+sce_1dpi_pnr2 <- sce[, sce$group_id == "1DPI-PNR2"]
+sce_1dpi_pnr2 <- centerPopulationStimData(sce_1dpi_pnr2)
+sce_sub <- sce_1dpi_pnr2
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_1dpi_pnr2.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_1dpi_pnr2,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_1dpi_pnr2)
+gc()
+```
+
+## 1DPI-TR4 样本分析
+
+```{r}
+sce_1dpi_tr4 <- sce[, sce$group_id == "1DPI-TR4"]
+sce_1dpi_tr4 <- centerPopulationStimData(sce_1dpi_tr4)
+sce_sub <- sce_1dpi_tr4
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_1dpi_tr4.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_1dpi_tr4,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_1dpi_tr4)
+gc()
+```
+
+## 2DPI-MOCK 样本分析
+
+```{r}
+sce_2dpi_mock <- sce[, sce$group_id == "2DPI-MOCK"]
+sce_2dpi_mock <- centerPopulationStimData(sce_2dpi_mock)
+sce_sub <- sce_2dpi_mock
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_2dpi_mock.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_2dpi_mock,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_2dpi_mock)
+gc()
+```
+
+## 2DPI-PNR2 样本分析
+
+```{r}
+sce_2dpi_pnr2 <- sce[, sce$group_id == "2DPI-PNR2"]
+sce_2dpi_pnr2 <- centerPopulationStimData(sce_2dpi_pnr2)
+sce_sub <- sce_2dpi_pnr2
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_2dpi_pnr2.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_2dpi_pnr2,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_2dpi_pnr2)
+gc()
+```
+
+## 2DPI-TR4 样本分析
+
+```{r}
+sce_2dpi_tr4 <- sce[, sce$group_id == "2DPI-TR4"]
+sce_2dpi_tr4 <- centerPopulationStimData(sce_2dpi_tr4)
+sce_sub <- sce_2dpi_tr4
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_2dpi_tr4.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_2dpi_tr4,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = "Me_4",
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_2dpi_tr4)
+gc()
+```
+
+## 3DPI-MOCK 样本分析
+
+```{r}
+sce_3dpi_mock <- sce[, sce$group_id == "3DPI-MOCK"]
+sce_3dpi_mock <- centerPopulationStimData(sce_3dpi_mock)
+sce_sub <- sce_3dpi_mock
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_3dpi_mock.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_3dpi_mock,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = "Me_4",
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_3dpi_mock)
+gc()
+```
+
+## 3DPI-PNR2 样本分析
+
+```{r}
+sce_3dpi_pnr2 <- sce[, sce$group_id == "3DPI-PNR2"]
+sce_3dpi_pnr2 <- centerPopulationStimData(sce_3dpi_pnr2)
+```
+
+### 运行算法
+
+此样本只有将细胞顺序随机化后才能矫正流线方向。
+
+```{r eval=FALSE}
+sce_3dpi_pnr2 <- sce_3dpi_pnr2[, sample(seq_len(ncol(sce_3dpi_pnr2)))]
+```
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_3dpi_pnr2.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_3dpi_pnr2,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+```{r}
+sce_3dpi_pnr2 <- sce_3dpi_pnr2[, adata$obs_names$to_list()]
+sce_sub <- sce_3dpi_pnr2
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_3dpi_pnr2)
+gc()
+```
+
+## 3DPI-TR4 样本分析
+
+```{r}
+sce_3dpi_tr4 <- sce[, sce$group_id == "3DPI-TR4"]
+sce_3dpi_tr4 <- centerPopulationStimData(sce_3dpi_tr4)
+sce_sub <- sce_3dpi_tr4
+```
+
+### 运行算法
+
+```{r}
+adata <- cache_pickle(
+  file = "unitvelo_adata_3dpi_tr4.pickle",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = runUniTVelo(
+    sce_3dpi_tr4,
+    label_key = "cluster_id",
+    use.dimred = "HARMONY",
+    assay.X = "logcounts",
+    GPU = 0L,
+    config = list(
+      R2_ADJUST = TRUE,
+      IROOT = NULL,
+      FIT_OPTION = "1",
+      AGENES_R2 = 1L
+    )
+  )
+)
+```
+
+### 速率流线
+
+```{r}
+<<update-adata-embedding>>
+```
+
+```{python fig.height=7, fig.width=7}
+<<plot-embed-stream>>
+```
+
+```{r}
+rm(sce_sub, sce_3dpi_tr4)
+gc()
+```

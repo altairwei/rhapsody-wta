@@ -375,63 +375,35 @@ gsea <- clusterProfiler::gseGO(
   OrgDb = org.Taestivum.iwgsc.db,
   keyType = "GID"
 )
+```
 
-gsea <- clusterProfiler::simplify(gsea, cutoff = 0.5)
+```{r}
+printGSEATable(gsea)
+```
+
+```{r}
+gsea_slim <- clusterProfiler::simplify(gsea, cutoff = 0.5)
 ```
 
 ```{r fig.height=10, fig.width=10, dev="svg"}
-p <- gsea |>
+p <- gsea_slim |>
   enrichplot::pairwise_termsim() |>
   enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 20, offset_tiplab = 1,
-    label_format_cladelab = 5, color = "NES",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(6, 0))) +
+    showCategory = 40,
+    cluster.params = list(n = 12, label_words_n = 0, label_format = 5),
+    color = "NES",
+    geneClusterPanel = "dotplot") +
   ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
-  ggplot2::coord_cartesian()
+  NULL
 p
 ```
 
 从上面的 GO 词条来看，这确实像是发育程序。
 
-```{r}
-enrichdf <- gsea@result |>
-  tibble::remove_rownames() |>
-  dplyr::mutate(Count = sapply(strsplit(core_enrichment, "/"), length)) |>
-  dplyr::select(ID, Description, NES,
-                Count, p.adjust, core_enrichment)
-```
-
-```{r}
-reactable::reactable(
-  enrichdf,
-  columns = list(
-    "ID" = reactable::colDef(maxWidth = 120),
-    "Description" = reactable::colDef(minWidth = 100),
-    "NES" = reactable::colDef(maxWidth = 80,
-      format = reactable::colFormat(digits = 2)),
-    "Count" = reactable::colDef(maxWidth = 80),
-    "p.adjust" = reactable::colDef(
-      maxWidth = 80, format = reactable::colFormat(digits = 2)),
-    "core_enrichment" = reactable::colDef(show = FALSE)
-  ),
-  details = reactable::colDef(
-    name = "Genes",
-    width = 80,
-    details = function(row_idx) {
-      reactable::reactable(
-        data.frame(Details = enrichdf[row_idx, "core_enrichment"]),
-        outlined = FALSE, fullWidth = TRUE)
-    }
-  )
-)
-```
-
 TODO: use density heatmap instead?
 
 ```{r fig.height=12, fig.width=10}
-enrichplot::ridgeplot(showCategory = 100, gsea, label_format = 100) +
+enrichplot::ridgeplot(showCategory = 100, gsea_slim, label_format = 100) +
   ggplot2::ggtitle("Correlation distributions of core enriched genes") +
   ggplot2::xlab("Pearson's R")
 ```
@@ -533,15 +505,16 @@ gseacomp <- clusterProfiler::simplify(gseacomp, cutoff = 0.5)
 gseacomp %>%
   enrichplot::pairwise_termsim() %>%
   enrichplot::treeplot(
-    showCategory = 20, nCluster = 12,
+    showCategory = 20,
+    cluster.params = list(n = 12, label_words_n = 0, label_format = 5),
+    clusterPanel.params = list(clusterPanel = "dotplot"),
+    #offset.params = list(bar_tree = 20, tiplab = 20),
     dotsize = "GeneRatio",
-    color = "NES",
-    offset = 50, offset_tiplab = 20,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", cex_category = 20, nWords = 0) +
+    color = "NES", cex_category = 20) +
   ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(2, 1))) +
   ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red") +
-  ggplot2::coord_cartesian()
+  #ggplot2::coord_cartesian() +
+  NULL
 ```
 
 ### 样本负荷

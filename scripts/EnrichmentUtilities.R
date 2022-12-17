@@ -271,6 +271,7 @@ printCompareORAByCluster <- function(enr, heading) {
         reactable::reactable(
           df_list[[clr]],
           elementId = clr,
+          searchable = TRUE,
           columns = list(
             "cluster" = reactable::colDef(maxWidth = 80),
             "ID" = reactable::colDef(maxWidth = 120),
@@ -340,6 +341,7 @@ printGSEATable <- function(gsea) {
     reactable::reactable(
       enrichdf,
       elementId = "GSEATable",
+      searchable = TRUE,
       columns = list(
         "ID" = reactable::colDef(maxWidth = 120),
         "Description" = reactable::colDef(minWidth = 100),
@@ -378,6 +380,7 @@ printCompareORATable <- function(ora) {
     reactable::reactable(
       enrichdf,
       elementId = "ORATable",
+      searchable = TRUE,
       columns = list(
         "Cluster" = reactable::colDef(maxWidth = 120),
         "ID" = reactable::colDef(maxWidth = 120),
@@ -668,4 +671,27 @@ calculateModuleScore <- function(
   colnames(features.scores.use) <- colnames(object)
 
   features.scores.use
+}
+
+#' Remove duplicated GO term
+enrichDistinct <- function(x) {
+  # Split core_enrichment or genes into list, then sort them by alphabet.
+  if (inherits(x, "gseaResult")) {
+    dups <- dplyr::mutate(x@result, geneList = lapply(
+        strsplit(core_enrichment, "/"), sort)) |>
+      dplyr::group_by(geneList) |>
+      tidyr::nest(data = !geneList) |>
+      dplyr::mutate(n = sapply(data, nrow)) |>
+      dplyr::filter(n > 1) |>
+      dplyr::mutate(dups = lapply(data, function(df) {
+        df$IDNUM <- as.integer(substring(df$ID, 4))
+        df$ID[df$IDNUM != max(df$IDNUM)]
+      })) |>
+      dplyr::pull(dups) |>
+      unlist()
+
+    dplyr::filter(x, !ID %in% dups)
+  } else {
+    x
+  }
 }
