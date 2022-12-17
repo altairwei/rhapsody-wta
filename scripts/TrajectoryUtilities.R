@@ -762,7 +762,7 @@ clean_pickle = function(path) {
   olds = c(olds, path)  # `path` may not exist; make sure it is in target paths
   base = basename(olds)
   keep = basename(path) == base  # keep this file (will cache to this file)
-  base = substr(base, 1, nchar(base) - 37)  # 37 = 1 (_) + 32 (md5 sum) + 4 (.rds)
+  base = substr(base, 1, nchar(base) - 40)  # 40 = 1 (_) + 32 (md5 sum) + 7 (.rds)
   unlink(olds[(base == base[keep][1]) & !keep])
 }
 
@@ -770,6 +770,7 @@ cache_pickle <- function(
   expr = {}, rerun = FALSE,
   file = 'cache.rds', dir = 'cache/',
   hash = NULL, clean = TRUE,
+  try = FALSE,
   ...
 ) {
   if (xfun::loadable('knitr')) {
@@ -789,6 +790,10 @@ cache_pickle <- function(
   if (is.list(hash)) md5 = xfun:::md5sum_obj(c(md5, xfun:::md5sum_obj(hash)))
 
   path = sub(r, paste0('_', md5, '\\1'), path)
+
+  if (try)
+    return(path)
+
   if (rerun) unlink(path)
   if (clean) clean_pickle(path)
 
