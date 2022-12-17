@@ -792,11 +792,34 @@
       "Hash": "c073dec69fa32ac4ad4666c7e3f00411",
       "Requirements": []
     },
+    "R.methodsS3": {
+      "Package": "R.methodsS3",
+      "Version": "1.8.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "278c286fd6e9e75d0c2e8f731ea445c8",
+      "Requirements": []
+    },
+    "R.oo": {
+      "Package": "R.oo",
+      "Version": "1.25.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "a0900a114f4f0194cf4aa8cd4a700681",
+      "Requirements": [
+        "R.methodsS3"
+      ]
+    },
     "R.utils": {
       "Package": "R.utils",
       "Version": "2.12.2",
       "Source": "Repository",
-      "Requirements": []
+      "Repository": "CRAN",
+      "Hash": "325f01db13da12c04d8f6e7be36ff514",
+      "Requirements": [
+        "R.methodsS3",
+        "R.oo"
+      ]
     },
     "R6": {
       "Package": "R6",
@@ -1667,6 +1690,17 @@
         "scuttle"
       ]
     },
+    "bayesm": {
+      "Package": "bayesm",
+      "Version": "3.1-5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "bf3fb3529c953d01fcb216ab7f852103",
+      "Requirements": [
+        "Rcpp",
+        "RcppArmadillo"
+      ]
+    },
     "bayestestR": {
       "Package": "bayestestR",
       "Version": "0.13.0",
@@ -2160,6 +2194,19 @@
       "Hash": "b6e3e947d1d7ebf3d2bdcea1bde63fe7",
       "Requirements": []
     },
+    "compositions": {
+      "Package": "compositions",
+      "Version": "2.0-4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "db2719c9c2910d9d4a3a9f2ce6c8e815",
+      "Requirements": [
+        "MASS",
+        "bayesm",
+        "robustbase",
+        "tensorA"
+      ]
+    },
     "condiments": {
       "Package": "condiments",
       "Version": "1.6.0",
@@ -2379,14 +2426,6 @@
         "tidyr",
         "tidyselect"
       ]
-    },
-    "devEMF": {
-      "Package": "devEMF",
-      "Version": "4.1-1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "3df368519cf10b5211c8bdb2b5d44378",
-      "Requirements": []
     },
     "devtools": {
       "Package": "devtools",
@@ -2822,7 +2861,7 @@
     },
     "enrichplot": {
       "Package": "enrichplot",
-      "Version": "1.17.0.992",
+      "Version": "1.19.1.991",
       "Source": "GitHub",
       "Remotes": "YuLab-SMU/tidydr",
       "RemoteType": "github",
@@ -2830,13 +2869,14 @@
       "RemoteRepo": "enrichplot",
       "RemoteUsername": "altairwei",
       "RemoteRef": "feat/treeplot-add-size-argument",
-      "RemoteSha": "d75b318895f05def9478b99808c1288667db5666",
-      "Hash": "4cdb9341b73346edff78bd741d2863d2",
+      "RemoteSha": "3fd1d97801446e78eaf05a5c015a457d673db1e4",
+      "Hash": "5879c3cec494d68cbce436ce7f2c8ccb",
       "Requirements": [
         "DOSE",
         "GOSemSim",
         "RColorBrewer",
         "aplot",
+        "ggnewscale",
         "ggplot2",
         "ggraph",
         "ggtree",
@@ -2845,6 +2885,7 @@
         "plyr",
         "purrr",
         "reshape2",
+        "rlang",
         "scatterpie",
         "shadowtext",
         "yulab.utils"
@@ -3148,6 +3189,21 @@
       "Hash": "ad68e3263f0bc9269aab8c2039440117",
       "Requirements": []
     },
+    "ggalluvial": {
+      "Package": "ggalluvial",
+      "Version": "0.12.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "8e8537ec2a70017be8e5e20b1bbf4e98",
+      "Requirements": [
+        "dplyr",
+        "ggplot2",
+        "lazyeval",
+        "rlang",
+        "tidyr",
+        "tidyselect"
+      ]
+    },
     "ggbeeswarm": {
       "Package": "ggbeeswarm",
       "Version": "0.6.0",
@@ -3361,6 +3417,26 @@
       "Hash": "a57f0f5dbcfd0d77ad4ff33032f5dc79",
       "Requirements": [
         "ggplot2"
+      ]
+    },
+    "ggtern": {
+      "Package": "ggtern",
+      "Version": "3.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f5de88d5dcd1c4dc81920dbe146f3439",
+      "Requirements": [
+        "MASS",
+        "compositions",
+        "ggplot2",
+        "gridExtra",
+        "gtable",
+        "hexbin",
+        "latex2exp",
+        "lattice",
+        "plyr",
+        "proto",
+        "scales"
       ]
     },
     "ggthemes": {
@@ -3960,6 +4036,17 @@
       "Requirements": [
         "Rcpp",
         "rlang"
+      ]
+    },
+    "latex2exp": {
+      "Package": "latex2exp",
+      "Version": "0.9.6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f0173e0120a278700d48998e5a93a000",
+      "Requirements": [
+        "magrittr",
+        "stringr"
       ]
     },
     "lattice": {
@@ -4935,6 +5022,14 @@
         "magrittr",
         "rlang"
       ]
+    },
+    "proto": {
+      "Package": "proto",
+      "Version": "1.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "5cb1623df69ee6102d011c7f78f5791d",
+      "Requirements": []
     },
     "proxy": {
       "Package": "proxy",
@@ -6270,6 +6365,14 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "25cfab6cf405c15bccf7e69ec39df090",
+      "Requirements": []
+    },
+    "tensorA": {
+      "Package": "tensorA",
+      "Version": "0.36.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "fd792ceac77f96b647fa8d6e1788969a",
       "Requirements": []
     },
     "testthat": {
