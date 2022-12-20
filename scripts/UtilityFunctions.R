@@ -248,6 +248,27 @@ centerPopulationStimData <- function(sce) {
   sce
 }
 
+centerPopulationMockData <- function(sce) {
+  sce <- sce[, sce$cluster_id %in% c(
+    "Me_α", "Me_β", "Me_γ", "Me_δ", "Me_ε",
+    "BS", "MPV", "Va_α", "Va_β", "Va_γ", "Va_δ"
+  )]
+
+  embed_umap <- reducedDim(sce, "UMAP")
+
+  sce <- sce[,
+    embed_umap[, 1L] < 10
+    & embed_umap[, 1L] > -10
+    & embed_umap[, 2L] < 10
+  ]
+  
+  sce$cluster_id <- droplevels(sce$cluster_id)
+  if (!is.null(sce$cellType))
+    sce$cellType <- droplevels(sce$cellType)
+
+  sce
+}
+
 #' Deconvolution of LCM Samples
 #'
 #' @param seurat Seurat object
@@ -423,18 +444,14 @@ plotpreview <- function(x, width = 7, height = 7, res = 300, ...) {
   invisible()
 }
 
-rotate_x_labels <- function(...) {
+rotate_x_labels <- function(angle = 45, hjust = 1, ...) {
   ggplot2::theme(
     axis.text.x = ggplot2::element_text(
-      angle = 45, hjust = 1),
-    ...)
+      angle = angle, hjust = hjust, ...))
 }
 
-verticalize_x_labels <- function(...) {
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(
-      angle = 90, vjust = 0.5, hjust = 1),
-    ...)
+verticalize_x_labels <- function(angle = 90, hjust = 1, vjust = 0.5, ...) {
+  rotate_x_labels(angle = angle, hjust = hjust, vjust = vjust, ...)
 }
 
 center_plot_title <- function(...) {

@@ -220,6 +220,67 @@ runDynamoVelocity <- function(x,
   adata
 }
 
+#' Create python AnnData object from SingleCellExperment object
+#'
+#' @param dimred A low-dimensional representation of the cells with number of
+#' rows equal to the number of cells in x, used to find the nearest neighbors.
+#' @param use.dimred String naming the entry of \code{reducedDims(x)} to use
+#' for nearest neighbor calculations. Ignored if dimred is supplied.
+#' @param other.dimred Strings naming the entry of \code{reducedDims(x)} to use
+#' for visualization purpose.
+createAnnData <- function(
+    x, dimred = NULL, use.dimred = NULL, ncomponents = 30,
+    assay.X = "counts", assay.spliced = "spliced", assay.unspliced = "unspliced",
+    other.dimred = NULL) {
+
+  if (is.null(dimred)) {
+    if (!is.null(use.dimred)) {
+      dimred <- reducedDim(x, use.dimred)
+    }
+  }
+
+  spliced <- unspliced <- NULL
+  if (assay.spliced %in% assayNames(x))
+    spliced <- assay(x, assay.spliced)
+  if (assay.unspliced %in% assayNames(x))
+    unspliced <- assay(x, assay.unspliced)
+
+  X <- assay(x, assay.X)
+
+  if (!is.null(spliced) && !is.null(unspliced)) {
+    refdim <- as.integer(dim(spliced))
+    if (!identical(refdim, as.integer(dim(unspliced))) || !identical(refdim, as.integer(dim(X)))) {
+      stop("matrices in 'x' must have the same dimensions")
+    }
+  }
+
+  and <- reticulate::import("anndata")
+
+  X <- t(X)
+  adata <- and$AnnData(X)
+  adata$obs_names <- rownames(X)
+  adata$var_names <- colnames(X)
+
+  if (!is.null(dimred)) {
+    adata$obsm <- list(X_pca = dimred)
+  }
+
+  if (!is.null(other.dimred)) {
+    dimlist <- lapply(other.dimred,
+      function(dim) reducedDim(x, dim))
+    names(dimlist) <- paste0("X_", tolower(other.dimred))
+    adata$obsm$update(dimlist)
+  }
+
+  if (!is.null(spliced) && !is.null(unspliced)) {
+    spliced <- t(spliced)
+    unspliced <- t(unspliced)
+    adata$layers <- list(spliced=spliced, unspliced=unspliced)
+  }
+
+  adata
+}
+
 runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL, ncomponents = 30,
   assay.X = "counts", assay.spliced = "spliced", assay.unspliced = "unspliced",
   mode = c("unified-time", "independent"), label_key = "cellType",
@@ -309,9 +370,9 @@ runScanorama <- function(sce, nfeatures = 2000L, ..., convert = TRUE) {
   results
 }
 
-plotSlingshotCurveOnReduc <- function(sce, dimred = "UMAP", path_size = 3, ...) {
-  if (!is.null(colnames(reducedDim(sce, dimred))))
-    colnames(reducedDim(sce, dimred)) <- NULL
+plotSlingshotCurveOnReduc <- function(
+    sce, dimred = "UMAP",
+    ncomponents = 2, linewidth = 1, ...) {
 
   pseudo.paths <- slingshot::slingPseudotime(sce)
 
@@ -320,15 +381,18 @@ plotSlingshotCurveOnReduc <- function(sce, dimred = "UMAP", path_size = 3, ...) 
   # all paths anyway, so taking the rowMeans is not particularly controversial.
   shared.pseudo <- rowMeans(pseudo.paths, na.rm=TRUE)
 
-  # Need to loop over the paths and add each one separately.
-  dots <- list(...)
-  if ("ncomponents" %in% names(dots)) {
-    ncomps <- if (length(dots$ncomponents) == 1)
-      seq_len(dots$ncomponents) else dots$ncomponents
-    dimred <- reducedDim(sce, dimred)[, ncomps]
+  if (length(ncomponents) == 1L) {
+    to_plot <- seq_len(ncomponents)
+  }
+  else {
+    to_plot <- ncomponents
   }
 
-  embedded <- slingshot::embedCurves(sce, dimred)
+  embeddings <- reducedDim(sce, dimred)[, to_plot]
+  colnames(embeddings) <- paste0(dimred, ".", to_plot)
+  dim1name <- colnames(embeddings)[1]
+  dim2name <- colnames(embeddings)[2]
+  embedded <- slingshot::embedCurves(sce, embeddings)
   embedded <- slingshot::slingCurves(embedded)
   curve_data <- lapply(embedded, function(path) data.frame(path$s[path$ord,]))
 
@@ -339,20 +403,48 @@ plotSlingshotCurveOnReduc <- function(sce, dimred = "UMAP", path_size = 3, ...) 
   else
     curve_list <- list()
 
+  curve_list <- purrr::imap(curve_list, function(path, idx) {
+    path$lineage <- paste("Lineage", idx)
+    path
+  })
+
+  lineage_anno <- lapply(curve_list, function(path) path[nrow(path), ]) |>
+    dplyr::bind_rows()
+
+  curve <- dplyr::bind_rows(curve_list)
 
   p <- scater::plotReducedDim(
     sce, dimred = dimred, colour_by = I(shared.pseudo), ...)
 
-  for (curve in curve_list)
-    p <- p + ggplot2::geom_path(
+  p <- p + ggplot2::geom_path(
       data = curve,
-      mapping = ggplot2::aes(x = Dim.1, y = Dim.2),
-      size = path_size)
+      mapping = ggplot2::aes_string(
+        x = dim1name,
+        y = dim2name,
+        group = "lineage"),
+      linewidth = linewidth,
+      arrow = grid::arrow(
+        angle = 15, type = "closed",
+        length = grid::unit(linewidth*8, "points"))
+    ) +
+    ggrepel::geom_text_repel(
+      data = lineage_anno,
+      mapping = ggplot2::aes_string(
+        x = dim1name,
+        y = dim2name,
+        label = "lineage"
+      ),
+      bg.color = "white",
+      show.legend = FALSE
+    )
 
   p
 }
 
-plotLineageCurveOnReduc <- function(sce, lineage, dimred = "UMAP", ncomponents = 2, ...) {
+plotLineageCurveOnReduc <- function(
+    sce, lineage, dimred = "UMAP",
+    ncomponents = 2, linewidth = 1, ...) {
+
   stopifnot(is.numeric(lineage))
   
   if (length(ncomponents) == 1L) {
@@ -376,12 +468,16 @@ plotLineageCurveOnReduc <- function(sce, lineage, dimred = "UMAP", ncomponents =
       mapping = ggplot2::aes_string(
         x = colnames(embeddings)[1],
         y = colnames(embeddings)[2]),
-      size = 1.2)
+      linewidth = linewidth,
+      arrow = grid::arrow(
+        angle = 15, type = "closed",
+        length = grid::unit(linewidth*8, "points"))
+    )
 }
 
 plotLineagesOnReduc <- function(
     sce, dimred = "UMAP", ncomponents = 2,
-    path_size = 3, ...) {
+    linewidth = 1, ...) {
   if (length(ncomponents) == 1L)
     to_plot <- seq_len(ncomponents)
   else
@@ -404,12 +500,162 @@ plotLineagesOnReduc <- function(
         mapping = ggplot2::aes_string(
           x = colnames(embeddings)[1],
           y = colnames(embeddings)[2]),
-        size = path_size) +
+        linewidth = linewidth,
+        arrow = grid::arrow(
+          angle = 15, type = "closed",
+          length = grid::unit(linewidth*8, "points"))) +
       ggplot2::ggtitle(name) +
       ggplot2::coord_fixed()
   })
   
   patchwork::wrap_plots(piclist)
+}
+
+#' Plot Multiple Slingshot Trajectories in Cell Embeddings
+#'
+#' @param sce SingleCellExperiment object.
+#' @param sdss List of slingshot object returned by \code{condiments::slingshot_conditions}
+plotMultipleSlingshot <- function(
+    sce, sdss, dimred, linewidth = 1,
+    ncomponents = 2, ...) {
+  
+  if (length(ncomponents) == 1L) {
+    to_plot <- seq_len(ncomponents)
+  }
+  else {
+    to_plot <- ncomponents
+  }
+
+  embeddings <- reducedDim(sce, dimred)[, to_plot]
+  colnames(embeddings) <- paste0(dimred, ".", to_plot)
+  dim1name <- colnames(embeddings)[1]
+  dim2name <- colnames(embeddings)[2]
+
+  embed_sdss <- purrr::imap(sdss, function(sds, cond) {
+    slingshot::slingCurves(
+      slingshot::embedCurves(sds, embeddings[rownames(sds), ]))
+  })
+
+  curve_data <- purrr::imap(embed_sdss, function(sds, cond) {
+    purrr::imap(sds, function(path, idx) {
+      df <- as.data.frame(path$s[path$ord, ])
+      df$cond <- cond
+      df$lineage <- paste("Lineage", idx)
+      df$line <- paste(cond, "Lineage", idx)
+      df
+    })
+  })
+
+  lineage_anno <- lapply(curve_data, function(curve) {
+    lapply(curve, function(path) path[nrow(path), ]) |>
+      dplyr::bind_rows()
+  }) |> dplyr::bind_rows()
+
+  curve_data <- lapply(curve_data,
+    function(curve) dplyr::bind_rows(curve)
+  ) |> dplyr::bind_rows()
+
+  p <- scater::plotReducedDim(sce, dimred = dimred, ...) +
+    ggnewscale::new_scale_color() +
+    ggplot2::geom_path(
+      data = curve_data,
+      mapping = ggplot2::aes_string(
+        x = dim1name,
+        y = dim2name,
+        color = "cond",
+        group = "line"),
+      linewidth = linewidth,
+      arrow = grid::arrow(
+        angle = 15,
+        length = grid::unit(linewidth*8, "points"),
+        type = "closed")) +
+    ggrepel::geom_text_repel(
+      data = lineage_anno,
+      mapping = ggplot2::aes_string(
+        x = dim1name,
+        y = dim2name,
+        color = "cond",
+        label = "lineage"
+      ),
+      bg.color = "white",
+      show.legend = FALSE
+    )
+  
+  p
+}
+
+formatCurveData <- function(x) {
+  psts <- slingshot::slingPseudotime(x$slingshot)
+  colnames(psts) <- paste0(colnames(psts), "_pseudotime")
+  cwts <- slingshot::slingCurveWeights(x$slingshot, as.probs = TRUE)
+  colnames(cwts) <- paste0(colnames(cwts), "_curveweights")
+  
+  curve_data <- as.data.frame(cbind(psts, cwts)) %>%
+    dplyr::mutate(
+      cells = rownames(.),
+      conditions = x$treatment,
+      time = x$time,
+      cellType = x$cellType) %>%
+    tidyr::pivot_longer(dplyr::starts_with("Lineage"),
+                        names_to = c("lineages", "type"),
+                        names_sep = "_",
+                        values_to = "value") %>%
+    tidyr::pivot_wider(names_from = type, values_from = value)
+
+  curve_data
+}
+
+plotCurveTopology <- function(curve_data) {
+  dplyr::filter(curve_data, !is.na(pseudotime)) |>
+    ggplot2::ggplot(ggplot2::aes(x = pseudotime, color = cellType)) +
+    ggplot2::geom_jitter(ggplot2::aes(
+      y = forcats::fct_reorder(cellType, pseudotime, .desc = TRUE),
+      alpha = curveweights)) +
+    ggplot2::ylab("cellType") +
+    ggthemes::scale_color_tableau() +
+    ggplot2::facet_wrap(~lineages, scales = "free_x", ncol = 3) +
+    ggplot2::theme_minimal() +
+    empty_strip()
+}
+
+pairwiseProgressionTest <- function(sce, conditions) {
+  pairs <- as.list(as.data.frame(
+    combn(unique(conditions), 2)))
+  pst <- slingshot::slingPseudotime(sce)
+  ws <- slingshot::slingCurveWeights(sce)
+  nlineage <- ncol(sce$slingshot)
+  lapply(seq_len(nlineage), function(idx) {
+    lapply(pairs, function(pair) {
+      lineage <- paste0("Lineage", idx)
+      cond1 <- conditions == pair[1]
+      cond2 <- conditions == pair[2]
+      res <- Ecume::ks_test(
+        x = pst[cond1, lineage], y = pst[cond2, lineage],
+        w_x = ws[cond1, lineage], w_y = ws[cond2, lineage])
+      data.frame(
+        lineage = lineage,
+        contrast = paste(pair[1], "vs.", pair[2]),
+        statistic = res$statistic,
+        p.value = res$p.value)
+    }) |> dplyr::bind_rows()
+  }) |> dplyr::bind_rows()
+}
+
+pairwiseFateSelectionTest <- function(sce, conditions) {
+  pst <- slingshot::slingPseudotime(sce)
+  ws <- slingshot::slingCurveWeights(sce)
+  pairs <- as.list(as.data.frame(
+    combn(unique(conditions), 2)))
+  lapply(pairs, function(pair) {
+    cond1 <- conditions == pair[1]
+    cond2 <- conditions == pair[2]
+    res <- condiments::fateSelectionTest(
+      cellWeights = ws[cond1 | cond2,],
+      conditions = conditions[cond1 | cond2],
+      global = FALSE, pairwise = TRUE)
+    res$contrast <- paste(pair[1], "vs.", pair[2])
+    dplyr::relocate(res, contrast, .after = pair)
+  }) |> dplyr::bind_rows()
 }
 
 plotVelocityArrow <- function(sce, reduction, ...) {
@@ -820,6 +1066,45 @@ readPickle <- function(path) {
        pickle$load(file))
 }
 
+runPAGA <- function(
+    sce, group_key,
+    paga.params = list(),
+    root = NULL,
+    calc_dpt = FALSE,
+    ...) {
+
+  adata <- createAnnData(sce, ...)
+  adata$obs[[group_key]] <- sce[[group_key]]
+  
+  sc <- reticulate::import("scanpy")
+  scv <- reticulate::import("scvelo")
+  np <- reticulate::import("numpy")
+
+  do.call(scv$pp$filter_and_normalize,
+          c(list(data=adata), paga.params$filter_and_normalize))
+
+  neighbors_params <- list(use_rep = "X_pca")
+  if (!is.null(paga.params$neighbors))
+    neighbors_params <- modifyList(neighbors_params, paga.params$neighbors)
+  do.call(scv$pp$neighbors, c(list(adata=adata), paga.params$neighbors))
+
+  do.call(sc$tl$paga, c(list(adata = adata, groups = group_key), paga.params$paga))
+
+  if (calc_dpt && !is.null(root)) {
+    if (root %in% levels(adata$obs[[group_key]]))
+      iroot = as.integer(np$flatnonzero(adata$obs[[group_key]] == root)[1])
+    else if (root %in% adata$obs_names$to_list())
+      iroot = which(adata$obs_names$to_list() == root)
+
+    adata$uns$update(list(iroot = iroot))
+    #TODO: run sc.tl.diffmap first with X_pca
+    do.call(sc$tl$diffmap, c(list(adata=adata), paga.params$diffmap))
+    do.call(sc$tl$dpt, c(list(adata=adata), paga.params$dpt))
+  }
+
+  adata
+}
+
 #' Create Paga Object from AnnData
 #'
 #' @param adata \code{reticulate} reference to python AnnData object.
@@ -861,13 +1146,19 @@ createPagaObject <- function(adata, basis = "umap") {
   paga
 }
 
-#' Plot PAGA
+#' Plot PAGA graph on cell embeiddings.
 #'
 #' @param paga Paga object
 #' @param threshold Do not draw edges for weights below this threshold.
 #' Set to 0 if you want all edges. Discarding low-connectivity edges
 #' helps in getting a much clearer picture of the graph.
-plotPAGA <- function(paga, threshold = 0, edge_cex = 3, node_cex = 2, label_cex = 2) {
+plotPagaGraph <- function(adata, basis = "umap",
+    threshold = 0, colour_by = "group",
+    edge_cex = 1, node_cex = 1, label_cex = 1,
+    point_alpha = 0.1) {
+
+  paga <- createPagaObject(adata, basis = basis)
+  
   # Inspired by https://romanhaa.github.io/blog/paga_to_r/
   paga_edges <- tibble::tibble(
     group1 = rownames(paga$connectivities)[row(paga$connectivities)[upper.tri(paga$connectivities)]],
@@ -885,22 +1176,31 @@ plotPAGA <- function(paga, threshold = 0, edge_cex = 3, node_cex = 2, label_cex 
   paga_edges_und <- dplyr::filter(paga_edges, weight < threshold)
 
   p <- ggplot2::ggplot(
-      paga$position, ggplot2::aes(x, y)) +
+      paga$position, ggplot2::aes(x, y))
+
+  if (colour_by != "group")
+    paga$embeddings[[colour_by]] <- adata$obs[[colour_by]]
+
+  p <- p +
     ggplot2::geom_point(
       data = paga$embeddings,
-      mapping = ggplot2::aes(
-        x = Dim_1, y = Dim_2, color = group),
+      mapping = ggplot2::aes_string(
+        x = "Dim_1", y = "Dim_2", color = colour_by),
       shape = 19,
-      alpha = 0.1,
-      show.legend = FALSE
-    ) +
+      alpha = point_alpha,
+      show.legend = FALSE)
+
+  if (colour_by == "group")
+    p <- p + ggplot2::scale_color_manual(values = paga$group_colors)
+
+  p <- p +
     ggplot2::geom_segment(
       data = paga_edges_und,
       mapping = ggplot2::aes(
         x = x1, y = y1, xend = x2, yend = y2),
       linetype = "dashed",
       color = "grey",
-      size = paga_edges_und$weight*edge_cex,
+      linewidth = paga_edges_und$weight*edge_cex,
       show.legend = FALSE
     ) +
     ggplot2::geom_segment(
@@ -909,16 +1209,16 @@ plotPAGA <- function(paga, threshold = 0, edge_cex = 3, node_cex = 2, label_cex 
         x = x1, y = y1, xend = x2, yend = y2),
       linetype = "solid",
       color = "black",
-      size = paga_edges_sig$weight*edge_cex,
+      linewidth = paga_edges_sig$weight*edge_cex,
       show.legend = FALSE
     ) +
     ggplot2::geom_point(
-      ggplot2::aes(color = group),
+      ggplot2::aes(fill = group), shape = 21,
       size = 3*node_cex, alpha = 1, show.legend = FALSE) +
-    ggplot2::scale_color_manual(values = paga$group_colors) +
-    ggplot2::geom_text(
+    ggplot2::scale_fill_manual(values = paga$group_colors) +
+    shadowtext::geom_shadowtext(
       ggplot2::aes(label = group), color = "black",
-      size = 3*label_cex, fontface = "bold") +
+      size = 3*label_cex, fontface = "bold", bg.color = "white") +
     ggplot2::theme_bw() +
     ggplot2::theme(
       axis.title = ggplot2::element_blank(),
@@ -931,11 +1231,6 @@ plotPAGA <- function(paga, threshold = 0, edge_cex = 3, node_cex = 2, label_cex 
     )
 
   p
-}
-
-plotPagaGraph <- function(adata, basis = "umap", threshold = 0, ...) {
-  paga <- createPagaObject(adata, basis = basis)
-  plotPAGA(paga, threshold = threshold, ...)
 }
 
 plotPagaCompare <- function(adata, basis = "umap", threshold = 0) {

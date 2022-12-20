@@ -105,6 +105,27 @@ association.SingleCellExperiment <- function(
   x
 }
 
+plotNcorrRidges <- function(sce) {
+  cnaRes <- metadata(sce)$cnaRes
+  data.frame(cna_ncorrs = sce$cna_ncorrs,
+             cellType = sce$cluster_id) |>
+    ggplot2::ggplot(ggplot2::aes(
+      x = cna_ncorrs, y = forcats::fct_reorder(cellType, cna_ncorrs),
+      fill = cellType)) +
+    ggplot2::ylab("cellType") +
+    ggridges::geom_density_ridges(scale = 4) +
+    ggplot2::geom_vline(xintercept = cnaRes$fdr_5p_t, linetype="dashed") +
+    ggplot2::geom_vline(xintercept = -cnaRes$fdr_5p_t, linetype="dashed") +
+    ggplot2::annotate(
+      geom = "text", x = cnaRes$fdr_5p_t, y = Inf, 
+      label = "5% FDR", hjust = 0.5, vjust = 1, size = 5) +
+    ggplot2::annotate(
+      geom = "text", x = -cnaRes$fdr_5p_t, y = Inf, 
+      label = "-5% FDR", hjust = 0.5, vjust = 1, size = 5) +
+    ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 3))) +
+    ggridges::theme_ridges()
+}
+
 coffGeneList <- function(ncorrs, exprs) {
   ncorrs <- as(matrix(ncorrs, ncol = 1), "dgCMatrix")
   genes <- qlcMatrix::corSparse(ncorrs, exprs)

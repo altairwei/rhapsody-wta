@@ -10,6 +10,7 @@ library(ggplot2)
 knitr::opts_chunk$set(echo = TRUE)
 source("../scripts/TrajectoryUtilities.R")
 source("../scripts/EnrichmentUtilities.R")
+source("../scripts/UtilityFunctions.R")
 ```
 
 ```{python}
@@ -30,7 +31,8 @@ sce_mock <- readRDS(Sys.glob(
 ## Mesophyll Lineages
 
 ```{r}
-sce_me <- sce_mock[, sce_mock$cluster_id %in% c(paste0("Me_", c("α", "β", "γ", "δ", "ε")), "Va_β")]
+sce_me <- sce_mock[, sce_mock$cluster_id %in% c(
+  paste0("Me_", c("α", "β", "γ", "δ", "ε")), "Va_β", "Va_α")]
 ```
 
 ### 降维可视化 {.tabset}
@@ -38,36 +40,13 @@ sce_me <- sce_mock[, sce_mock$cluster_id %in% c(paste0("Me_", c("α", "β", "γ"
 ```{r}
 sce_me <- scater::runUMAP(sce_me, dimred = "HARMONY", ncomponents = 20L)
 sce_me <- runDiffusionMap(sce_me, dimred = "HARMONY", seed = 1118)
-sce_me <- runPHATE(sce_me, dimred = "HARMONY", seed = 1204, knn = 5, t = 15, gamma = 0)
-```
-
-#### UMAP
-
-```{r}
-scater::plotReducedDim(sce_me, dimred = "UMAP",
-    point_size = 0.5,
-    colour_by = "cellType",
-    text_by = "cellType",
-    text_size = 3) +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-```
-
-#### t-SNE
-
-```{r}
-scater::plotReducedDim(sce_me, dimred = "TSNE",
-    point_size = 0.5,
-    colour_by = "cellType",
-    text_by = "cellType",
-    text_size = 3) +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
 ```
 
 #### PHATE
+
+```{r}
+sce_me <- runPHATE(sce_me, dimred = "HARMONY", seed = 1204, knn = 5, t = 8, gamma = 1)
+```
 
 ```{r}
 scater::plotReducedDim(sce_me, dimred = "PHATE",
@@ -304,13 +283,29 @@ sce_me <- xfun::cache_rds(
 ##### PHATE
 
 ```{r}
-plotSlingshotCurveOnReduc(sce_me, dimred = "PHATE",
-                          path_size = 2, text_by = "cellType") +
+p1 <- plotSlingshotCurveOnReduc(sce_me, dimred = "PHATE", text_by = "cellType") +
   ggplot2::coord_fixed()
+
+p1
 ```
 
-```{r fig.height=4, fig.width=14}
-plotLineagesOnReduc(sce_me, dimred = "PHATE")
+```{r fig.height=7, fig.width=16}
+p2 <- plotLineageCurveOnReduc(sce_me, 1, dimred = "PHATE") +
+  ggplot2::coord_fixed()
+p3 <- plotLineageCurveOnReduc(sce_me, 2, dimred = "PHATE") +
+  ggplot2::coord_fixed()
+p4 <- plotLineageCurveOnReduc(sce_me, 3, dimred = "PHATE") +
+  ggplot2::coord_fixed()
+
+p5 <- scater::plotReducedDim(sce_me, dimred = "PHATE",
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+
+(p <- p1 + (p5 + p2 + p3 + p4))
 ```
 
 #### 细胞种群路径
@@ -430,6 +425,7 @@ scater::plotReducedDim(sce_os, dimred = "DiffusionMap",
 sce_os <- xfun::cache_rds(
   file = "sce_mock_os_slingshot.rds",
   dir = "../results/ObjectCache/TrajectoryInference/",
+  rerun = TRUE,
   expr = slingshot::slingshot(sce_os,
     clusterLabels = sce_os$cluster_id,
     reducedDim = "UMAP", approx_points = 500,
