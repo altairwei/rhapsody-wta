@@ -289,7 +289,7 @@ p1 <- plotSlingshotCurveOnReduc(sce_me, dimred = "PHATE", text_by = "cellType") 
 p1
 ```
 
-```{r fig.height=7, fig.width=16}
+```{r}
 p2 <- plotLineageCurveOnReduc(sce_me, 1, dimred = "PHATE") +
   ggplot2::coord_fixed()
 p3 <- plotLineageCurveOnReduc(sce_me, 2, dimred = "PHATE") +
@@ -303,9 +303,12 @@ p5 <- scater::plotReducedDim(sce_me, dimred = "PHATE",
     text_size = 3) +
   ggplot2::guides(color = ggplot2::guide_legend(
     override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
+  ggplot2::coord_fixed() +
+  remove_legend()
+```
 
-(p <- p1 + (p5 + p2 + p3 + p4))
+```{r fig.height=12, fig.width=7}
+(p <- p1 / (p5 + p2 + p3 + p4))
 ```
 
 #### 细胞种群路径

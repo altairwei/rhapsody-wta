@@ -117,11 +117,11 @@ plotNcorrRidges <- function(sce) {
     ggplot2::geom_vline(xintercept = cnaRes$fdr_5p_t, linetype="dashed") +
     ggplot2::geom_vline(xintercept = -cnaRes$fdr_5p_t, linetype="dashed") +
     ggplot2::annotate(
-      geom = "text", x = cnaRes$fdr_5p_t, y = Inf, 
+      geom = "label", x = cnaRes$fdr_5p_t, y = Inf, 
       label = "5% FDR", hjust = 0.5, vjust = 1, size = 5) +
     ggplot2::annotate(
-      geom = "text", x = -cnaRes$fdr_5p_t, y = Inf, 
-      label = "-5% FDR", hjust = 0.5, vjust = 1, size = 5) +
+      geom = "label", x = -cnaRes$fdr_5p_t, y = Inf, 
+      label = "5% FDR", hjust = 0.5, vjust = 1, size = 5) +
     ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 3))) +
     ggridges::theme_ridges()
 }

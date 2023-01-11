@@ -1097,7 +1097,6 @@ runPAGA <- function(
       iroot = which(adata$obs_names$to_list() == root)
 
     adata$uns$update(list(iroot = iroot))
-    #TODO: run sc.tl.diffmap first with X_pca
     do.call(sc$tl$diffmap, c(list(adata=adata), paga.params$diffmap))
     do.call(sc$tl$dpt, c(list(adata=adata), paga.params$dpt))
   }

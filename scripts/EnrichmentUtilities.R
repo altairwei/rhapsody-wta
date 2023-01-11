@@ -363,6 +363,42 @@ printGSEATable <- function(gsea) {
   )
 }
 
+printORATable <- function(ora) {
+  enrichdf <- ora@result |>
+    tibble::remove_rownames() |>
+    dplyr::mutate(
+      p.adjust = format(p.adjust, scientific = TRUE, digits = 2),
+      geneList = sapply(openssl::md5(geneID), function(x) substr(x, 1, 9))) |>
+    dplyr::select(ID, Description, Count, p.adjust, geneList, geneID)
+
+  htmltools::tagList(
+    htmltools::tags$button(
+      "Download as CSV",
+      onclick = "Reactable.downloadDataCSV('ORATable', 'ORATable.csv')"
+    ),
+    reactable::reactable(
+      enrichdf,
+      elementId = "GSEATable",
+      searchable = TRUE,
+      columns = list(
+        "ID" = reactable::colDef(maxWidth = 120),
+        "Description" = reactable::colDef(minWidth = 100),
+        "Count" = reactable::colDef(maxWidth = 80),
+        "p.adjust" = reactable::colDef(maxWidth = 100),
+        "geneID" = reactable::colDef(show = FALSE),
+        "geneList" = reactable::colDef(
+          maxWidth = 140,
+          details = function(row_idx) {
+            reactable::reactable(
+              data.frame(geneID = enrichdf[row_idx, "geneID"]),
+              outlined = FALSE, fullWidth = TRUE)
+          }
+        )
+      )
+    )
+  )
+}
+
 printCompareORATable <- function(ora) {
   enrichdf <- ora@compareClusterResult |>
     tibble::remove_rownames() |>
@@ -419,10 +455,10 @@ printCompareORATable <- function(ora) {
 calcPathwayActivity <- function(
     sce, pathways, annotation = NULL,
     by_exprs_values = "logcounts",
-    method = c("sum", "gsva", "moduleScore"), ...) {
+    method = c("sum", "gsva", "seuratModuleScore"), ...) {
   
   expr <- assay(sce, by_exprs_values)
-  
+
   method <- match.arg(method)
   pathway_expr <- switch(method,
     sum = t(vapply(
@@ -432,16 +468,20 @@ calcPathwayActivity <- function(
      FUN.VALUE = numeric(ncol(expr))
     )),
     gsva = GSVA::gsva(
-     expr[unlist(pathways), ], pathways,
-     method = "gsva", ...),
-    moduleScore = calculateModuleScore(
+      expr = expr[intersect(rownames(expr), unlist(pathways)), ],
+      gset.idx.list = pathways, method = "gsva", ...),
+    seuratModuleScore = calculateModuleScore(
       expr, pathways, ...)
   )
+
+  if (!is.null(annotation))
+    annotation <- annotation[rownames(pathway_expr),]
   
   SingleCellExperiment(
     assays = list(activity = pathway_expr),
     reducedDims = reducedDims(sce),
-    rowData = annotation[rownames(pathway_expr),]
+    colData = colData(sce),
+    rowData = annotation
   )
 }
 
@@ -694,4 +734,85 @@ enrichDistinct <- function(x) {
   } else {
     x
   }
+}
+
+gointeractive <- function(
+    x, showCategory = 10, color_by = "p.adjust",
+    palette = colorRamps::blue2red,
+    layout = "layout_with_sugiyama", ...) {
+  
+  update_n <- getFromNamespace("update_n", "enrichplot")
+  GOSemSim_initial <- getFromNamespace(".initial", "GOSemSim")
+  getAncestors <- getFromNamespace("getAncestors", "GOSemSim")
+  
+  n <- update_n(x, showCategory)
+  geneSets <- DOSE::geneInCategory(x) ## use core gene for gsea result
+  y <- as.data.frame(x)
+  y <- y[1:n,]
+  
+  id <- y$ID[1:n]
+  
+  if (!exists(".GOSemSimEnv")) GOSemSim_initial()
+  .GOSemSimEnv <- get(".GOSemSimEnv", envir=.GlobalEnv)
+  gotbl <- get("gotbl", envir=.GOSemSimEnv)
+  
+  if (inherits(x, "gseaResult")) {
+    GOANCESTOR <- getAncestors(x@setType)
+  } else {
+    GOANCESTOR <- getAncestors(x@ontology)
+  }
+  
+  anc <- AnnotationDbi::mget(id, GOANCESTOR)
+  ca <- anc[[1]]
+  for (i in 2:length(anc)) {
+    ca <- intersect(ca, anc[[i]])
+  }
+  
+  uanc <- unique(unlist(anc))
+  uanc <- uanc[!uanc %in% ca]
+  dag <- gotbl[gotbl$go_id %in% unique(c(id, uanc)),]
+  
+  
+  edge <- dag[, c(5, 1, 4)]
+  node <- unique(gotbl[gotbl$go_id %in% unique(c(edge[,1], edge[,2])), 1:3])
+  node$color <- x[node$go_id, color_by]
+  node$size <- sapply(geneSets[node$go_id], length)
+
+  val <- node$color[!is.na(node$color)]
+  mtx_uni <- unique(val)
+  mtx_uni <- mtx_uni[!is.na(mtx_uni)]
+  if (length(mtx_uni) < 100)
+    q <- max(abs(val))
+  else
+    q <- stats::quantile(abs(val), probs = .99)
+
+  bks <- seq(-q, q, length.out = 9)
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = palette(length(bks))
+  )
+  
+  node_colors <- col_fun(node$color)
+  node_colors[is.na(node_colors)] <- "#808080"
+  node <- dplyr::transmute(
+    node,
+    id = go_id,
+    label = go_id,
+    title = sprintf(
+      "%s<br>ID: %s<br>Size: %s<br> %s: %s",
+      Term, go_id, size, color_by, color),
+    color = node_colors,
+    value = size
+  )
+  
+  edge <- dplyr::transmute(
+    edge,
+    from = parent,
+    to = go_id,
+    dashes = ifelse(relationship == "isa", FALSE, TRUE)
+  )
+
+  visNetwork::visNetwork(node, edge) |>
+    visNetwork::visEdges(arrows = "from") |>
+    visNetwork::visIgraphLayout(layout = layout)
 }

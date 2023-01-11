@@ -47,7 +47,7 @@ sce_precursor <- xfun::cache_rds(
   expr = local({
     cells_chosen <- sce$cluster_id %in% c(
       "Me_1", "Me_2", "Me_4", "Me_3", "Va_1",
-      "Me_4", "Me_5", "Me_6", "Va_2", "Va_3", "Va_4")
+      "Me_5", "Me_6", "Va_2", "Va_3", "Va_4")
     sce_precursor <- sce[, cells_chosen]
     sce_precursor <- sce_precursor[
       Matrix::rowSums(counts(sce_precursor) > 0) > 10, ]
@@ -73,7 +73,8 @@ scater::plotReducedDim(sce_precursor,
     text_size = 3) +
   ggplot2::guides(color = ggplot2::guide_legend(
     override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
+  ggplot2::coord_fixed() +
+  theme_dimred()
 ```
 
 #### DiffusionMap
@@ -144,7 +145,6 @@ sce_me_all$cellType <- droplevels(sce_me_all$cellType)
 
 ```{r}
 sce_me_all <- scater::runUMAP(sce_me_all, dimred = "HARMONY", ncomponents = 30L)
-sce_me_all <- runDiffusionMap(sce_me_all, dimred = "HARMONY", seed = 1209)
 sce_me_all <- runPHATE(sce_me_all, dimred = "HARMONY", seed = 1209)
 ```
 
@@ -163,23 +163,6 @@ scater::plotReducedDim(sce_me_all, dimred = "PHATE",
 
 从 PHATE 图看，Va_1 确实深度参与了叶肉细胞世系的形成。
 
-##### DiffusionMap
-
-```{r}
-scater::plotReducedDim(sce_me_all, dimred = "DiffusionMap",
-    point_size = 0.5,
-    colour_by = "cellType",
-    text_by = "cellType",
-    text_size = 3) +
-  ggplot2::scale_color_manual(
-    values = Seurat::DiscretePalette(
-      length(unique(sce_me_all$cellType)))
-  ) +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-```
-
 #### 轨迹推断 {.tabset}
 
 ```{r}
@@ -191,12 +174,6 @@ sce_me_all <- xfun::cache_rds(
     reducedDim = "UMAP", start.clus = "Me_4",
     approx_points = 500)
 )
-```
-
-##### DiffusionMap
-
-```{r fig.height=6, fig.width=12}
-plotLineagesOnReduc(sce_me_all, dimred = "DiffusionMap")
 ```
 
 ##### PHATE
@@ -218,30 +195,26 @@ p
 
 这个测试应该在多线程的情况下做，不然速度太慢了。
 
-```{r}
+```{r eval=FALSE}
 top_res <- condiments::topologyTest(
   sds = sce_me_all$slingshot,
   conditions = sce_me_all$treatment,
   methods = "Classifier",
   parallel = TRUE,
   threshs = 0.05)
-```
 
-```{r}
 top_res
 ```
 
 很明显，不同 conditions 之间应该拟合不同的轨迹。
 
-```{r}
+```{r eval=FALSE}
 top_res_time <- condiments::topologyTest(
   sds = sce_me_all$slingshot,
   conditions = sce_me_all$treatment,
   methods = "Classifier",
   threshs = 0.05)
-```
 
-```{r}
 top_res_time
 ```
 
@@ -293,12 +266,6 @@ scater::plotReducedDim(sce_me_1dpi, dimred = "PHATE",
 
 #### 轨迹推断 {.tabset}
 
-###### DiffusionMap
-
-```{r fig.height=6, fig.width=12}
-plotLineagesOnReduc(sce_me_1dpi, dimred = "DiffusionMap")
-```
-
 ###### PHATE
 
 ```{r fig.height=5, fig.width=14}
@@ -310,16 +277,14 @@ plotLineagesOnReduc(sce_me_1dpi, dimred = "PHATE")
 > Test whether or not slingshot should be fitted independently for different conditions or not.
 > The null hypothesis that a common trajectory should be fitted.
 
-```{r}
+```{r eval=FALSE}
 top_res <- condiments::topologyTest(
   sds = sce_me_1dpi$slingshot,
   conditions = sce_me_1dpi$treatment,
   methods = "Classifier",
   parallel = TRUE,
   threshs = 0.05)
-```
 
-```{r}
 top_res
 ```
 
@@ -368,9 +333,10 @@ plotCurveTopology(formatCurveData(sce_me_1dpi))
 
 ```{r fig.height=3, fig.width=7}
 formatCurveData(sce_me_1dpi) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions, linetype = conditions)) +
     ggplot2::geom_density(alpha = .5) +
-    #ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+    ggplot2::scale_linetype_manual(
+      values = c("MOCK" = "longdash", "PNR2" = "dotted", "TR4" = "dotdash")) +
     ggplot2::scale_fill_brewer(type = "qual") +
     ggplot2::facet_wrap(~lineages, scales = "free_x") +
     cowplot::theme_cowplot() +
@@ -426,6 +392,18 @@ p
 TR4 倾向于沿着 Lineage1 转变，因为它在 Lineage1 具有更多的 0.5 和更少的 0 权重细胞。反
 之，PNR2 倾向于 Lineage2 。另
 一个值得注意的是，Lineage2 的总细胞数明显少于 Lineage1 ，所以前者权重为 0 的数量多于权重为 1 的数量。
+
+```{r fig.height=3, fig.width=7}
+p <- formatCurveData(sce_me_1dpi) |>
+  dplyr::group_by(lineages, conditions) |>
+  dplyr::summarise(avg_weights = mean(curveweights), .groups = "drop") |>
+  ggplot2::ggplot(ggplot2::aes(x = lineages, y = avg_weights, fill = conditions)) +
+  ggplot2::geom_col(position = ggplot2::position_dodge()) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  cowplot::theme_cowplot()
+
+p
+```
 
 > Test whether or not the cell repartition between lineages is independent of the conditions
 
@@ -780,13 +758,8 @@ scater::plotReducedDim(sce_me_2dpi, dimred = "PHATE",
     override.aes = list(size = 2))) +
   ggplot2::coord_fixed()
 ```
+
 #### 轨迹推断 {.tabset}
-
-###### DiffusionMap
-
-```{r fig.height=6, fig.width=12}
-plotLineagesOnReduc(sce_me_2dpi, dimred = "DiffusionMap")
-```
 
 ###### PHATE
 
@@ -796,16 +769,14 @@ plotLineagesOnReduc(sce_me_2dpi, dimred = "PHATE")
 
 #### 差异拓扑分析
 
-```{r}
+```{r eval=FALSE}
 top_res <- condiments::topologyTest(
   sds = sce_me_2dpi$slingshot,
   conditions = sce_me_2dpi$treatment,
   methods = "Classifier",
   parallel = TRUE,
   threshs = 0.05)
-```
 
-```{r}
 top_res
 ```
 
@@ -852,9 +823,10 @@ plotCurveTopology(formatCurveData(sce_me_2dpi))
 
 ```{r fig.height=3, fig.width=7}
 formatCurveData(sce_me_2dpi) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions, linetype = conditions)) +
     ggplot2::geom_density(alpha = .5) +
-    #ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+    ggplot2::scale_linetype_manual(
+      values = c("MOCK" = "longdash", "PNR2" = "dotted", "TR4" = "dotdash")) +
     ggplot2::scale_fill_brewer(type = "qual") +
     ggplot2::facet_wrap(~lineages, scales = "free_x") +
     cowplot::theme_cowplot() +
@@ -896,6 +868,18 @@ ggplot2::ggplot(ggplot2::aes(x = curveweights, fill = conditions)) +
   ggplot2::theme(
     strip.background = ggplot2::element_rect(fill = "white")
   ) -> p
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- formatCurveData(sce_me_2dpi) |>
+  dplyr::group_by(lineages, conditions) |>
+  dplyr::summarise(avg_weights = mean(curveweights), .groups = "drop") |>
+  ggplot2::ggplot(ggplot2::aes(x = lineages, y = avg_weights, fill = conditions)) +
+  ggplot2::geom_col(position = ggplot2::position_dodge()) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  cowplot::theme_cowplot()
 
 p
 ```
@@ -946,12 +930,6 @@ scater::plotReducedDim(sce_me_3dpi, dimred = "PHATE",
 
 #### 轨迹推断 {.tabset}
 
-###### DiffusionMap
-
-```{r fig.height=6, fig.width=12}
-plotLineagesOnReduc(sce_me_3dpi, dimred = "DiffusionMap")
-```
-
 ###### PHATE
 
 ```{r fig.height=5, fig.width=14}
@@ -960,16 +938,14 @@ plotLineagesOnReduc(sce_me_3dpi, dimred = "PHATE")
 
 #### 差异拓扑分析
 
-```{r}
+```{r eval=FALSE}
 top_res <- condiments::topologyTest(
   sds = sce_me_3dpi$slingshot,
   conditions = sce_me_2dpi$treatment,
   methods = "Classifier",
   parallel = TRUE,
   threshs = 0.05)
-```
 
-```{r}
 top_res
 ```
 
@@ -1016,9 +992,10 @@ plotCurveTopology(formatCurveData(sce_me_3dpi))
 
 ```{r fig.height=3, fig.width=7}
 formatCurveData(sce_me_3dpi) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions, linetype = conditions)) +
     ggplot2::geom_density(alpha = .5) +
-    #ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+    ggplot2::scale_linetype_manual(
+      values = c("MOCK" = "longdash", "PNR2" = "dotted", "TR4" = "dotdash")) +
     ggplot2::scale_fill_brewer(type = "qual") +
     ggplot2::facet_wrap(~lineages, scales = "free_x") +
     cowplot::theme_cowplot() +
@@ -1049,6 +1026,18 @@ ggplot2::ggplot(ggplot2::aes(x = curveweights, fill = conditions)) +
 p
 ```
 
+```{r fig.height=3, fig.width=7}
+p <- formatCurveData(sce_me_3dpi) |>
+  dplyr::group_by(lineages, conditions) |>
+  dplyr::summarise(avg_weights = mean(curveweights), .groups = "drop") |>
+  ggplot2::ggplot(ggplot2::aes(x = lineages, y = avg_weights, fill = conditions)) +
+  ggplot2::geom_col(position = ggplot2::position_dodge()) +
+  ggplot2::scale_fill_brewer(type = "qual") +
+  cowplot::theme_cowplot()
+
+p
+```
+
 ```{r}
 pairwiseFateSelectionTest(sce_me_3dpi, conditions = sce_me_3dpi$treatment)
 ```
@@ -1057,7 +1046,7 @@ pairwiseFateSelectionTest(sce_me_3dpi, conditions = sce_me_3dpi$treatment)
 
 ```{r}
 cells_chosen <- sce$cluster_id %in% c(
-  "Me_4", "Me_5", "Me_6", "Va_2", "Va_3", "Va_4")
+  "Me_4", "Me_6", "Va_2", "Va_3", "Va_4")
 sce_os_all <- sce[, cells_chosen]
 sce_os_all <- sce_os_all[
   Matrix::rowSums(counts(sce_os_all) > 0) > 10, ]
@@ -1069,8 +1058,6 @@ sce_os_all <- sce_os_all[
 
 ```{r}
 sce_os_all <- scater::runUMAP(sce_os_all, dimred = "HARMONY", ncomponents = 30L)
-sce_os_all <- runDiffusionMap(sce_os_all, dimred = "HARMONY", seed = 1201,
-                              ncomponents = 3, n_eigs = 3)
 sce_os_all <- runPHATE(sce_os_all, dimred = "HARMONY", seed = 1201, knn = 5, t = 5, gamma = 0)
 ```
 
@@ -1089,25 +1076,6 @@ scater::plotReducedDim(
   ggplot2::coord_fixed()
 ```
 
-##### DiffusionMap
-
-```{r}
-sce_os_all$cellType <- droplevels(sce_os_all$cellType)
-```
-
-```{r}
-scater::plotReducedDim(
-    sce_os_all,
-    dimred = "DiffusionMap",
-    point_size = 0.5,
-    colour_by = "cellType",
-    text_by = "cellType",
-    text_size = 3) +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
-```
-
 #### 轨迹推断 {.tabset}
 
 ```{r}
@@ -1117,6 +1085,7 @@ sce_os_all <- xfun::cache_rds(
   expr = slingshot::slingshot(sce_os_all,
     clusterLabels = sce_os_all$cluster_id,
     reducedDim = "UMAP", start.clus = "Me_4",
+    end.clus = c("Va_2", "Va_3", "Va_4"),
     approx_points = 500)
 )
 ```
@@ -1132,20 +1101,22 @@ plotSlingshotCurveOnReduc(sce_os_all, dimred = "PHATE",
 
 #### 差异拓扑分析
 
-```{r fig.height=3, fig.width=7}
-plotCurveTopology(formatCurveData(sce_os_all))
+```{r fig.height=5, fig.width=10}
+(p <- plotCurveTopology(formatCurveData(sce_os_all)))
 ```
 
-```{r fig.height=3, fig.width=7}
-formatCurveData(sce_os_all) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
-    #ggplot2::geom_density(alpha = .5) +
-    ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
-    ggplot2::scale_fill_brewer(type = "qual") +
-    ggplot2::facet_grid(lineages~time, scales = "free_x") +
-    ggridges::theme_ridges() +
-    ggplot2::theme(
-      strip.background = ggplot2::element_rect(fill = "white"))
+```{r fig.height=5, fig.width=10}
+p <- formatCurveData(sce_os_all) |>
+  ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+      #ggplot2::geom_density(alpha = .5) +
+      ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+      ggplot2::scale_fill_brewer(type = "qual") +
+      ggplot2::facet_grid(lineages~time, scales = "free_x") +
+      ggridges::theme_ridges() +
+      ggplot2::theme(
+        strip.background = ggplot2::element_rect(fill = "white"))
+
+p
 ```
 
 
@@ -1226,16 +1197,14 @@ plotLineagesOnReduc(sce_os_1dpi, dimred = "PHATE") &
 
 #### 差异拓扑分析
 
-```{r}
+```{r eval=FALSE}
 top_res <- condiments::topologyTest(
   sds = sce_os_1dpi$slingshot,
   conditions = sce_os_1dpi$treatment,
   methods = "Classifier",
   parallel = TRUE,
   threshs = 0.05)
-```
 
-```{r}
 top_res
 ```
 
@@ -1281,9 +1250,10 @@ plotCurveTopology(formatCurveData(sce_os_1dpi))
 
 ```{r fig.height=3, fig.width=7}
 formatCurveData(sce_os_1dpi) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions, linetype = conditions)) +
     ggplot2::geom_density(alpha = .5) +
-    #ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+    ggplot2::scale_linetype_manual(
+      values = c("MOCK" = "longdash", "PNR2" = "dotted", "TR4" = "dotdash")) +
     ggplot2::scale_fill_brewer(type = "qual") +
     ggplot2::facet_wrap(~lineages, scales = "free_x") +
     cowplot::theme_cowplot() +
@@ -1299,9 +1269,7 @@ prog_res  <- condiments::progressionTest(
   pseudotime = sce_os_1dpi,
   conditions = sce_os_1dpi$treatment,
   lineages = TRUE)
-```
 
-```{r}
 prog_res
 ```
 
@@ -1334,18 +1302,17 @@ p <- formatCurveData(sce_os_1dpi) |>
   dplyr::sample_frac() |>
   ggtern::ggtern(ggplot2::aes(
     x = Lineage1, y = Lineage2, z = Lineage3,
-    color = conditions)) +
+    color = cellType, shape = conditions)) +
   ggplot2::geom_point(
-    size = 1,
-    position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
+    size = 1, position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
   ggplot2::scale_color_brewer(type = "qual") +
+  ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
   legend_override("color", list(size = 2)) +
   ggtern::theme_rgbw(base_size = 10) +
   NULL
 
 p
 ```
-
 
 ```{r fig.height=3, fig.width=7}
 formatCurveData(sce_os_1dpi) |>
@@ -1362,6 +1329,8 @@ ggplot2::ggplot(ggplot2::aes(x = curveweights, fill = conditions)) +
 
 p
 ```
+
+随机森林分类器每次产生的结果是不同的。
 
 ```{r}
 pairwiseFateSelectionTest(sce_os_1dpi, conditions = sce_os_1dpi$treatment)
@@ -1413,16 +1382,14 @@ plotLineagesOnReduc(sce_os_2dpi, dimred = "PHATE") &
 
 #### 差异拓扑分析
 
-```{r}
+```{r eval=FALSE}
 top_res <- condiments::topologyTest(
   sds = sce_os_2dpi$slingshot,
   conditions = sce_os_2dpi$treatment,
   methods = "Classifier",
   parallel = TRUE,
   threshs = 0.05)
-```
 
-```{r}
 top_res
 ```
 
@@ -1468,9 +1435,10 @@ plotCurveTopology(formatCurveData(sce_os_2dpi))
 
 ```{r fig.height=3, fig.width=7}
 formatCurveData(sce_os_2dpi) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions, linetype = conditions)) +
     ggplot2::geom_density(alpha = .5) +
-    #ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+    ggplot2::scale_linetype_manual(
+      values = c("MOCK" = "longdash", "PNR2" = "dotted", "TR4" = "dotdash")) +
     ggplot2::scale_fill_brewer(type = "qual") +
     ggplot2::facet_wrap(~lineages, scales = "free_x") +
     cowplot::theme_cowplot() +
@@ -1479,6 +1447,15 @@ ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
     ) -> p
 
 p
+```
+
+```{r}
+prog_res  <- condiments::progressionTest(
+  pseudotime = sce_os_2dpi,
+  conditions = sce_os_2dpi$treatment,
+  lineages = TRUE)
+
+prog_res
 ```
 
 ```{r}
@@ -1507,11 +1484,11 @@ p <- formatCurveData(sce_os_2dpi) |>
   dplyr::sample_frac() |>
   ggtern::ggtern(ggplot2::aes(
     x = Lineage1, y = Lineage2, z = Lineage3,
-    color = conditions)) +
+    color = cellType, shape = conditions)) +
   ggplot2::geom_point(
-    size = 1,
-    position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
+    size = 1, position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
   ggplot2::scale_color_brewer(type = "qual") +
+  ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
   legend_override("color", list(size = 2)) +
   ggtern::theme_rgbw(base_size = 10) +
   NULL
@@ -1584,16 +1561,14 @@ plotLineagesOnReduc(sce_os_3dpi, dimred = "PHATE") &
 
 #### 差异拓扑分析
 
-```{r}
+```{r eval=FALSE}
 top_res <- condiments::topologyTest(
   sds = sce_os_3dpi$slingshot,
   conditions = sce_os_3dpi$treatment,
   methods = "Classifier",
   parallel = TRUE,
   threshs = 0.05)
-```
 
-```{r}
 top_res
 ```
 
@@ -1640,9 +1615,10 @@ plotCurveTopology(formatCurveData(sce_os_3dpi))
 
 ```{r fig.height=3, fig.width=7}
 formatCurveData(sce_os_3dpi) |>
-ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions)) +
+ggplot2::ggplot(ggplot2::aes(x = pseudotime, fill = conditions, linetype = conditions)) +
     ggplot2::geom_density(alpha = .5) +
-    #ggridges::geom_density_ridges(ggplot2::aes(y = conditions), scale = 4) +
+    ggplot2::scale_linetype_manual(
+      values = c("MOCK" = "longdash", "PNR2" = "dotted", "TR4" = "dotdash")) +
     ggplot2::scale_fill_brewer(type = "qual") +
     ggplot2::facet_wrap(~lineages, scales = "free_x") +
     cowplot::theme_cowplot() +
@@ -1679,11 +1655,11 @@ p <- formatCurveData(sce_os_3dpi) |>
   dplyr::sample_frac() |>
   ggtern::ggtern(ggplot2::aes(
     x = Lineage1, y = Lineage2, z = Lineage3,
-    color = conditions)) +
+    color = cellType, shape = conditions)) +
   ggplot2::geom_point(
-    size = 1,
-    position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
+    size = 1, position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
   ggplot2::scale_color_brewer(type = "qual") +
+  ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
   legend_override("color", list(size = 2)) +
   ggtern::theme_rgbw(base_size = 10) +
   NULL

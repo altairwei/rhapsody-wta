@@ -318,7 +318,7 @@ deconvLCM <- function(seurat, lcm_file, markers, design, ...) {
 #' @inheritParams deconvLCM
 #'
 #' @return ggplot object
-deconvScatter <- function(CIBER, design) {
+deconvScatter <- function(CIBER, design, nrow = NULL, ncol = NULL) {
   ggplot2::ggplot(
     data = CIBER,
     mapping = ggplot2::aes(
@@ -333,7 +333,8 @@ deconvScatter <- function(CIBER, design) {
       width = 0.2
     ) +
     ggplot2::scale_y_continuous(labels = scales::percent) +
-    ggplot2::facet_wrap(~ CellType, scales = "free_y") +
+    ggplot2::facet_wrap(~ CellType, scales = "free_y",
+                        nrow = nrow, ncol = ncol) +
     ggplot2::theme_bw(base_size=12) +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(
@@ -428,9 +429,18 @@ formatCosgTable <- function(cosg_res) {
   }) |> dplyr::bind_rows()
 }
 
-ggpreview <- function(ggobj, ...) {
-  temp.file <- paste0(tempfile(), ".png")
+ggpreview <- function(ggobj, ext = ".png",...) {
+  temp.file <- paste0(tempfile(), ext)
   ggplot2::ggsave(filename = temp.file, plot = ggobj, ...)
+  utils::browseURL(temp.file)
+}
+
+pltpreview <- function(
+    fig, ext = ".png",
+    width = 7, height = 7, ...) {
+  temp.file <- paste0(tempfile(), ext)
+  fig$set_size_inches(width, height)
+  fig$savefig(temp.file, ...)
   utils::browseURL(temp.file)
 }
 
@@ -485,3 +495,42 @@ legend_override <- function(legend_key, overrides) {
     override.aes = overrides)
   do.call(ggplot2::guides, args)
 }
+
+font_plot_tag <- function(size = 11, ...) {
+  ggplot2::theme(plot.tag = ggplot2::element_text(
+    size = size, face = "bold", ...))
+}
+
+theme_dimred <- function(
+    xlength = 0.3, ylength = 0.3, 
+    arrow = grid::arrow(
+      angle = 15, length = grid::unit(0.15, "inches"),
+      type = "closed"),
+    ...) {
+  ggplot2::theme(
+    axis.line = ggplot2::element_blank(), 
+    axis.ticks = ggplot2::element_blank(), 
+    axis.text = ggplot2::element_blank(),
+    axis.line.x.bottom = tidydr::element_line2(
+      id = 1, xlength = xlength, arrow = arrow),
+    axis.line.y.left = tidydr::element_line2(
+      id = 2, ylength = ylength, arrow = arrow), 
+    axis.title = ggplot2::element_text(hjust=0.1),
+    ...
+  )
+}
+
+download_table <- function(df, table_id = "table", ...) {
+  htmltools::tagList(
+    htmltools::tags$button(
+      "Download as CSV",
+      onclick = sprintf(
+        "Reactable.downloadDataCSV('%s', '%s.csv')",
+        table_id, table_id)
+    ),
+    reactable::reactable(df, elementId = table_id, ...
+    )
+  )
+}
+
+
