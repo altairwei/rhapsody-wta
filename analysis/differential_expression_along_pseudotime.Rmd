@@ -1,0 +1,309 @@
+---
+title: "Differential Expression along Pseudotime"
+author: "Altair Wei"
+date: "2023-01-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### 基因动态表达
+
+##### 特征选择
+
+```{r}
+# Fit GAM for all genes will take too much memory. So
+# we select features based on two different methods. See
+# https://github.com/statOmics/tradeSeq/issues/150
+sce_me_da_1dpi <- scry::devianceFeatureSelection(sce_me_da_1dpi, assay = "logcounts", sorted = FALSE)
+rowData(sce_me_da_1dpi)$geneVar <- scran::modelGeneVar(sce_me_da_1dpi, density.weights = FALSE)
+hvg.vars <- scran::getTopHVGs(rowData(sce_me_da_1dpi)$geneVar, n = 5000)
+sorted <- sort(rowData(sce_me_da_1dpi)$binomial_deviance, decreasing = TRUE)
+hvg.dev <- names(sorted)[1:5000]
+hvgs <- union(hvg.dev, hvg.vars)
+```
+
+> At any given abundance, we assume that the variation in expression for most genes is driven by uninteresting processes like sampling noise.
+> Under this assumption, the fitted value of the trend at any given gene's abundance represents an estimate of its uninteresting variation, which we call the technical component.
+> We then define the biological component for each gene as the difference between its total variance and the technical component.
+> This biological component represents the "interesting" variation for each gene and can be used as the metric for HVG selection.
+>
+> Strictly speaking, the interpretation of the fitted trend as the technical component assumes that the expression profiles of most genes are dominated by random technical noise.
+> In practice, all expressed genes will exhibit some non-zero level of biological variability due to events like transcriptional bursting.
+> Thus, it would be more appropriate to consider these estimates as technical noise plus "uninteresting" biological variation, under the assumption that most genes do not participate in the processes driving interesting heterogeneity across the population.
+
+```{r fig.height=4, fig.width=10}
+layout(matrix(c(1, 2), nrow = 1))
+
+fit.var <- metadata(rowData(sce_me_da_1dpi)$geneVar)
+plot(fit.var$mean, fit.var$var, xlab = "Mean of log-expression",
+    ylab = "Variance of log-expression",
+    main="Feature Selection with Variance")
+points(fit.var$mean[hvg.dev], fit.var$var[hvg.dev], col = "red", pch = 16, cex = 0.5)
+curve(fit.var$trend(x), col = "dodgerblue", add = TRUE, lwd = 2)
+
+selected <- sorted * NA
+selected[hvg.vars] <- sorted[hvg.vars]
+plot(sorted, type="l", xlab="ranked genes",
+     ylab="binomial deviance", main="Feature Selection with Deviance")
+segments(
+  x0 = seq_along(selected), y0 = 0,
+  x1 = seq_along(selected), y1 = selected,
+  lty = 1, lwd = 0.03)
+abline(v = 5000, lty = 2, col = "red")
+```
+
+##### 参数优化
+
+```{r}
+icMat <- xfun::cache_rds(
+  file = "icMat_me_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::evaluateK(sce_me_da_1dpi, k = 3:10)
+)
+```
+
+```{r}
+tradeSce <- xfun::cache_rds(
+  file = "tradeseq_gam_me_da_1dpi.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::fitGAM(
+    # fitGAM needs counts rather than logcounts, see
+    # the source code of SCE-version fitGAM.
+    counts = sce_me_da_1dpi, nknots = 6,
+    conditions = factor(sce_me_da_1dpi$treatment),
+    sce = TRUE, verbose = TRUE,
+    genes = hvgs
+  )
+)
+```
+
+感觉 Slingshot 的 pseudotime 计算的不好，头部和尾部的细胞分布太少了。
+
+##### 差异表达
+
+###### 谱系内的比较
+
+> To assess significant changes in gene expression as a function of pseudotime within each lineage, we use the `associationTest`, which tests the null hypothesis that gene expression is not a function of pseudotime, i.e., whether the estimated smoothers are significantly varying as a function of pseudotime within each lineage.
+
+```{r}
+assocRes <- tradeSeq::associationTest(tradeSce, lineages = TRUE)
+```
+
+```{r}
+lineage1_mockGenes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage1_conditionMOCK, "fdr") <= 0.05)
+]
+
+lineage1_pnr2Genes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage1_conditionPNR2, "fdr") <= 0.05)
+]
+
+lineage1_tr4Genes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage1_conditionTR4, "fdr") <= 0.05)
+]
+
+lineage2_mockGenes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage2_conditionMOCK, "fdr") <= 0.05)
+]
+
+lineage2_pnr2Genes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage2_conditionPNR2, "fdr") <= 0.05)
+]
+
+lineage2_tr4Genes <- rownames(assocRes)[
+  which(p.adjust(assocRes$pvalue_lineage2_conditionTR4, "fdr") <= 0.05)
+]
+
+UpSetR::upset(
+  data = UpSetR::fromList(list(
+    Lineage1_MOCK = lineage1_mockGenes,
+    Lineage1_PNR2 = lineage1_pnr2Genes,
+    Lineage1_TR4 = lineage1_tr4Genes,
+    Lineage2_MOCK = lineage2_mockGenes,
+    Lineage2_PNR2 = lineage2_pnr2Genes,
+    Lineage2_TR4 = lineage2_tr4Genes)),
+  keep.order = TRUE)
+```
+
+###### 谱系间的比较
+
+因为只有两条世系，所以 `pairwise = TRUE` 无用。
+
+```{r}
+patternRes <- tradeSeq::patternTest(tradeSce, global = TRUE)
+patternGenes <- rownames(patternRes)[which(p.adjust(patternRes$pvalue, "fdr") <= 0.05)]
+```
+
+关于 `tradeSeq::predictSmooth()` 的参数：
+
+> `nPoints`: The number of points used to create the grid along the smoother for each lineage.
+
+```{r fig.height=7, fig.width=14}
+diffGenes <- Reduce(union, list(
+  lineage1_mockGenes, lineage1_pnr2Genes, lineage1_tr4Genes,
+  lineage2_mockGenes, lineage2_pnr2Genes, lineage2_tr4Genes,
+  patternGenes))
+yhatSmooth <- tradeSeq::predictSmooth(tradeSce, gene = diffGenes, nPoints = 100, tidy = FALSE)
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+
+ph_res <- plotPseudotimeHeatmap(
+  yhatSmoothScaled,
+  #palette = colorRamps::matlab.like,
+  seriation = FALSE,
+  dend_k = 8,
+  row_title = "G%s",
+  row_title_rot = 0,
+  column_split = stringr::str_match(
+    colnames(yhatSmoothScaled), "(lineage\\d)_condition(.*)_")[, 2:3],
+) |> ComplexHeatmap::draw()
+```
+
+```{r}
+gene_list <- ComplexHeatmap::row_order(ph_res)
+names(gene_list) <- paste0("G", 1:8)
+gene_list <- lapply(gene_list, function(order) {
+  rownames(yhatSmoothScaled)[order]
+})
+```
+
+```{r}
+comp_enr <- clusterProfiler::compareCluster(
+  gene_list,
+  fun = "enrichGO",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID",
+  ont = "BP",
+  universe = rownames(tradeSce)
+) |> clusterProfiler::simplify(cutoff = 0.4)
+```
+
+```{r fig.height=8, fig.width=6}
+enrichplot::dotplot(
+    comp_enr, showCategory = 10, by = "count", label_format = 100)
+```
+
+###### 条件间的比较
+
+> To test differential expression between conditions, we use the `conditionTest` function implemented in `tradeSeq`.
+> This function tests the null hypothesis that genes have identical expression patterns in each condition
+
+可以探索下 `pairwise` 和 `lineages` 两个参数。
+
+```{r}
+condRes <- tradeSeq::conditionTest(tradeSce, global = FALSE, pairwise = TRUE, lineages = TRUE)
+```
+
+```{r}
+waldStat <- condRes |>
+  dplyr::select(dplyr::starts_with("waldStat")) |>
+  tibble::rownames_to_column(var = "gene") |>
+  tidyr::pivot_longer(dplyr::starts_with("waldStat"),
+                      names_to = c("lineage", "comparison"),
+                      names_sep = "_",
+                      names_prefix = "waldStat_",
+                      values_to = "waldStat")
+
+pvalue <- condRes |>
+  dplyr::select(dplyr::starts_with("pvalue")) |>
+  tibble::rownames_to_column(var = "gene") |>
+  tidyr::pivot_longer(dplyr::starts_with("pvalue"),
+                      names_to = c("lineage", "comparison"),
+                      names_sep = "_",
+                      names_prefix = "pvalue_",
+                      values_to = "pvalue")
+
+dof <- condRes |>
+  dplyr::select(dplyr::starts_with("df")) |>
+  tibble::rownames_to_column(var = "gene") |>
+  tidyr::pivot_longer(dplyr::starts_with("df"),
+                      names_to = c("lineage", "comparison"),
+                      names_sep = "_",
+                      names_prefix = "df_",
+                      values_to = "dof")
+
+condRes_df <- dplyr::full_join(waldStat, pvalue) |>
+  dplyr::full_join(dof) |>
+  dplyr::filter(!is.na(waldStat))
+
+condRes_df <- condRes_df |>
+  dplyr::group_by(lineage, comparison) |>
+  tidyr::nest() |>
+  dplyr::mutate(data = lapply(
+    data, function(x) dplyr::mutate(
+      x, fdr = p.adjust(pvalue, "fdr")))) |>
+  tidyr::unnest(cols = c(data))
+
+condRes_df
+```
+
+```{r}
+dplyr::filter(condRes_df, fdr <= 0.01) |>
+  dplyr::select(lineage, comparison, gene) |>
+  dplyr::group_by(gene) |>
+  tidyr::nest(data = c(lineage, comparison)) |>
+  dplyr::mutate(
+    diffcomp = lapply(data, function(df)
+      purrr::pmap_chr(df, paste, sep = "_"))) |>
+  ggplot2::ggplot(ggplot2::aes(x=diffcomp)) +
+  ggplot2::geom_bar() +
+  ggplot2::geom_text(stat = "count",
+    ggplot2::aes(label = ggplot2::after_stat(count)),
+    vjust = -1, size = 3) +
+  cowplot::theme_cowplot() +
+  # ggupset will set theme for combmatrix, so put
+  # theme_cowplot abouve.
+  ggupset::scale_x_upset(n_intersections = 20, order_by = "degree") +
+  ggplot2::scale_y_continuous(
+    expand = ggplot2::expansion(add = c(0, 60))) +
+  NULL
+```
+
+```{r}
+conditionGenes <- dplyr::filter(condRes_df, fdr <= 0.01) |>
+  dplyr::pull("gene") |> unique()
+```
+
+```{r fig.height=7, fig.width=14}
+### based on mean smoother
+yhatSmooth <- tradeSeq::predictSmooth(
+  tradeSce, gene = conditionGenes, nPoints = 300, tidy = FALSE)
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+
+ph_res <- plotPseudotimeHeatmap(
+  yhatSmoothScaled, 
+  #palette = colorRamps::matlab.like,
+  seriation = FALSE,
+  dend_k = 8,
+  row_title = "G%s",
+  row_title_rot = 0,
+  column_split = stringr::str_match(
+    colnames(yhatSmoothScaled), "(lineage\\d)_condition(.*)_")[, 2:3],
+) |> ComplexHeatmap::draw()
+```
+
+```{r}
+gene_list <- ComplexHeatmap::row_order(ph_res)
+names(gene_list) <- paste0("G", 1:8)
+gene_list <- lapply(gene_list, function(order) {
+  rownames(yhatSmoothScaled)[order]
+})
+```
+
+```{r}
+comp_enr <- clusterProfiler::compareCluster(
+  gene_list,
+  fun = "enrichGO",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID",
+  ont = "BP",
+  universe = rownames(tradeSce)
+) |> clusterProfiler::simplify(cutoff = 0.4)
+```
+
+```{r fig.height=8, fig.width=6}
+enrichplot::dotplot(
+    comp_enr, showCategory = 10, by = "count", label_format = 100)
+```

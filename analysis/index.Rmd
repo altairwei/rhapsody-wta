@@ -37,6 +37,7 @@ editor_options:
   - [Mesophyll and Vascular Bundle Lineages](mesophyll_vascular_lineages.html)
   - [RNA Velocity Estimation of All Samples](rna_velocity_estimation.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
+  - [Differential Expression along Pseudotime](differential_expression_along_pseudotime.html)
   - TODO: GRN of trajectory
 - Presentation Documents
   - [Midterm Report for PhD Program](midterm_report.html)
