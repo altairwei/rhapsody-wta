@@ -477,9 +477,23 @@ remove_axis <- function(...) {
     ...)
 }
 
+remove_x_axis <- function(...) {
+  ggplot2::theme(
+    axis.title.x = ggplot2::element_blank(),
+    axis.text.x = ggplot2::element_blank(),
+    axis.ticks.x = ggplot2::element_blank(),
+    axis.line.x = ggplot2::element_blank(),
+    ...)
+}
+
 remove_legend <- function(...) {
   ggplot2::theme(
     legend.position = "none", validate = TRUE, ...)
+}
+
+remove_legend_title <- function(...) {
+  ggplot2::theme(
+    legend.title = ggplot2::element_blank(), ...)
 }
 
 empty_strip <- function(...) {
@@ -489,10 +503,18 @@ empty_strip <- function(...) {
   )
 }
 
-legend_override <- function(legend_key, overrides) {
+remove_strip <- function(...) {
+  ggplot2::theme(
+    strip.text = ggplot2::element_blank() , 
+    strip.background = ggplot2::element_blank(),
+    plot.margin = ggplot2::unit(c(0, 0, 0, 0) , units = "lines"),
+    ...)
+}
+
+legend_override <- function(legend_key, overrides, ...) {
   args <- list()
   args[[legend_key]] <- ggplot2::guide_legend(
-    override.aes = overrides)
+    override.aes = overrides, ...)
   do.call(ggplot2::guides, args)
 }
 
@@ -528,8 +550,7 @@ download_table <- function(df, table_id = "table", ...) {
         "Reactable.downloadDataCSV('%s', '%s.csv')",
         table_id, table_id)
     ),
-    reactable::reactable(df, elementId = table_id, ...
-    )
+    reactable::reactable(df, elementId = table_id, ...)
   )
 }
 
