@@ -284,7 +284,7 @@ createAnnData <- function(
 runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL, ncomponents = 30,
   assay.X = "counts", assay.spliced = "spliced", assay.unspliced = "unspliced",
   mode = c("unified-time", "independent"), label_key = "cellType",
-  GPU = -1L, normalize = TRUE,
+  GPU = -1L, normalize = TRUE, downsampling = NULL, 
   return_sce = FALSE, config = list()
 ) {
   if (is.null(dimred)) {
@@ -318,6 +318,7 @@ runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL, ncomponents = 30,
   }
 
   utv <- reticulate::import("unitvelo")
+  scv <- reticulate::import("scvelo")
   mode <- match.arg(mode)
   velo <- utv$config$Configuration()
   velo$R2_ADJUST <- TRUE
@@ -329,9 +330,27 @@ runUniTVelo <- function(x, dimred = NULL, use.dimred = NULL, ncomponents = 30,
   for (key in names(config))
     velo[[key]] <- config[[key]]
 
+  if (!is.null(downsampling)) {
+    # The original data should be normalized first and the moments
+    # should be computed as well, before performing down-sampling procedure
+    # to ensure data were in the same scale.
+    scv$pp$filter_and_normalize(adata,
+      min_shared_counts = velo$MIN_SHARED_COUNTS, n_top_genes = velo$N_TOP_GENES)
+    scv$pp$moments(adata, n_pcs = velo$N_PCS, n_neighbors = velo$N_NEIGHBORS)
+    adata_subset <- utv$utils$subset_adata(
+      adata, label = "cellType", proportion = downsampling)
+    normalize <- FALSE
+  }
+
   do.call(utv$run_model, list(
-    adata = adata, label = "cellType",
-    config_file = velo, normalize = normalize))
+    adata = if (!is.null(downsampling)) adata_subset else adata,
+    label = "cellType", config_file = velo, normalize = normalize))
+
+  if (!is.null(downsampling)) {
+    # After down-sampling the adata, we could predict the inferred global cell
+    # time, velocities and other parameters for other cells
+    adata <- utv$utils$subset_prediction(adata_subset, adata, config = velo)
+  }
 
   if (return_sce)
     return(zellkonverter::AnnData2SCE(adata))
