@@ -605,8 +605,9 @@ formatCurveData <- function(x) {
   curve_data
 }
 
-plotCurveTopology <- function(curve_data) {
-  dplyr::filter(curve_data, !is.na(pseudotime)) |>
+plotCurveTopology <- function(sce) {
+  formatCurveData(sce) |>
+    dplyr::filter(!is.na(pseudotime)) |>
     ggplot2::ggplot(ggplot2::aes(x = pseudotime, color = cellType)) +
     ggplot2::geom_jitter(ggplot2::aes(
       y = forcats::fct_reorder(cellType, pseudotime, .desc = TRUE),
@@ -616,6 +617,36 @@ plotCurveTopology <- function(curve_data) {
     ggplot2::facet_wrap(~lineages, scales = "free_x", ncol = 3) +
     ggplot2::theme_minimal() +
     empty_strip()
+}
+
+plotPseudotimeDensity <- function(sce) {
+  curve_data <- formatCurveData(sce)
+  
+  p1 <- curve_data |>
+    ggplot2::ggplot(ggplot2::aes(
+      x = pseudotime, fill = conditions, linetype = conditions)) +
+    ggplot2::geom_density(alpha = .5) +
+    ggplot2::scale_linetype_manual(
+      values = c("MOCK" = "longdash", "PNR2" = "dotted", "TR4" = "dotdash")) +
+    ggplot2::scale_fill_brewer(type = "qual") +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.05))) +
+    ggplot2::facet_wrap(~lineages, scales = "free_x") +
+    cowplot::theme_cowplot() +
+    ggplot2::theme(
+      strip.background = ggplot2::element_rect(fill = "white")) +
+    remove_x_axis()
+  
+  p2 <- curve_data |>
+    ggplot2::ggplot(ggplot2::aes(
+      x = pseudotime, y = conditions, color = cellType)) +
+    ggplot2::geom_point(shape = 124, size = 4) +
+    ggplot2::facet_wrap(~lineages, scales = "free_x") +
+    ggthemes::scale_color_tableau() +
+    legend_override("color", list(shape = 15)) +
+    cowplot::theme_cowplot() +
+    remove_strip()
+  
+  p1 / p2 + patchwork::plot_layout(heights = c(5, 2), guides = "collect")
 }
 
 pairwiseProgressionTest <- function(sce, conditions) {

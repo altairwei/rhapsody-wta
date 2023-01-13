@@ -287,9 +287,10 @@ adata <- cache_pickle(
     GPU = 0L,
     config = list(
       R2_ADJUST = TRUE,
-      IROOT = NULL,
+      IROOT = "Me_4",
       FIT_OPTION = "1",
-      AGENES_R2 = 1L
+      AGENES_R2 = 1L,
+      VERBOSE = FALSE
     )
   )
 )
@@ -583,9 +584,10 @@ adata <- cache_pickle(
     GPU = 0L,
     config = list(
       R2_ADJUST = TRUE,
-      IROOT = NULL,
+      IROOT = "Me_4",
       FIT_OPTION = "1",
-      AGENES_R2 = 1L
+      AGENES_R2 = 1L,
+      VERBOSE = FALSE
     )
   )
 )
@@ -791,9 +793,10 @@ adata <- cache_pickle(
     GPU = 0L,
     config = list(
       R2_ADJUST = TRUE,
-      IROOT = NULL,
+      IROOT = "Me_4",
       FIT_OPTION = "1",
-      AGENES_R2 = 1L
+      AGENES_R2 = 1L,
+      VERBOSE = FALSE
     )
   )
 )
@@ -1956,3 +1959,4 @@ adata <- cache_pickle(
 rm(sce_sub, sce_3dpi_tr4)
 gc()
 ```
+
