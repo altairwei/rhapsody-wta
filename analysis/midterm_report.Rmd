@@ -7,369 +7,2738 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(magrittr)
-loadNamespace("clusterProfiler")
 source("../scripts/UtilityFunctions.R")
-knitr::opts_chunk$set(echo = TRUE, autodep = TRUE)
+source("../scripts/TrajectoryUtilities.R")
+source("../scripts/EnrichmentUtilities.R")
+source("../scripts/AbundanceUtilities.R")
+knitr::opts_chunk$set(dev = "png")
+scv <- reticulate::import("scvelo")
+plt <- reticulate::import("matplotlib.pyplot")
 ```
 
-```{r load-data, results='hide'}
-obj <- readRDS(Sys.glob("../output/obj_annotated_*.rds"))
-Seurat::DefaultAssay(obj) <- "RNA"
+```{python}
+import scvelo as scv
+import matplotlib.pyplot as plt
+```
 
-ds_res <- readRDS(Sys.glob("../output/ds_res_*.rds"))
 
+几种矢量格式的优劣：
+
+- 直接用 `export::graph2office` 存成 PPTX 存在一些问题，图片确实是矢量格式，但在缩放图片时文字尺寸并不会随着变化，这会导致文本标签的漂移。
+- 用 `ggplot2::ggsave` 存成 svg 的方式可能时 svglite，这种格式在转换成 PPTX 矢量后会导致文本框反向。
+- 用 RMarkdown 的 svg 设备产生的 svg 在转换成 PPTX 格式后会丢失某些图形。
+
+## Load Data
+
+### Annotations
+
+```{r message=FALSE, warning=FALSE, results="hide"}
 library(org.Taestivum.iwgsc.db)
 orgdb <- org.Taestivum.iwgsc.db
-library(GO.db)
 ```
 
-## Single-Cell RNA Sequencing Depicts Cell Subpopulation Shifts of Coleoptile upon Fungi Invading
+### MOCK samples
 
 ```{r}
-Seurat::DimPlot(obj, reduction = "umap", cols = Seurat::DiscretePalette(25)) +
-  ggplot2::coord_fixed()
-```
-
-### Cell population proportional change
-
-```{r}
-ca_res_nonclust <- readRDS(Sys.glob("../output/ca_res_nonclust_*.rds"))
-
-# Use BCa as CI
-df_to_plot <- ca_res_nonclust$results %>%
-  tibble::as_tibble() %>%
-  dplyr::filter(method == "BCa") %>%
-  dplyr::mutate(
-    time = sapply(strsplit(cond, split = "-"), "[", 1),
-    rep = sapply(strsplit(as.character(subject), split = "-"),
-      function(x) paste(x[2:3], collapse = "-")),
-    treatment = sapply(strsplit(cond, split = "-"), "[", 2)
-  )
-
-prop_df <- ca_res_nonclust$thetastar %>%
-  as.data.frame()
-
-colnames(prop_df) <- paste("BS_", seq_len(ncol(ca_res_nonclust$thetastar)), sep = "")
-
-df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
-  tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
-
-df_to_plot <- dplyr::group_by(df_to_plot, cellTypes, treatment, time) %>%
-  dplyr::summarise(prop = median(prop))
-
-htmltools::browsable(
-  htmltools::tagList(
-    htmltools::tags$button(
-      "Download as CSV",
-      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "prop_table", "prop_table")
-    ),
-    reactable::reactable(
-      df_to_plot,
-      defaultPageSize = 5,
-      elementId = "prop_table"
-    )
-  )
+obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
+sce_mock <- muscat::prepSCE(sce_mock,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
 )
 ```
 
-## Pathogen Induced Stress States of Cell Population Define the Heterogeneity of Plant Defence Responses
-
-## Covert Penetration Helps *F. graminearum* Evade Host Recognition
-
-### 1DPI DEGs
-
 ```{r}
-df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
-dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs. 1DPI-MOCK", y_var = "p_adj.glb") +
-  ggplot2::facet_wrap(~cluster_id, scales = "free_y")
+mock_celltypes <- c(
+  "Gu", "Ep_α", "Ep_β",
+  "Me_α", "Me_β", "Me_γ", "Me_δ", "Me_ε",
+  "BS", "CC", "Va_α", "Va_β", "Va_γ", "Va_δ", "MPV")
+
+mock_celltype_names <- c(
+  "Guard cell", "Epidermal α", "Epidermal β",
+  
+  "Mesophyll α", "Mesophyll β", "Mesophyll γ",
+  "Mesophyll δ", "Mesophyll ε",
+  
+  "Vascular bundle sheath", "Phloem companion cell",
+  "Vascular α", "Vascular β", "Vascular γ",
+  "Vascular δ", "Midvein provascular cell"
+)
+
+mock_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(mock_celltypes))
+#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
+names(mock_celltype_colors) <- mock_celltypes
+scales::show_col(mock_celltype_colors)
 ```
 
 ```{r}
-df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
-dplyr::filter(df_to_plot, contrast == "X1DPI.TR4-X1DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "1DPI-TR4 vs. 1DPI-MOCK", y_var = "p_adj.glb") +
-  ggplot2::facet_wrap(~cluster_id, scales = "free_y")
+mock_body_layers <- c(
+  "Gu"   = "L1",
+  "Ep_α" = "L1",
+  "Ep_β" = "L1",
+  "Me_α" = "L2",
+  "Me_β" = "L2",
+  "Me_γ" = "L2",
+  "Me_δ" = "L2",
+  "Me_ε" = "L2",
+  "BS"   = "L3",
+  "CC"   = "L3",
+  "Va_α" = "L3",
+  "Va_β" = "L3",
+  "Va_γ" = "L3",
+  "Va_δ" = "L3",
+  "MPV"  = "L3"
+)
 ```
 
-### Comparison between VCs_5 and MCs_5
+```{r}
+sce_mock$cluster_id <- forcats::fct_relevel(sce_mock$cluster_id, mock_celltypes)
+sce_mock$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce_mock$cluster_id), as.list(mock_body_layers)))
+Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_celltypes)
+```
 
-```{r cache=TRUE}
-comp_enr <- performDSCompareORA(ds_res$DESeq2,
-  contrasts = c(
-    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
-    "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
+### All samples
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+sce <- muscat::prepSCE(sce,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+all_celltypes <- c(
+  "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "BS", "CC", "Va_1", "Va_2", "Va_3", "Va_4",
+  "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
+names(all_celltype_colors) <- all_celltypes
+scales::show_col(all_celltype_colors)
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+```
+
+```{r}
+sce$cluster_id <- forcats::fct_relevel(sce$cluster_id, all_celltypes)
+Seurat::Idents(obj) <- forcats::fct_relevel(Seurat::Idents(obj), all_celltypes)
+sce$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_body_layers)))
+```
+
+### Pseudobulk data
+
+```{r}
+pseudobulk_df <- readRDS(Sys.glob("../results/ObjectCache/Pseudobulk/pseudobulk_df_cpm_mean_*.rds"))
+```
+
+```{r}
+pseudobulk_df$cellType <- forcats::fct_relevel(pseudobulk_df$cellType, all_celltypes)
+```
+
+
+## Cell annotation of developing coleoptile
+
+### Dimension reduction
+
+```{r fig.height=8, fig.width=14}
+p <- scater::plotReducedDim(sce_mock,
+    dimred = "UMAP",
+    point_size = 1,
+    point_alpha = 1,
+    colour_by = "cluster_id",
+    text_by = "cluster_id",
+    text_size = 6,
+    theme_size = 18) +
+  ggplot2::scale_color_manual(
+    values = mock_celltype_colors,
+    labels = sprintf("%s (%s)", mock_celltypes, mock_celltype_names)) +
+  ggplot2::guides(
+    color = ggplot2::guide_legend(
+      override.aes = list(size = 4),
+      title = "cluster")) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+
+p
+```
+
+### Expression of marker genes
+
+```{r fig.height=12, fig.width=10}
+markers = list(
+  # Guardian Cells
+  "ALMT12" = c(
+    "TraesCS1D02G194000",
+    "TraesCS1A02G189900",
+    "TraesCS1B02G192000"
   ),
-  clusters = c("VCs_5", "MCs_5")
+  "MYB60" = c(
+    "TraesCS4A02G322200",
+    "TraesCS5D02G552200"
+  ),
+  "HIC" = c(
+    "TraesCS4D02G226100"
+  ),
+
+  # Epidermal Cells
+  "FDH" = c(
+    "TraesCS4B02G297500",
+    "TraesCS4D02G296400",
+    "TraesCS4A02G007400"
+  ),
+  "ATML1" = c(
+    "TraesCS2A02G474000",
+    "TraesCS2D02G473700"
+  ),
+  "DCR" = c(
+    "TraesCS1A02G341300",
+    "TraesCS1D02G343400"
+  ),
+  
+  # EP3 是排水孔相关基因
+  "EP3" = c(
+    "TraesCS2A02G350700",
+    "TraesCS2D02G348800",
+    "TraesCS6D02G199500",
+    "TraesCS6A02G216100"
+  ),
+
+  # Mesophyll Cells
+  "RBCS" = c(
+    "TraesCS2A02G066800",
+    "TraesCS5A02G165400",
+    "TraesCS5D02G169900"
+  ),
+  "CAB3" = c(
+    "TraesCS7A02G276400",
+    #"TraesCS1D02G411300",
+    #"TraesCS1B02G317500",
+    #"TraesCS7D02G276300",
+    #"TraesCS5B02G353200",
+    #"TraesCS5A02G350600",
+    "TraesCS1A02G403300"
+  ),
+  "LHCB2.1" = c(
+    "TraesCS5D02G329200",
+    "TraesCS5B02G322900",
+    "TraesCS5A02G322500"
+  ),
+  "CA1" = c(
+    #"TraesCS7D02G443400",
+    "TraesCS7B02G354800",
+    "TraesCS3A02G230000",
+    #"TraesCS3D02G223300",
+    "TraesCS3B02G259300"
+  ),
+  "AOC2" = c(
+    "TraesCS6D02G314300",
+    "TraesCS6A02G334800",
+    "TraesCS6B02G365200"
+  ),
+
+  # Vascular Cells
+  "gl-OXO" = c(
+    "TraesCS4D02G032000",
+    "TraesCS4B02G033300",
+    "TraesCS4A02G279200"#,
+    #"TraesCS4D02G031800"
+  ),
+  "TaSUT1" = c(
+    "TraesCS4A02G016400",
+    "TraesCS4B02G287800",
+    "TraesCS4D02G286500"
+  ),
+  "SULTR3;4" = c(
+    "TraesCS7A02G088700",
+    "TraesCS4A02G388000",
+    "TraesCS7D02G084100"
+  ),
+  "CPIII" = c(
+    "TraesCS6B02G050700",
+    "TraesCS6D02G041700",
+    "TraesCS6A02G036100"
+  )
+)
+
+p2 <- Seurat::DotPlot(obj_mock, features = markers) +
+  ggplot2::coord_flip() +
+  ggplot2::facet_grid(
+    facets = feature.groups ~ .,
+    scales = "free_y",
+    space = "free_y") +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    strip.text.y = ggplot2::element_text(angle = 0)
+  )
+p2
+```
+
+```{r fig.height=13, fig.width=26}
+p1 <- scater::plotReducedDim(sce_mock,
+    dimred = "UMAP",
+    point_size = 2,
+    colour_by = "cluster_id",
+    text_by = "cluster_id",
+    text_size = 8) +
+  ggplot2::scale_color_manual(values = mock_celltype_colors) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed() +
+  remove_legend() +
+  theme_dimred()
+
+p3 <- (p1 + remove_legend()) + p2 + patchwork::plot_layout(widths = c(3, 1))
+p3
+```
+
+
+```{r fig.height=6, fig.width=14}
+p2 <- Seurat::DotPlot(obj_mock, features = markers) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_blank(),
+    legend.position = "bottom",
+    legend.title = ggplot2::element_text(vjust = 1)
+  )
+p2
+```
+
+### Newly identified markers
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj_mock,
+ groups = "all",
+ assay = "RNA",
+ slot = "data",
+ mu = 1,
+ n_genes_user = 300
 )
 ```
 
-```{r fig.height=8, fig.width=12}
-p <- comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 40, nCluster = 12,
-    offset = 2, offset_tiplab = 1.8,
-    label_format_cladelab = 5,
-    geneClusterPanel = "dotplot", cex_category = 6, nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = 0, add = 5.5)) +
-  ggplot2::coord_cartesian()
+```{r fig.height=10, fig.width=15}
+p1 <- marker_cosg$scores |>
+  tidyr::pivot_longer(tidyselect::everything(),
+                      names_to = "cluster", values_to = "scores") |>
+  ggplot2::ggplot(ggplot2::aes(x = scores, y = cluster, fill = cluster)) +
+  ggplot2::scale_fill_manual(values = mock_celltype_colors) +
+  ggplot2::geom_boxplot() +
+  cowplot::theme_cowplot() +
+  remove_legend() +
+  NULL
+
+newmarkers <- marker_cosg$names |>
+  lapply(\(x) x[1:3]) |>
+  unlist(use.names = FALSE)
+
+newmarkers <- newmarkers[newmarkers != "rrn23-2"]
+
+p2 <- Seurat::DotPlot(obj_mock, features = rev(newmarkers)) +
+  ggplot2::coord_flip() +
+  rotate_x_labels()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(2, 1))
+
+p
+```
+
+### LCM Deconvolution
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj_mock,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+```{r}
+LCM_design <- c(
+  "VC_1" = "vascular bundle",
+  "VC_2" = "vascular bundle",
+  "VC_3" = "vascular bundle",
+  "CC_1" = "bilateral parenchyma",
+  "CC_2" = "bilateral parenchyma",
+  "CC_3" = "bilateral parenchyma",
+  "MC3_1" = "chlorenchyma",
+  "MC3_2" = "chlorenchyma",
+  "MC3_3" = "chlorenchyma",
+  "MC_1" = "mesophyll",
+  "MC_2" = "mesophyll",
+  "MC_3" = "mesophyll",
+  "EC_1" = "epidermis",
+  "EC_2" = "epidermis",
+  "EC_3" = "epidermis"
+)
+
+CIBER <- deconvLCM(
+  seurat = obj_mock,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
+  design = LCM_design,
+  mc.cores = 4
+)
+```
+
+```{r fig.height=6, fig.width=8}
+p1 <- deconvScatter(CIBER, LCM_design, ncol = 4)
+p1
+```
+
+### Cell proportion changes
+
+```{r}
+ca_res_mock <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialAbundance/ca_res_nonclust_objmock_*.rds"))
+ca_res_mock$results$cellTypes <- forcats::fct_relevel(ca_res_mock$results$cellTypes, mock_celltypes)
+```
+
+```{r fig.height=10, fig.width=14}
+df <- rhapsodykit::calculateClusterProportion(
+  sce_mock$cluster_id, sce_mock$sample_id, sce_mock$group_id)
+
+p1 <- df %>%
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = cluster_id)) +
+  ggplot2::facet_wrap(~group_id, nrow = 1, scales = "free_x") +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2, position = "stack") +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+  ggplot2::scale_x_discrete(expand = c(0, 0)) +
+  ggplot2::scale_fill_manual(values = mock_celltype_colors) +
+  ggplot2::guides(fill = ggplot2::guide_legend(nrow = 2, byrow = TRUE)) +
+  ggplot2::theme_grey(14) +
+  ggplot2::theme(
+    aspect.ratio = NULL,
+    panel.grid = ggplot2::element_blank(),
+    panel.spacing = grid::unit(1, "mm"),
+    strip.text = ggplot2::element_blank(),
+    strip.background = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+p2 <- df %>%
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = group_id)) +
+  ggplot2::facet_wrap(~cluster_id, ncol = 3) +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2,
+    position = ggplot2::position_dodge()) +
+  ggthemes::scale_fill_tableau("Classic Cyclic") +
+  ggplot2::scale_y_continuous(expand = c(0, 0)) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 10)) +
+  verticalize_x_labels()
+
+p3 <- plot_bootstrap_distribution_for_mock(ca_res_mock, ncol = 3, theme_size = 14) +
+  ggthemes::scale_fill_tableau("Classic Cyclic") +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 10)) +
+  rotate_x_labels() +
+  ggplot2::guides(fill = "none") +
+  empty_strip()
+
+p4 <- rhapsodykit::calculateClusterProportion(
+  sce_mock$body_layer, sce_mock$sample_id, sce_mock$group_id) |>
+  dplyr::mutate(percent = scales::label_percent(accuracy = 0.1)(frequency)) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = cluster_id)) +
+  ggplot2::facet_wrap(~group_id, nrow = 1, scales = "free_x") +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2, position = "stack") +
+  ggplot2::geom_text(
+    mapping = ggplot2::aes(label = percent),
+    stat = "identity", #angle = 90,
+    position = ggplot2::position_fill(vjust = 0.5)) +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+  ggplot2::scale_x_discrete(expand = c(0, 0)) +
+  ggplot2::scale_fill_manual(values = c(L1 = "#a0cbe8", L2 = "#8cd17d", L3 = "#ff9d9a")) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "body_layer")) +
+  ggplot2::theme_grey(14) +
+  ggplot2::theme(
+    aspect.ratio = NULL,
+    panel.grid = ggplot2::element_blank(),
+    panel.spacing = grid::unit(1, "mm"),
+    strip.text = ggplot2::element_blank(),
+    strip.background = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+(p <- p1 + p4 + p3 +
+    patchwork::plot_layout(widths  = c(2, 3, 3), guide = "collect") + 
+    patchwork::plot_annotation(tag_levels = 'A') &
+    ggplot2::theme(
+      legend.position = 'bottom',
+      legend.title = ggplot2::element_text(vjust = 1),
+      legend.justification = "left") &
+    font_plot_tag(16))
+```
+
+
+### Cell embeddings across times
+
+```{r fig.height=7, fig.width=10.5}
+p <- Seurat::DimPlot(
+    obj_mock, reduction = "umap",
+    group.by = "sample", split.by = "time",
+    pt.size = .1, ncol = 2) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::theme(plot.title = ggplot2::element_blank()) +
+  ggplot2::coord_fixed()
+
+p
+```
+
+### Expression of WOX family
+
+```{r}
+WOX <- c(
+"TraesCS1A02G052000" = "TaWox1-A",
+"TraesCS1B02G069000" = "TaWox1-B",
+"TraesCS1D02G054000" = "TaWox1-D",
+"TraesCS1A02G399400" = "TaWox2-A",
+"TraesCS1B02G427400" = "TaWox2-B",
+"TraesCS1D02G406900" = "TaWox2-D",
+"TraesCS2A02G100700" = "TaWox3-A",
+"TraesCS2B02G117900" = "TaWox3-B",
+"TraesCS2D02G100200" = "TaWox3-D",
+"TraesCS2A02G491900" = "TaWox4-A",
+"TraesCS2A02G514000" = "TaWox5-A",
+"TraesCS2B02G542600" = "TaWox5-B",
+"TraesCS2D02G515600" = "TaWox5-D",
+"TraesCS3A02G073500" = "TaWox6-A",
+"TraesCS3B02G087800" = "TaWox6-B",
+"TraesCS3D02G073300" = "TaWox6-D",
+"TraesCS3A02G247200" = "TaWox7-A",
+"TraesCS3B02G272200" = "TaWox7-B",
+"TraesCS3D02G244300" = "TaWox7-D",
+"TraesCS3A02G341700" = "TaWox8-A",
+"TraesCS3B02G373800" = "TaWox8-B",
+"TraesCS3D02G335500" = "TaWox8-D",
+"TraesCSU02G204800"  = "TaWox8-Un",
+"TraesCS3A02G358100" = "TaWox9-A",
+"TraesCS3B02G391100" = "TaWox9-B",
+"TraesCS3D02G352500" = "TaWox9-D",
+"TraesCS3A02G358200" = "TaWox10-A1",
+"TraesCS3A02G358400" = "TaWox10-A2",
+"TraesCS3B02G391200" = "TaWox10-B",
+"TraesCS3D02G352600" = "TaWox10-D1",
+"TraesCS3D02G352700" = "TaWox10-D2",
+"TraesCS3A02G368100" = "TaWox11-A",
+"TraesCS3B02G399800" = "TaWox11-B",
+"TraesCS3D02G361100" = "TaWox11-D",
+"TraesCS4A02G130200" = "TaWox12-A",
+"TraesCS4B02G174400" = "TaWox12-B",
+"TraesCS4D02G176400" = "TaWox12-D",
+"TraesCS5A02G085000" = "TaWox13-A",
+"TraesCS5B02G091000" = "TaWox13-B",
+"TraesCS5D02G097400" = "TaWox13-D",
+"TraesCS5A02G157300" = "TaWox14-A",
+"TraesCS5B02G156400" = "TaWox14-B",
+"TraesCS5D02G162600" = "TaWox14-D"
+)
+
+plist <- Seurat::VlnPlot(obj_mock, features = names(WOX), slot = "data", combine = FALSE)
+```
+
+```{r fig.height=8, fig.width=14}
+p <- lapply(plist, function(p) {
+  p$labels$title <- WOX[p$labels$title]
+  p
+}) |> patchwork::wrap_plots() & remove_legend()
+
+p
+```
+
+### Characteristic of mesophylls
+
+#### UMIs count distribution
+
+```{r}
+Seurat::VlnPlot(obj_mock, features = "nCount_RNA", log = TRUE, pt.size = 0) +
+  ggplot2::scale_fill_manual(values = mock_celltype_colors)
+```
+
+#### Differential expression
+
+```{r}
+de_β <- Seurat::FindMarkers(obj_mock, ident.1 = "Me_β", ident.2 = "Me_ε", min.pct = 0.25)
+```
+
+> If slot is set to 'data', this function assumes that the data has been log normalized and therefore feature values are exponentiated prior to averaging so that averaging is done in non-log space.
+
+```{r}
+avg_expr_df <- Seurat::AverageExpression(obj_mock, slot = "data")$RNA |>
+  log1p() |>
+  as.data.frame()
+```
+
+```{r}
+vip_anno <- c(
+  "TraesCS1B02G406200" = "N-like",
+  "TraesCS1B02G413100" = "N-like",
+  "TraesCS1D02G183600" = "N-like",
+  "TraesCS2A02G242400" = "Transposase",
+  "TraesCS2A02G490900" = "RuBisCO",
+  "TraesCS3A02G405700" = "N-like",
+  "TraesCS3A02G430500" = "N-like",
+  "TraesCS4A02G272300" = "N-like",
+  "TraesCS3B02G186100" = "RuBisCO",
+  "TraesCS3B02G523500" = "RuBisCO",
+  "TraesCS5A02G165400" = "RuBisCO",
+  "TraesCS5B02G039000" = "Transposase",
+  "TraesCS5B02G423500" = "N-like",
+  "TraesCS5D02G010200" = "RuBisCO",
+  "TraesCS5D02G169900" = "RuBisCO",
+  "TraesCS5D02G425100" = "RuBisCO",
+  "TraesCS6B02G402800" = "Transposase",
+  "TraesCS7D02G255100" = "N-like",
+  "TraesCSU02G243900"  = "N-like",
+  "rrn23-2" = "chloroplast rRNA",
+  "TraesCS3B02G563300" = "psbM",
+  "TraesCS1B02G404500" = "psbZ",
+  "TraesCS2D02G573100" = "psbZ",
+  "TraesCS2D02G573000" = "psbC",
+  "TraesCS5D02G008300" = "psbD",
+  "TraesCS5D02G456600" = "Ribosomal protein S3",
+  "TraesCS5D02G010000" = "Ycf4",
+  "TraesCS2D02G566300" = "Ribosomal protein S3",
+  "TraesCS2B02G487300" = "Ribosomal protein S14"
+)
+```
+
+```{r}
+vip_genes <- avg_expr_df[names(vip_anno), c("Me_β", "Me_ε")]
+vip_genes$anno <- vip_anno
+```
+
+```{r fig.height=7, fig.width=7}
+avg_expr_df$gene <- rownames(avg_expr_df)
+p <- ggplot2::ggplot(avg_expr_df, ggplot2::aes(x = Me_ε, y = Me_β, label = gene)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_abline(intercept = 0, slope = 1, color = "blue") +
+  #ggplot2::geom_abline(intercept = 0, slope = 0.6, color = "blue") +
+  #ggplot2::geom_hline(yintercept = 3.5, color = "blue") +
+  #ggplot2::geom_vline(xintercept = 1.5, color = "blue") +
+  ggrepel::geom_text_repel(
+    data = vip_genes,
+    mapping = ggplot2::aes(x = Me_ε, y = Me_β, label = anno),
+    size = 2, bg.color = "white") +
+  cowplot::theme_cowplot()
+
+p
+```
+
+```{r fig.height=7, fig.width=7, message=FALSE, warning=FALSE}
+avg_expr <- log1p(Seurat::AverageExpression(obj_mock, slot = "data")$RNA)
+avg_expr_cor <- cor(avg_expr)
+
+p <- ComplexHeatmap::Heatmap(
+  matrix = avg_expr_cor,
+  column_names_rot = 45,
+  heatmap_legend_param = list(
+    title = "Pearson's R",
+    title_position = "topcenter",
+    legend_direction = "horizontal",
+    legend_width = grid::unit(4, "cm")
+  )
+)
+
+p <- ComplexHeatmap::draw(p, heatmap_legend_side = "top")
+```
+
+```{r fig.height=9, fig.width=12}
+plist <- apply(
+  X = combn(paste0("Me_", c("α", "β", "γ", "δ", "ε")), 2),
+  MARGIN = 2,
+  FUN = function(x) {
+    ggplot2::quickplot(
+        x = avg_expr[, x[1]],
+        y = avg_expr[, x[2]],
+        geom = "point") +
+      ggplot2::xlab(x[1]) +
+      ggplot2::ylab(x[2]) +
+      ggplot2::geom_abline(intercept = 0, slope = 1, color = "blue") +
+      cowplot::theme_cowplot()
+  }
+)
+
+p <- patchwork::wrap_plots(plist)
+p
+```
+
+#### Pathway activity
+
+```{r}
+filelist <- paste0("../data/pathways/Photosyn", c("Ant", "Cfix", "PSEA"), ".txt")
+names(filelist) <- basename(filelist) |> stringr::str_remove(stringr::fixed(".txt"))
+photosyn <- lapply(filelist, function(filename) {
+  genes <- stringr::str_trim(readLines(filename))
+  genes[genes != ""]
+})
+```
+
+```{r}
+colData(sce_mock)[, names(photosyn)] <- as.data.frame(t(calculateModuleScore(logcounts(sce_mock), features = photosyn)))
+```
+
+```{r fig.height=11, fig.width=14}
+piclist <- lapply(names(photosyn), function(pa) {
+  scater::plotReducedDim(
+      sce_mock, dimred = "UMAP", order_by = pa,
+      colour_by = pa, point_size = 0.5, theme_size = 14) +
+    ggplot2::ggtitle(pa) +
+    ggplot2::scale_color_gradient(low = "grey", high = "blue") +
+    ggplot2::coord_fixed() +
+    center_plot_title(size = 16, face = "plain") +
+    remove_legend_title() +
+    theme_dimred()
+})
+
+piclist <- c(
+  list(
+    cellType = scater::plotReducedDim(
+      sce_mock, dimred = "UMAP",
+      colour_by = "cluster_id",
+      text_by = "cluster_id",
+      point_size = 0.5,
+      theme_size = 14) +
+    ggplot2::scale_color_manual(values = mock_celltype_colors) +
+    ggplot2::coord_fixed() +
+    remove_legend() +
+    theme_dimred()
+  ),
+  piclist
+)
+
+p <- patchwork::wrap_plots(piclist, ncol = 2) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  font_plot_tag(16)
+p
+```
+
+#### Me_ε marker
+
+```{r}
+p <- Seurat::FeaturePlot(obj_mock, features = "TraesCS1B02G406200",
+                    reduction = "umap", order = TRUE) +
+  ggplot2::coord_fixed()
+
+p
+```
+
+
+### Co-varing neighborhood analysis
+
+```{r}
+sce_mock$time_val <- as.numeric(factor(
+  sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_mock$sample <- as.character(sce_mock$sample_id)
+
+sce_mock <- association.SingleCellExperiment(
+  sce_mock, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r}
+blue_to_orange <- rev(ggthemes::ggthemes_data[[
+  c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
+```
+
+```{r fig.height=6, fig.width=14}
+p1 <- scater::plotReducedDim(
+    sce_mock,
+    dimred = "UMAP",
+    point_size = 0.5,
+    point_alpha = 1,
+    colour_by = "cna_ncorrs",
+    order_by = I(sample(seq_len(ncol(sce_mock)))),
+    theme_size = 14) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed() +
+  center_plot_title() +
+  remove_legend_title() +
+  theme_dimred()
+
+p2 <- plotNcorrRidges(sce_mock, theme_size = 14,
+                      y_expand = ggplot2::expansion(mult = c(0, 0.25))) +
+  ggplot2::scale_fill_manual(values = mock_celltype_colors) +
+  ggplot2::xlab("neighborhood coefficient") +
+  ggplot2::ylab("cell cluster") +
+  ggplot2::guides(fill = "none")
+
+(p <- p1 + p2 +
+    patchwork::plot_annotation(tag_levels = "A") &
+    font_plot_tag(size = 16))
+```
+
+```{r}
+sce_mock_slim <- centerPopulationMockData(sce_mock)
+sce_mock_slim$time_val <- as.numeric(factor(
+  sce_mock_slim$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_mock_slim$sample <- as.character(sce_mock_slim$sample_id)
+
+sce_mock_slim <- association.SingleCellExperiment(
+  sce_mock_slim, test_var = "time_val",
+  samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+#### Correlation with gene expression
+
+```{r}
+ncorrs <- as(matrix(metadata(sce_mock_slim)$cnaRes$ncorrs, ncol = 1), "dgCMatrix")
+genes <- qlcMatrix::corSparse(ncorrs, t(logcounts(sce_mock_slim)))
+genes <- structure(as.numeric(genes), names = rownames(logcounts(sce_mock_slim)))
+genes <- sort(genes, decreasing = TRUE)
+```
+
+```{r}
+gsea <- clusterProfiler::gseGO(
+  genes,
+  ont = "BP",
+  OrgDb = org.Taestivum.iwgsc.db,
+  keyType = "GID"
+)
+```
+
+```{r}
+printGSEATable(gsea)
+```
+
+
+```{r}
+gointeractive(gsea, showCategory = 100, color = "NES")
+```
+
+
+```{r fig.height=14, fig.width=14}
+p <- gsea |>
+  dplyr::filter(NES < 0) |>
+  enrichplot::goplot(color = "NES", showCategory = 400, circular = TRUE) +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  NULL
+
 p
 ```
 
 ```{r}
-select(GO.db,
-  keys = c(
-    "immune response",
-    "defense response to fungus",
-    "biological process involved in interspecies interaction between organisms",
-    "immune system process",
-    "response to biotic stimulus"
-  ),
-  keytype = "TERM",
-  columns = c("GOID", "TERM", "DEFINITION", "ONTOLOGY")
-) %>%
+gsea_slim <- clusterProfiler::simplify(gsea, cutoff = 0.5)
+```
+
+```{r fig.height=10, fig.width=10, dev="svg"}
+p <- gsea |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::treeplot(
+    showCategory = 40,
+    cluster.params = list(n = 12, label_words_n = 0, label_format = 5),
+    color = "NES",
+    geneClusterPanel = "dotplot") +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  NULL
+p
+```
+
+TODO: use density heatmap instead?
+
+```{r fig.height=12, fig.width=10}
+enrichplot::ridgeplot(gsea, showCategory = 200, label_format = 100) +
+  ggplot2::ggtitle("Correlation distributions of core enriched genes") +
+  ggplot2::xlab("Pearson's R")
+```
+
+#### Pathway activity
+
+对通路表达求和，然后再计算与邻域系数的相关性。
+
+```{r}
+GO_DATA <- clusterProfiler:::get_GO_data(org.Taestivum.iwgsc.db, "BP", "GID")
+
+pathways <- GO_DATA$PATHID2EXTID |>
+  tibble::enframe(name = "GO", value = "Gene") |>
+  tidyr::unnest(Gene) |>
+  dplyr::filter(Gene %in% rownames(sce_mock_slim)) |>
+  dplyr::group_by(GO) |>
+  dplyr::summarise(Gene = list(Gene)) |>
+  tibble::deframe()
+
+pathways <- pathways[gsea@result$ID]
+```
+
+```{r}
+pathway_summed <- calcPathwayActivity(
+  sce_mock_slim, pathways, method = "seuratModuleScore",
+  annotation = gsea@result)
+```
+
+```{r}
+corres <-  psych::corr.test(
+  x = matrix(metadata(sce_mock_slim)$cnaRes$ncorrs, ncol = 1),
+  y = t(assay(pathway_summed, "activity")),
+  method = "pearson")
+```
+
+```{r}
+tibble::tibble(
+    ID = names(corres$r[1, ,drop = TRUE]),
+    # Do not use clusterProfiler::go2term, because it reorders GO IDs
+    Description = gsea@result[names(corres$r[1, ,drop = TRUE]),]$Description,
+    r = corres$r[1, ,drop = TRUE],
+    p = corres$p.adj[1, ,drop = TRUE] |>
+      format(scientific = TRUE, digits = 2),
+    p.adj = corres$p.adj[1, ,drop = TRUE] |>
+      format(scientific = TRUE, digits = 2)) |>
   reactable::reactable(columns = list(
-    "TERM" = reactable::colDef(minWidth = 150),
-    "GOID" = reactable::colDef(maxWidth = 120),
-    "DEFINITION" = reactable::colDef(minWidth = 200),
-    "ONTOLOGY" = reactable::colDef(maxWidth = 80)
+    "ID" = reactable::colDef(maxWidth = 120),
+    "Description" = reactable::colDef(minWidth = 200),
+    "r" = reactable::colDef(maxWidth = 80,
+        format = reactable::colFormat(digits = 2)),
+    "p" = reactable::colDef(maxWidth = 100),
+    "p.adj" = reactable::colDef(maxWidth = 100)
   ))
 ```
 
-### 导出 DEGs 表格
+#### Key pathway
+
+Positive correlation:
 
 ```{r}
-DEGs_table <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_format()
+poscorr <- c(
+  "GO:0002181", "GO:0006833", "GO:0042219",
+  "GO:0019684", "GO:1901658", "GO:0048640")
+```
 
-anno <- brookite::pull_annotation(
-    unique(DEGs_table$gene),
-    mart_info = list(
-      mart = "plants_mart",
-      dataset = "taestivum_eg_gene",
-      host = "https://plants.ensembl.org"
-    ),
-    dest_attrs = c(
-      Description = "description",
-      GO_Name = "name_1006"
-    )
-)
+Negative correlation:
 
-DEGs_table <- dplyr::left_join(DEGs_table, anno, by = c("gene" = "ensembl_gene_id")) %>%
-  dplyr::select(gene, cluster_id, contrast, Description, GO_Name, dplyr::everything())
+```{r}
+negcorr <- c(
+    "GO:0045927", "GO:0010214", "GO:0031647",
+    "GO:0030004", "GO:0009408", "GO:0051259")
+```
 
-split(DEGs_table, DEGs_table$cluster_id) %>%
-  purrr::imap(function(DEGs, cluster) {
-    readr::write_csv(DEGs, paste0("../tmp/", "DEGs_", cluster, ".csv"))
-  }) %>% invisible()
+```{r fig.height=8, fig.width=14}
+piclist <- lapply(poscorr, function(GO) {
+  plotPathwayActivation(
+    pathway_summed, GO,
+    dimred = "UMAP", point_size = 0.5,
+    theme_size = 12) +
+  center_plot_title(face = "plain") +
+  ggplot2::coord_fixed() +
+  remove_legend_title() +
+  theme_dimred()
+})
+
+(p <- patchwork::wrap_plots(piclist, ncol = 3))
+```
+
+
+```{r fig.height=8, fig.width=14}
+piclist <- lapply(negcorr, function(GO) {
+  plotPathwayActivation(
+    pathway_summed, GO,
+    dimred = "UMAP", point_size = 0.5,
+    theme_size = 12) +
+  center_plot_title(face = "plain") +
+  ggplot2::coord_fixed() +
+  remove_legend_title() +
+  theme_dimred()
+})
+
+(p <- patchwork::wrap_plots(piclist, ncol = 3))
+```
+
+### RNA velocity of MOCK cells
+
+```{r}
+adata_mock <- readPickle(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/unitvelo_mock_config_1_*.pickle"))
 ```
 
 ```{r}
-comp_enr[["GO:0006955"]]
+sce_mock_slim <- sce_mock[, adata_mock$obs_names$to_list()]
 ```
 
-```{r fig.height=6, fig.width=12}
-Seurat::FeaturePlot(obj, features = comp_enr[["GO:0006955"]]$MCs_5.TR4_1DPI$`GO:0006955`, ncol = 4) +
-  ggplot2::coord_fixed()
+```{r}
+adata_mock$obsm$update(list(
+  X_umap = reducedDim(sce_mock_slim, "UMAP")
+))
+
+adata_mock$obs$cellType <- droplevels(sce_mock_slim$cluster_id)
 ```
 
-### 其他细胞类型的 GSEA 比较
+```{r}
+scv$tl$latent_time(adata_mock, min_likelihood=NULL)
+sce_mock_slim$latent_time <- adata_mock$obs$latent_time
+```
 
-```{r other-gsea, cache=TRUE}
-comp_enr <- performDSCompareGSEA(ds_res$DESeq2,
-  contrasts = c(
-    "PNR2_1DPI" = "X1DPI.PNR2-X1DPI.MOCK",
-    "TR4_1DPI" = "X1DPI.TR4-X1DPI.MOCK"
-  ),
-  clusters = c(
-    "CCs_1", "CCs_2", "CCs_3", "CCs_6",
-    "CCs_7", "CCs_8", "ECs_1", "ECs_2",
-    "GCs",   "MCs_1", "MCs_2", "MCs_3",
-    "Un_1",  "Un_2",  "VCs_4"
-  ),
-  simplify = TRUE
+```{r}
+color_sub <- mock_celltype_colors[levels(adata_mock$obs$cellType)]
+```
+
+```{python fig.height=7, fig.width=7}
+fig = plt.figure()
+ax = fig.add_subplot()
+ax.set_aspect('equal', 'box')
+ax = scv.pl.velocity_embedding_stream(
+  r.adata_mock, basis="umap", color="cellType",
+  palette = r.color_sub, figsize = (7, 7),
+  title = "", ax = ax, show=False)
+plt.show()
+```
+
+```{r fig.height=7, fig.width=16}
+p1 <- scater::plotReducedDim(
+    sce_mock_slim,
+    dimred = "UMAP",
+    point_size = 0.8,
+    colour_by = "cna_ncorrs",
+    #order_by = I(sample(seq_len(ncol(sce_mock_slim))))
+    ) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed() +
+  ggplot2::ggtitle("Time association") +
+  remove_legend_title() +
+  center_plot_title() +
+  theme_dimred()
+
+p2 <- scater::plotReducedDim(
+    sce_mock_slim,
+    dimred = "UMAP",
+    point_size = 0.8,
+    colour_by = "latent_time",
+    #order_by = I(sample(seq_len(ncol(sce_mock_slim))))
+  ) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed() +
+  ggplot2::ggtitle("Latent time") +
+  remove_legend_title() +
+  center_plot_title() +
+  theme_dimred()
+
+(p <- p1 + p2)
+```
+
+```{r fig.height=7, fig.width=14}
+p1 <- colData(sce_mock_slim) |>
+  as.data.frame() |>
+  dplyr::sample_frac(1) |>
+  ggpubr::ggscatter(
+    x = "cna_ncorrs", y = "latent_time", group = NULL,
+    color = "time", conf.int = TRUE,
+    cor.coef = TRUE, cor.method = "pearson") +
+  ggplot2::geom_smooth(method = lm, color = "black", fill = 'lightblue') +
+  NULL
+
+p2 <- p1 + ggplot2::facet_wrap(~ time, ncol = 1) +
+  empty_strip() +
+  remove_legend()
+
+(p <- p1 + p2 + patchwork::plot_layout(widths = c(2, 1)))
+```
+
+### Cell cluster connectivity
+
+```{r}
+adata <- runPAGA(
+  sce_mock_slim, group_key = "cluster_id",
+  assay.X = "logcounts", use.dimred = "HARMONY"
 )
 ```
 
-```{r fig.height=24, fig.width=24}
-p <- comp_enr %>%
-  enrichplot::pairwise_termsim() %>%
-  enrichplot::treeplot(
-    showCategory = 20, nCluster = 20,
-    offset = 1, offset_tiplab = 0.22,
-    label_format_cladelab = 5,
-    geneClusterPanel = "heatMap", cex_category = 20, nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(8, 0))) +
-  ggplot2::coord_cartesian()
+```{r}
+adata$obsm$update(list(
+  X_umap = reducedDim(sce_mock_slim, "UMAP")
+))
+```
+
+```{r fig.height=7, fig.width=7}
+p <- plotPagaGraph(adata, basis = "umap", #threshold = 0.11,
+                   edge_cex = 5, node_cex = 4, label_cex = 1.5) +
+  ggplot2::xlab("UMAP_1") +
+  ggplot2::ylab("UMAP_2") +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+
 p
 ```
 
-### NLR 基因与 DS 基因的交集
+## Integration of all samples
+
+### Cell label transfer
 
 ```{r}
-NLRs <- readr::read_csv("../tmp/2020Frontiers in Genetics-Wheat DR genes-NLRs.csv") %>%
-  .[, 1, drop=TRUE] %>%
-  unique()
+df <- SeuratObject::FetchData(
+  obj, vars = c("sample", "group", "predicted.id", 
+                "prediction.score.max", "ident"))
+df$predicted.id <- factor(df$predicted.id, mock_celltypes)
+df$meta_ident <- dplyr::recode(df$ident,
+  CC = "Phloem",
+  BS = "Inner sheath",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium",
+  Va_1 = "Mesophyll",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  Me_1 = "Mesophyll",
+  Me_2 = "Mesophyll",
+  Me_3 = "Mesophyll",
+  Me_4 = "Mesophyll precursor",
+  Me_5 = "Mesophyll precursor",
+  Me_6 = "Mesophyll precursor",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Gu   = "Stomata"
+)
 
-NB_ARCs <- readLines("../tmp/NB-ARC.txt") %>% unique()
 
-LRRs <- readLines("../tmp/LRR.txt") %>% unique()
-
-CCs <- readLines("../tmp/CC.txt") %>% unique()
-
-NHPs <- readLines("../tmp/NHP.txt") %>% unique()
-
-ds_genes <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_format() %>%
-  .$gene %>%
-  unique()
-
-intersect(NHPs, ds_genes) %>% cat(sep="\n")
-```
-
-
-## Candidate genes for *in situ* hybridization
-
-### Un_1 Markers
-
-```{r}
-cluster_markers <- readRDS(Sys.glob("../output/int_cluster_markers_*.rds"))
-```
-
-```{r}
-cluster_markers_df <- dplyr::filter(cluster_markers, cluster == "Un_1")
-marker_table(cluster_markers_df)
-```
-
-```{r}
-marker_genes <- cluster_markers_df %>%
-  dplyr::pull(gene) %>%
-  head(10)
-
-anno <- brookite::pull_annotation(cluster_markers_df$gene,
-    mart_info = list(
-      mart = "plants_mart",
-      dataset = "taestivum_eg_gene",
-      host = "https://plants.ensembl.org"
-    ),
-    dest_attrs = c(
-      Description = "description",
-      GO_ID = "go_id",
-      GO_Name = "name_1006",
-      GO_Level = "namespace_1003"
-    ))
-
-Un1Markers <- dplyr::left_join(cluster_markers_df, anno, by = c("gene" = "ensembl_gene_id")) %>%
-  dplyr::select(gene, cluster, Description, GO_Name, avg_log2FC, pct.1, pct.2, p_val_adj)
-
-htmltools::browsable(
-  htmltools::tagList(
-    htmltools::tags$button(
-      "Download as CSV",
-      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", "un1_marker_table", "un1_marker_table")
-    ),
-    reactable::reactable(
-      Un1Markers,
-      defaultPageSize = 5,
-      elementId = "un1_marker_table"
-    )
+overlap_df <- df %>%
+  dplyr::select(ident, predicted.id, prediction.score.max) %>%
+  dplyr::group_by(ident, predicted.id) %>%
+  dplyr::summarise(
+    n = length(predicted.id),
+    mean = mean(prediction.score.max),
+    median = median(prediction.score.max)
   )
-)
-```
-
-
-```{r fig.height=12, fig.width=26}
-Seurat::FeaturePlot(obj, features = marker_genes, ncol = 5) &
-  ggplot2::coord_fixed()
 ```
 
 ```{r}
-gr <- clusterProfiler::groupGO(
-  Un1Markers$gene,
-  keyType = "GID",
-  ont = "BP",
-  level = 3,
-  OrgDb = "org.Taestivum.iwgsc.db"
-)
+sce$predicted.id <- factor(sce$predicted.id, mock_celltypes)
 
-reactable::reactable(gr@result %>% dplyr::filter(Count != 0))
-```
-
-```{r}
-hfile <- SeuratDisk::Connect("../output/obj_annotated.h5seurat")
-data_to_plot <- SeuratDisk::FetchCellData(hfile, vars = c("ident", "UMAP_1", "UMAP_2"))
-hfile$close_all()
-
-ggplot2::ggplot(
-    data = data_to_plot,
-    mapping = ggplot2::aes_string(
-      x = "UMAP_1", y = "UMAP_2", color = "ident")) +
-  ggplot2::geom_point(size = 1) +
-  ggplot2::scale_color_manual(
-    values = Seurat::DiscretePalette(length(levels(data_to_plot$ident)))) +
+p1 <- scater::plotReducedDim(sce, dimred = "UMAP",
+                             colour_by = "predicted.id",
+                             text_by = "predicted.id",
+                             point_size = 0.5,
+                             theme_size = 14) +
+  ggplot2::scale_color_manual(values = mock_celltype_colors) +
+  legend_override("color", list(size = 4, alpha = 1), title = "cluster") +
   ggplot2::coord_fixed() +
-  ggplot2::guides(color = ggplot2::guide_legend(
-    override.aes = list(size = 3))) +
-  cowplot::theme_cowplot()
+  theme_dimred()
+
+p2 <- ggplot2::ggplot(overlap_df, ggplot2::aes(
+    x = ident, y = predicted.id, color = mean, size = n)) +
+  ggplot2::geom_point() +
+  ggplot2::scale_color_gradientn(colours = c("white", "blue")) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+
+p3 <- scater::plotReducedDim(sce, dimred = "UMAP",
+                             colour_by = "cluster_id",
+                             text_by = "cluster_id",
+                             point_size = 0.5,
+                             theme_size = 14) +
+  ggplot2::scale_color_manual(values = all_celltype_colors) +
+  legend_override("color", list(size = 4, alpha = 1), title = "cluster") +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+```
+
+```{r fig.height=7, fig.width=17}
+(p <- p1 + p2)
 ```
 
 ```{r}
-hfile <- SeuratDisk::Connect("../output/obj_annotated.h5seurat")
-data_to_plot <- SeuratDisk::FetchCellData(
-  hfile,
-  vars = c("ident", "UMAP_1", "UMAP_2", "rna_TraesCS1B02G404500")
+df_sankey <- df |>
+  dplyr::group_by(predicted.id, ident, meta_ident) |>
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
+  dplyr::mutate(freq = n / sum(n))
+
+# When the strata are defined by a character or factor variable,
+# they default to the order of the variable.
+# Duplicated axis values will broke the order of stratum
+df_sankey$predicted.id <- forcats::fct_recode(
+  df_sankey$predicted.id, Gu_ = "Gu", BS_ = "BS", CC_ = "CC")
+```
+
+```{r fig.height=7, fig.width=14}
+p4 <- ggplot2::ggplot(
+  data = df_sankey,
+  mapping = ggplot2::aes(
+    axis1 = predicted.id,
+    axis2 = ident,
+    axis3 = meta_ident,
+    y = freq)) +
+  ggalluvial::geom_alluvium(
+    mapping = ggplot2::aes(fill = ident)) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggalluvial::geom_stratum(alpha = 0) +
+  ggplot2::geom_text(
+    stat = ggalluvial::StatStratum,
+    # Change axis back to original ones
+    mapping = ggplot2::aes(label = forcats::fct_recode(
+      ggplot2::after_stat(stratum), Gu = "Gu_", BS = "BS_", CC = "CC_"))) +
+  ggplot2::scale_y_continuous(expand = c(0, 0.01)) +
+  ggplot2::scale_x_continuous(expand = c(0, 0.001)) +
+  ggplot2::theme_void() +
+  remove_legend()
+
+p4
+```
+
+```{r fig.height=7, fig.width=14}
+p5 <- ggplot2::ggplot(df, ggplot2::aes(
+    x = sample, y = prediction.score.max, color = group)) +
+  ggplot2::geom_boxplot(outlier.size = .5) +
+  ggplot2::scale_color_manual(
+    values = colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(10)
+  ) +
+  ggplot2::facet_wrap(~predicted.id, ncol = 3) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
+  ) + remove_legend() + empty_strip()
+
+
+p6 <- ggplot2::ggplot(df, ggplot2::aes(
+    x = predicted.id, y = prediction.score.max, fill = predicted.id)) +
+  ggplot2::geom_boxplot(outlier.size = .5) +
+  ggplot2::xlab("cluster") +
+  ggplot2::theme_bw(14) +
+  rotate_x_labels() +
+  remove_legend() +
+  NULL
+
+p7 <- ggplot2::ggplot(df, ggplot2::aes(
+    x = ident, y = prediction.score.max, fill = ident)) +
+  ggplot2::geom_boxplot(outlier.size = .5) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggplot2::xlab("cluster") +
+  ggplot2::theme_bw(14) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+  remove_legend()
+
+(p <- p5 + (p6 / p7) +
+  patchwork::plot_layout(widths = c(3, 2)) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  font_plot_tag())
+```
+
+```{r fig.height=16, fig.width=14}
+p <- (p1 + p3) / p4 / p7 +
+  patchwork::plot_layout(heights = c(1, 1, 0.5)) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  font_plot_tag(16)
+
+p
+```
+
+### Expression of marker genes
+
+```{r fig.height=14, fig.width=12}
+p <- Seurat::DotPlot(obj, features = markers) +
+  ggplot2::coord_flip() +
+  ggplot2::facet_grid(
+    facets = feature.groups ~ .,
+    scales = "free_y",
+    space = "free_y") +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    strip.text.y = ggplot2::element_text(angle = 0)
+  )
+p
+```
+
+```{r}
+#export::graph2ppt(p, file = "figures/marker_expression.pptx", width = 10, height = 12)
+```
+
+### Newly identified markers
+
+```{r}
+marker_cosg_all <- COSG::cosg(
+ obj,
+ groups = "all",
+ assay = "RNA",
+ slot = "data",
+ mu = 1,
+ n_genes_user = 300
 )
-hfile$close_all()
+```
 
-data_to_plot %>%
-  dplyr::arrange(.data[["rna_TraesCS1B02G404500"]]) %>%
-  ggplot2::ggplot(
-      mapping = ggplot2::aes_string(
-        x = "UMAP_1", y = "UMAP_2", color = "rna_TraesCS1B02G404500")) +
-    ggplot2::geom_point(size = .2) +
-    ggplot2::scale_colour_gradient(low = "lightgrey", high = "blue") +
-    ggplot2::ggtitle("rna_TraesCS1B02G404500") +
+```{r fig.height=10, fig.width=18}
+p1 <- marker_cosg_all$scores |>
+  tidyr::pivot_longer(tidyselect::everything(),
+                      names_to = "cluster", values_to = "scores") |>
+  dplyr::mutate(cluster = forcats::fct_relevel(cluster, all_celltypes)) |>
+  ggplot2::ggplot(ggplot2::aes(x = scores, y = cluster, fill = cluster)) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggplot2::geom_boxplot() +
+  cowplot::theme_cowplot() +
+  remove_legend() +
+  NULL
+
+newmarkers <- marker_cosg_all$names |>
+  lapply(\(x) x[1:3]) |>
+  unlist(use.names = FALSE)
+
+newmarkers <- newmarkers[newmarkers != "rrn23-2"]
+
+p2 <- Seurat::DotPlot(obj, features = rev(newmarkers)) +
+  ggplot2::coord_flip() +
+  rotate_x_labels()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(2, 1))
+
+p
+```
+
+### Cell proportion changes
+
+```{r}
+ca_res_all <- readRDS(Sys.glob("../results/ObjectCache/DifferentialAbundance/ca_res_nonclust_all_*.rds"))
+ca_res_all$results$cellTypes <- forcats::fct_relevel(ca_res_all$results$cellTypes, all_celltypes)
+```
+
+```{r fig.height=8, fig.width=12}
+df <- rhapsodykit::calculateClusterProportion(
+  sce$cluster_id, sce$sample_id, sce$group_id)
+
+p1 <- df %>%
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = cluster_id)) +
+  ggplot2::facet_wrap(~group_id, nrow = 1, scales = "free_x") +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2, position = "stack") +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+  ggplot2::scale_x_discrete(expand = c(0, 0)) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggplot2::theme(
+    aspect.ratio = NULL,
+    panel.grid = ggplot2::element_blank(),
+    panel.spacing = grid::unit(1, "mm"),
+    strip.text = ggplot2::element_blank(),
+    strip.background = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+p2 <- df %>%
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = group_id)) +
+  ggplot2::facet_wrap(~cluster_id, ncol = 3) +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2,
+    position = ggplot2::position_dodge()) +
+  ggthemes::scale_fill_tableau("Classic Cyclic") +
+  ggplot2::scale_y_continuous(expand = c(0, 0)) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 10)) +
+  verticalize_x_labels()
+
+p3 <- plot_bootstrap_distribution(ca_res_all, ncol = 3) +
+  ggplot2::theme(
+    strip.text.x = ggplot2::element_text(size = 10)) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  rotate_x_labels() +
+  empty_strip()
+
+(p <- p1+ p3 +
+  patchwork::plot_layout(widths  = c(1, 1), guides = "collect") +
+  patchwork::plot_annotation(tag_levels = "A") &
+  font_plot_tag(16))
+```
+
+```{r}
+p <- rhapsodykit::calculateClusterProportion(
+  sce$body_layer, sce$sample_id, sce$group_id) |>
+  dplyr::mutate(percent = scales::label_percent(accuracy = 0.1)(frequency)) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = cluster_id)) +
+  ggplot2::facet_wrap(~group_id, nrow = 1, scales = "free_x") +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2, position = "stack") +
+  ggplot2::geom_text(
+    mapping = ggplot2::aes(label = percent),
+    size = 2, stat = "identity",
+    position = ggplot2::position_fill(vjust = 0.5)) +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+  ggplot2::scale_x_discrete(expand = c(0, 0)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "body_layer")) +
+  ggplot2::theme(
+    aspect.ratio = NULL,
+    panel.grid = ggplot2::element_blank(),
+    panel.spacing = grid::unit(1, "mm"),
+    strip.text = ggplot2::element_blank(),
+    strip.background = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+p
+```
+
+
+### Co-varing neighborhood analysis
+
+```{r}
+blue_to_orange <- rev(ggthemes::ggthemes_data[[
+  c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])
+```
+
+```{r}
+sce_all_mock <- sce[, sce$treatment == "MOCK"]
+
+sce_all_mock$time_val <- as.numeric(factor(
+  sce_all_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_all_mock$sample <- as.character(sce_all_mock$sample_id)
+
+sce_all_mock <- association.SingleCellExperiment(
+  sce_all_mock, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r}
+p <- scater::plotReducedDim(
+    sce_all_mock, dimred = "UMAP",
+    colour_by = "cna_ncorrs",
+    order_by = I(sample(seq_len(ncol(sce_all_mock)))),
+    point_size = 0.5) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+
+p
+```
+
+```{r}
+df_ncorrs_mock <- data.frame(
+  time_ncorrs = sce_all_mock$cna_ncorrs,
+  cellType = sce_all_mock$cluster_id,
+  treatment = "MOCK",
+  fdr_5p_t = metadata(sce_all_mock)$cnaRes$fdr_5p_t)
+
+df_ncorrs_mock$cellType <- forcats::fct_reorder(
+  df_ncorrs_mock$cellType, df_ncorrs_mock$time_ncorrs)
+
+p1 <- plotNcorrRidges(sce_all_mock) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  NULL
+
+p1
+```
+
+```{r}
+sce_all_pnr2 <- sce[, sce$treatment == "PNR2" | sce$time == "0DPI"]
+
+sce_all_pnr2$time_val <- as.numeric(factor(
+  sce_all_pnr2$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_all_pnr2$sample <- as.character(sce_all_pnr2$sample_id)
+
+sce_all_pnr2 <- association.SingleCellExperiment(
+  sce_all_pnr2, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r}
+p <- scater::plotReducedDim(
+    sce_all_pnr2, dimred = "UMAP",
+    colour_by = "cna_ncorrs",
+    order_by = I(sample(seq_len(ncol(sce_all_pnr2)))),
+    point_size = 0.5) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+
+p
+```
+
+```{r}
+df_ncorrs_pnr2 <- data.frame(
+  time_ncorrs = sce_all_pnr2$cna_ncorrs,
+  cellType = sce_all_pnr2$cluster_id,
+  treatment = "PNR2",
+  fdr_5p_t = metadata(sce_all_pnr2)$cnaRes$fdr_5p_t)
+
+df_ncorrs_pnr2$cellType <- forcats::fct_relevel(
+  df_ncorrs_pnr2$cellType, levels(df_ncorrs_mock$cellType))
+
+p2 <- plotNcorrRidges(sce_all_pnr2) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  NULL
+
+p2
+```
+
+```{r}
+sce_all_tr4 <- sce[, sce$treatment == "TR4" | sce$time == "0DPI"]
+
+sce_all_tr4$time_val <- as.numeric(factor(
+  sce_all_tr4$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_all_tr4$sample <- as.character(sce_all_tr4$sample_id)
+
+sce_all_tr4 <- association.SingleCellExperiment(
+  sce_all_tr4, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r}
+p <- scater::plotReducedDim(
+    sce_all_tr4, dimred = "UMAP",
+    colour_by = "cna_ncorrs",
+    order_by = I(sample(seq_len(ncol(sce_all_tr4)))),
+    point_size = 0.5) +
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+
+p
+```
+
+```{r}
+df_ncorrs_tr4 <- data.frame(
+  time_ncorrs = sce_all_tr4$cna_ncorrs,
+  cellType = sce_all_tr4$cluster_id,
+  treatment = "TR4",
+  fdr_5p_t = metadata(sce_all_tr4)$cnaRes$fdr_5p_t)
+
+df_ncorrs_tr4$cellType <- forcats::fct_relevel(
+  df_ncorrs_tr4$cellType, levels(df_ncorrs_mock$cellType))
+
+p3 <- plotNcorrRidges(sce_all_tr4) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  NULL
+
+p3
+```
+
+```{r fig.height=7, fig.width=14}
+df_ncorrs <- dplyr::bind_rows(df_ncorrs_mock, df_ncorrs_pnr2, df_ncorrs_tr4)
+df_ncorrs$cellType <- forcats::fct_reorder(
+  df_ncorrs$cellType, df_ncorrs$time_ncorrs)
+
+fdr_df <- purrr::imap(
+  .x = list(
+    MOCK = sce_all_mock,
+    PNR2 = sce_all_pnr2,
+    TR4  = sce_all_tr4),
+  .f = function(x, treat) {
+    fdr <- metadata(x)$cnaRes$fdr_5p_t
+    data.frame(
+      treatment = treat,
+      posfdr = fdr,
+      negfdr = -fdr)
+  }) |> dplyr::bind_rows()
+
+p2 <- ggplot2::ggplot(df_ncorrs, ggplot2::aes(
+    x = time_ncorrs, y = cellType, fill = cellType)) +
+  ggplot2::ylab("cellType") +
+  ggridges::geom_density_ridges(scale = 4) +
+  ggplot2::geom_vline(
+    data = fdr_df, mapping = ggplot2::aes(xintercept = posfdr),
+    linetype = "dashed") +
+  ggplot2::geom_vline(
+    data = fdr_df, mapping = ggplot2::aes(xintercept = negfdr),
+    linetype = "dashed") +
+  ggplot2::facet_wrap(~ treatment) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  ggridges::theme_ridges() +
+  empty_strip() +
+  remove_legend()
+
+p2
+```
+
+```{r fig.height=7, fig.width=16}
+plist <- purrr::imap(
+  .x = list(
+    MOCK = sce_all_mock,
+    PNR2 = sce_all_pnr2,
+    TR4  = sce_all_tr4),
+  .f = function(sce, name) {
+    sce <- centerPopulationStimData(sce)
+    scater::plotReducedDim(
+      sce, dimred = "UMAP",
+      colour_by = "cna_ncorrs",
+      order_by = I(sample(seq_len(ncol(sce)))),
+      point_size = 1,
+      theme_size = 12) +
+    ggplot2::scale_color_gradientn(colours = blue_to_orange) +
     ggplot2::coord_fixed() +
-    cowplot::theme_cowplot() +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(hjust = 0.5),
-      legend.title = ggplot2::element_blank()
-    )
+    ggplot2::ggtitle(name) +
+    center_plot_title(face = "plain") +
+    remove_legend_title() +
+    theme_dimred()
+  })
+
+(p1 <- patchwork::wrap_plots(plist))
+```
+
+```{r fig.height=12, fig.width=14}
+p <- p1 / p2 +
+  patchwork::plot_layout(heights = c(2, 1.5))
+
+p
+```
+
+
+### Cell cluster connectivity
+
+```{r}
+adata <- runPAGA(
+  sce, group_key = "cluster_id",
+  assay.X = "logcounts", use.dimred = "HARMONY"
+)
 ```
 
 ```{r}
-Seurat::FeaturePlot(
-    obj, features = c("rna_TraesCS1B02G404500"),
-    reduction = "umap", order = TRUE
-  ) &
-  ggplot2::coord_fixed()
-```
-
-
-看两个基因的共表达情况：
-
-```{r fig.height=4, fig.width=12}
-Seurat::FeaturePlot(
-    obj, features = c("rna_TraesCS1B02G404500", "rna_TraesCS7D02G255100"),
-    reduction = "umap", order = TRUE, blend = TRUE
-  ) &
-  ggplot2::coord_fixed()
+adata$obsm$update(list(
+  X_umap = reducedDim(sce, "UMAP")
+))
 ```
 
 ```{r}
-Seurat:::SingleExIPlot(
-    type = "violin",
-    data = data_to_plot[, "rna_TraesCS1B02G404500", drop = FALSE],
-    idents = data_to_plot$ident,
-    adjust = 1,
-    pt.size = 1) +
-  ggplot2::guides(fill = "none")
+p <- plotPagaGraph(adata, basis = "umap", edge_cex = 2, node_cex = 2) +
+  ggplot2::coord_fixed() +
+  ggplot2::xlab("UMAP 1") +
+  ggplot2::ylab("UMAP 2") +
+  theme_dimred()
+
+p
+```
+
+### RNA Velocity
+
+```{r}
+adata_all_mock <- readPickle(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/unitvelo_adata_mock_*.pickle"))
+adata_all_pnr2 <- readPickle(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/unitvelo_adata_pnr2_*.pickle"))
+adata_all_tr4 <- readPickle(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/unitvelo_adata_tr4_*.pickle"))
 ```
 
 ```{r}
+for (adata in list(adata_all_mock, adata_all_pnr2, adata_all_tr4)) {
+  sce_sub <- sce[, adata$obs_names$to_list()]
+  adata$obsm$update(list(
+    X_umap = reducedDim(sce_sub, "UMAP")
+  ))
 
+  adata$obs$cellType <- droplevels(sce_sub$cluster_id)
+}
+
+rm(sce_sub)
+gc()
+```
+
+```{r}
+color_sub <- all_celltype_colors[levels(adata_all_mock$obs$cellType)]
+```
+
+```{python fig.height=6, fig.width=12}
+fig, axes = plt.subplots(1, 3)
+
+for ax in axes:
+  ax.set_aspect('equal', 'box')
+
+ax = scv.pl.velocity_embedding_stream(
+  r.adata_all_mock, basis="umap", color="cellType",
+  title="MOCK",
+  palette=r.color_sub, show=False, ax = axes[0])
+ax = scv.pl.velocity_embedding_stream(
+  r.adata_all_pnr2, basis="umap", color="cellType",
+  title="PNR2",
+  palette=r.color_sub, show=False, ax = axes[1])
+ax = scv.pl.velocity_embedding_stream(
+  r.adata_all_tr4, basis="umap", color="cellType",
+  title="TR4",
+  palette=r.color_sub, show=False, ax = axes[2])
+
+plt.show()
+```
+
+### Differential abundance analysis
+
+```{r}
+da_ctr_1dpi <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialAbundance/da_ctr_1dpi_*.rds"))
+da_ctr_2dpi <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialAbundance/da_ctr_2dpi_*.rds"))
+da_ctr_3dpi <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialAbundance/da_ctr_3dpi_*.rds"))
+```
+
+```{r fig.height=7, fig.width=10}
+p_da_1dpi <- patchwork::wrap_plots(
+    rhapsodykit::plotDACellScore(
+      da_ctr_1dpi[[1]], "umap", label = TRUE) +
+      ggplot2::ggtitle(names(da_ctr_1dpi)[[1]]),
+    rhapsodykit::plotDACellScore(
+      da_ctr_1dpi[[2]], "umap", label = TRUE) +
+      ggplot2::ggtitle(names(da_ctr_1dpi)[[2]])) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::xlab("UMAP 1") &
+  ggplot2::ylab("UMAP 2") &
+  ggplot2::coord_fixed() &
+  center_plot_title() &
+  font_plot_tag(16) &
+  theme_dimred()
+
+p_da_1dpi
+```
+
+```{r fig.height=7, fig.width=10}
+p_da_2dpi <- patchwork::wrap_plots(
+    rhapsodykit::plotDACellScore(
+      da_ctr_2dpi[[1]], "umap", label = TRUE) +
+      ggplot2::ggtitle(names(da_ctr_2dpi)[[1]]),
+    rhapsodykit::plotDACellScore(
+      da_ctr_2dpi[[2]], "umap", label = TRUE) +
+      ggplot2::ggtitle(names(da_ctr_2dpi)[[2]])) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::xlab("UMAP 1") &
+  ggplot2::ylab("UMAP 2") &
+  ggplot2::coord_fixed() &
+  center_plot_title() &
+  font_plot_tag(16) &
+  theme_dimred()
+
+p_da_2dpi
+```
+
+```{r fig.height=7, fig.width=10}
+p_da_3dpi <- patchwork::wrap_plots(
+    rhapsodykit::plotDACellScore(
+      da_ctr_3dpi[[1]], "umap", label = TRUE) +
+      ggplot2::ggtitle(names(da_ctr_3dpi)[[1]]),
+    rhapsodykit::plotDACellScore(
+      da_ctr_3dpi[[2]], "umap", label = TRUE) +
+      ggplot2::ggtitle(names(da_ctr_3dpi)[[2]])) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  ggplot2::scale_color_gradientn(colours = blue_to_orange) &
+  ggplot2::xlab("UMAP 1") &
+  ggplot2::ylab("UMAP 2") &
+  ggplot2::coord_fixed() &
+  center_plot_title() &
+  font_plot_tag(16) &
+  theme_dimred()
+
+p_da_3dpi
+```
+
+### Characteristic of mesophylls
+
+#### UMIs count distribution
+
+```{r fig.height=4, fig.width=6}
+p <- Seurat::VlnPlot(obj, features = "nCount_RNA", log = TRUE, pt.size = 0) +
+  ggplot2::scale_fill_manual(values = all_celltype_colors) +
+  remove_legend()
+
+p
+```
+
+#### Differential expression
+
+```{r}
+avg_expr_df <- Seurat::AverageExpression(obj, slot = "data")$RNA |>
+  log1p() |>
+  as.data.frame()
+```
+
+```{r}
+vip_anno <- c(
+  "TraesCS1B02G406200" = "N-like",
+  "TraesCS1B02G413100" = "N-like",
+  "TraesCS1D02G183600" = "N-like",
+  "TraesCS2A02G242400" = "Transposase",
+  "TraesCS2A02G490900" = "RuBisCO",
+  "TraesCS3A02G405700" = "N-like",
+  "TraesCS3A02G430500" = "N-like",
+  "TraesCS4A02G272300" = "N-like",
+  "TraesCS3B02G186100" = "RuBisCO",
+  "TraesCS3B02G523500" = "RuBisCO",
+  "TraesCS5A02G165400" = "RuBisCO",
+  "TraesCS5B02G039000" = "Transposase",
+  "TraesCS5B02G423500" = "N-like",
+  "TraesCS5D02G010200" = "RuBisCO",
+  "TraesCS5D02G169900" = "RuBisCO",
+  "TraesCS5D02G425100" = "RuBisCO",
+  "TraesCS6B02G402800" = "Transposase",
+  "TraesCS7D02G255100" = "N-like",
+  "TraesCSU02G243900"  = "N-like",
+  "rrn23-2" = "chloroplast rRNA",
+  "TraesCS3B02G563300" = "psbM",
+  "TraesCS1B02G404500" = "psbZ",
+  "TraesCS2D02G573100" = "psbZ",
+  "TraesCS2D02G573000" = "psbC",
+  "TraesCS5D02G008300" = "psbD",
+  "TraesCS5D02G456600" = "Ribosomal protein S3",
+  "TraesCS5D02G010000" = "Ycf4",
+  "TraesCS2D02G566300" = "Ribosomal protein S3",
+  "TraesCS2B02G487300" = "Ribosomal protein S14"
+)
+```
+
+```{r}
+vip_genes <- avg_expr_df[names(vip_anno), c("Me_1", "Me_2")]
+vip_genes$anno <- vip_anno
+```
+
+```{r fig.height=7, fig.width=7}
+avg_expr_df$gene <- rownames(avg_expr_df)
+p <- ggplot2::ggplot(avg_expr_df, ggplot2::aes(x = Me_2, y = Me_1, label = gene)) +
+  ggplot2::geom_point() +
+  ggplot2::geom_abline(intercept = 0, slope = 1, color = "blue") +
+  #ggplot2::geom_abline(intercept = 0, slope = 0.6, color = "blue") +
+  #ggplot2::geom_hline(yintercept = 3.5, color = "blue") +
+  #ggplot2::geom_vline(xintercept = 1.5, color = "blue") +
+  ggrepel::geom_text_repel(
+    data = vip_genes,
+    mapping = ggplot2::aes(x = Me_2, y = Me_1, label = anno),
+    size = 2, bg.color = "white") +
+  cowplot::theme_cowplot()
+
+p
+```
+
+```{r}
+de_me1 <- Seurat::FindMarkers(obj, ident.1 = "Me_1", ident.2 = "Me_2", min.pct = 0.25)
+```
+
+```{r}
+anno <- brookite::pull_annotation(
+  rownames(unique(de_me1)),
+  mart_info = list(
+    mart = "plants_mart",
+    dataset = "taestivum_eg_gene",
+    host = "https://plants.ensembl.org"
+  ),
+  dest_attrs = c(
+    Description = "description",
+    GO_ID = "go_id",
+    GO_Name = "name_1006",
+    GO_Level = "namespace_1003",
+    Interpro_ID = "interpro",
+    Interpro_Short_Description = "interpro_short_description"
+  ))
+
+de_me1 |>
+  tibble::rownames_to_column("Gene") |>
+  dplyr::left_join(anno, by = c("Gene" = "ensembl_gene_id")) |>
+  download_table()
+```
+
+```{r}
+ggplot2::ggplot(de_me1, ggplot2::aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  ggplot2::geom_point() +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+ggplot2::ggplot(de_me1, ggplot2::aes(x = pct.1 - pct.2, y = avg_log2FC)) +
+  ggplot2::geom_point() +
+  ggplot2::theme_minimal()
+```
+
+```{r}
+geneList <- structure(de_me1$avg_log2FC, names = rownames(de_me1))
+me_marker_list <- list(
+  Me_1 = names(geneList[geneList > 0]),
+  Me_2 = names(geneList[geneList < 0])
+)
+
+ego_me <- clusterProfiler::compareCluster(
+  me_marker_list, OrgDb = orgdb,
+  fun = "enrichGO", universe = rownames(obj),
+  ont = "BP", keyType = "GID")
+```
+
+```{r}
+printCompareORATable(ego_me)
+```
+
+```{r fig.height=12, fig.width=10}
+ego_me |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::treeplot(
+    showCategory = nrow(ego_me), nCluster = 12,
+    offset = 40, offset_tiplab = 20,
+    label_format_cladelab = 5, size = "count",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(4, 0))) +
+  NULL
+```
+
+```{r}
+selected_me_go_terms <- c(
+  "GO:0006754",
+  "GO:0009751",
+  "GO:0009695",
+  "GO:0009753",
+  "GO:0009642",
+  "GO:0045861",
+  "GO:0051172",
+  "GO:0009250",
+  "GO:0030244",
+  "GO:0000281",
+  "GO:0055074",
+  "GO:0009651",
+  "GO:0000302",
+  "GO:0009408",
+  "GO:0009063",
+  "GO:0098754",
+  "GO:0009926",
+  "GO:0006529",
+  "GO:0006541",
+  "GO:0006534",
+  "GO:0009069",
+  "GO:0006568",
+  "GO:0019684",
+  "GO:0046653",
+  "GO:0019685",
+  "GO:0009853",
+  "GO:0015749",
+  "GO:0045454",
+  "GO:0009767",
+  "GO:0006833",
+  "GO:0031408",
+  "GO:0006749",
+  "GO:0006308",
+  "GO:0015976"
+)
+```
+
+```{r fig.height=8, fig.width=10}
+p1 <- ego_me |>
+  dplyr::filter(ID %in% selected_me_go_terms) |>
+  enrichplot::dotplot(
+    showCategory = length(selected_me_go_terms),
+    size = "count", label_format = 50) +
+  ggplot2::xlab("cell cluster")
+
+p1
 ```
 
 
+```{r fig.height=7, fig.width=8}
+p2 <- ego_me |>
+  dplyr::filter(ID %in% selected_me_go_terms) |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::emapplot(
+    showCategory = length(selected_me_go_terms),
+    node_label = "category", layout = "kk",
+    min_edge = 0.05, legend_n = 3) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "cell cluster"))
+
+p2
+```
+
+### Characteristic of outer sheath
+
+#### Differential expression
+
+```{r}
+de_va4 <- Seurat::FindMarkers(
+  obj, ident.1 = "Va_4", ident.2 = c("Va_2", "Va_3"), min.pct = 0.25, only.pos = TRUE)
+de_va3 <- Seurat::FindMarkers(
+  obj, ident.1 = "Va_3", ident.2 = c("Va_2", "Va_4"), min.pct = 0.25, only.pos = TRUE)
+de_va2 <- Seurat::FindMarkers(
+  obj, ident.1 = "Va_2", ident.2 = c("Va_3", "Va_4"), min.pct = 0.25, only.pos = TRUE)
+```
+
+```{r}
+de_va_all <- dplyr::bind_rows(
+  tibble::rownames_to_column(de_va2, "Gene") |>
+    dplyr::mutate(cluster = "Va_2"),
+  tibble::rownames_to_column(de_va3, "Gene") |>
+    dplyr::mutate(cluster = "Va_3"),
+  tibble::rownames_to_column(de_va4, "Gene") |>
+    dplyr::mutate(cluster = "Va_4")
+)
+```
+
+```{r}
+anno <- brookite::pull_annotation(
+  unique(de_va_all$Gene),
+  mart_info = list(
+    mart = "plants_mart",
+    dataset = "taestivum_eg_gene",
+    host = "https://plants.ensembl.org"
+  ),
+  dest_attrs = c(
+    Description = "description",
+    GO_ID = "go_id",
+    GO_Name = "name_1006",
+    GO_Level = "namespace_1003",
+    Interpro_ID = "interpro",
+    Interpro_Short_Description = "interpro_short_description"
+  ))
+```
+
+```{r}
+de_va_all |>
+  dplyr::left_join(anno, by = c("Gene" = "ensembl_gene_id")) |>
+  download_table()
+```
+
+```{r}
+va_marker_list <- list(
+  Va_2 = rownames(de_va2),
+  Va_3 = rownames(de_va3),
+  Va_4 = rownames(de_va4)
+)
+
+ego_os <- clusterProfiler::compareCluster(
+  va_marker_list, OrgDb = orgdb,
+  fun = "enrichGO", universe = rownames(obj),
+  ont = "BP", keyType = "GID")
+```
+
+```{r}
+printCompareORATable(ego_os)
+```
+
+```{r fig.height=16, fig.width=10}
+ego_os |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::treeplot(
+    showCategory = nrow(ego_os), nCluster = 12,
+    offset = 60, offset_tiplab = 30,
+    label_format_cladelab = 5, size = "count",
+    geneClusterPanel = "dotplot", nWords = 0) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(2, 0))) +
+  NULL
+```
+
+```{r}
+selected_os_go_terms <- c(
+  "GO:0009753",
+  "GO:1901698",
+  "GO:0009723",
+  "GO:0009751",
+  "GO:0009695",
+  "GO:0009803",
+  "GO:0006032",
+  "GO:0009737",
+  "GO:0061077",
+  "GO:0000162",
+  "GO:0010951",
+  "GO:0050832",
+  "GO:0009617",
+  "GO:0009626",
+  "GO:0009733",
+  "GO:0009268",
+  "GO:0006995",
+  "GO:0042744",
+  "GO:0098754",
+  "GO:0070592",
+  "GO:0019344",
+  "GO:0006564",
+  "GO:0042549",
+  "GO:0006740",
+  "GO:0000302",
+  "GO:0007623",
+  "GO:0009423",
+  "GO:0009651",
+  "GO:0046686",
+  "GO:0009409",
+  "GO:0009853",
+  "GO:0019685",
+  "GO:0021700",
+  "GO:0019685",
+  "GO:0010410",
+  "GO:0005992",
+  "GO:0006094",
+  "GO:0006541",
+  "GO:0006529",
+  "GO:0009072",
+  "GO:0000226",
+  "GO:0030042",
+  "GO:0042538",
+  "GO:0015749",
+  "GO:0006833",
+  "GO:0031408",
+  "GO:0016104",
+  "GO:0006561",
+  "GO:0006749",
+  "GO:0009809",
+  "GO:0009064",
+  "GO:0046283",
+  "GO:0006457"
+)
+```
+
+```{r fig.height=10, fig.width=8}
+p3 <- ego_os |>
+  dplyr::filter(ID %in% selected_os_go_terms) |>
+  enrichplot::dotplot(
+    showCategory = length(selected_os_go_terms),
+    size = "count", label_format = 50) +
+  ggplot2::xlab("cell cluster")
+
+p3
+```
+
+```{r fig.height=7, fig.width=8}
+p4 <- ego_os |>
+  dplyr::filter(ID %in% selected_os_go_terms) |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::emapplot(
+    showCategory = length(selected_os_go_terms),
+    node_label = "category", layout = "fr",
+    min_edge = 0.05, legend_n = 3)
+
+p4
+```
+
+### Combined ORA visualization
+
+```{r}
+marker_df <- purrr::imap(
+    .x = list(
+      "Mesophyll" = me_marker_list,
+      "Outer sheath" = va_marker_list),
+    .f = function(malist, uppername) {
+      purrr::imap(
+          .x = malist,
+          .f = function(genes, name) data.frame(
+            gene = genes, cell_type = name, tissue = uppername)) |>
+        dplyr::bind_rows()
+    }) |>
+  dplyr::bind_rows()
+```
+
+```{r}
+ego <- clusterProfiler::compareCluster(
+  gene ~ tissue + cell_type, data = marker_df,
+  OrgDb = orgdb, fun = "enrichGO",
+  universe = rownames(obj),
+  ont = "BP", keyType = "GID")
+```
+
+```{r fig.height=18, fig.width=14}
+selected_terms <- unique(c(selected_me_go_terms, selected_os_go_terms))
+
+p <- ego |>
+  dplyr::filter(ID %in% selected_terms) |>
+  enrichplot::dotplot(
+    showCategory = length(selected_terms),
+    x = "cell_type", size = "count",
+    label_format = 100, font.size = 14) +
+  ggplot2::facet_grid(~ tissue, scales = "free_x") +
+  ggplot2::xlab("cell cluster") +
+  ggplot2::theme(strip.text = ggplot2::element_text(size = 14)) +
+  NULL
+
+p
+```
+
+```{r fig.height=12, fig.width=14}
+p <- ego |>
+  dplyr::filter(ID %in% selected_terms) |>
+  enrichplot::pairwise_termsim() |>
+  enrichplot::emapplot(
+    showCategory = length(selected_terms),
+    node_label = "category", layout = "fr",
+    legend_n = 3, font.size = 14, min_edge = 0.01,
+    cex_label_category = 1.6) +
+  ggthemes::scale_fill_tableau(
+    palette = "Tableau 20",
+    labels = c("Me_1", "Me_2", "Va_2", "Va_3", "Va_4")) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "cell cluster")) +
+  ggplot2::theme_void(14)
+
+p
+```
+
+### PAL-related pathway activity
+
+```{r}
+PAL_pathways <- c(
+  "Aromatic amino acid", "General phenylpropanoid",
+  "Lignin biosynthesis", "Flavanones", "Polyamine", "HCAAs")
+filelist <- paste0("../data/pathways/", PAL_pathways, ".txt")
+names(filelist) <- basename(filelist) |> stringr::str_remove(stringr::fixed(".txt"))
+
+pathways <- lapply(filelist, function(filename) {
+  genes <- stringr::str_trim(readLines(filename))
+  genes[genes != ""]
+})
+```
+
+GSVA is not good for single cell pathway activity calculation.
+
+```{r}
+sce_pal <- calcPathwayActivity(
+  sce, pathways, method = "seuratModuleScore")
+```
+
+```{r fig.height=8, fig.width=14}
+piclist <- lapply(PAL_pathways, function(p) {
+  scater::plotReducedDim(
+      sce_pal,
+      dimred = "UMAP",
+      colour_by = p,
+      order_by = p,
+      by_exprs_values = "activity",
+      point_size = 0.2) +
+    ggplot2::scale_color_gradient(low = "grey", high = "blue") +
+    ggplot2::ggtitle(p) +
+    ggplot2::coord_fixed() +
+    center_plot_title(size = 14) +
+    theme_dimred()
+})
+
+(p <- patchwork::wrap_plots(piclist, ncol = 3))
+```
+
+```{r fig.height=14, fig.width=7}
+scater::plotExpression(sce_pal, PAL_pathways, x = "cluster_id", exprs_values = "activity", ncol = 1)
+```
+
+### Slingshot trajectory inference
+
+#### Mesophyll state transitions
+
+```{r}
+sce_me_all <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_me_all_*.rds"))
+sce_me_1dpi <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_me_1dpi_*.rds"))
+sce_me_2dpi <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_me_2dpi_*.rds"))
+sce_me_3dpi <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_me_3dpi_*.rds"))
+```
+
+```{r fig.height=8, fig.width=14}
+p1 <- scater::plotReducedDim(
+    sce_me_all, dimred = "PHATE", theme_size = 14,
+    colour_by = "cellType", text_by = "cellType",
+    point_size = 1) +
+  legend_override("color", list(size = 3, alpha = 1),
+                  title = "cluster")
+
+p2 <- plotSlingshotCurveOnReduc(
+  sce_me_all, dimred = "PHATE",
+  linewidth = 1.2, theme_size = 14, point_size = 1,
+  lineage_rename = c("Lineage1" = "PST", "Lineage2" = "PCT"),
+  lineage_label_size = 5)
+
+p3 <- plotLineageCurveOnReduc(
+    sce_me_all, 1, dimred = "PHATE",
+    linewidth = 1.2, theme_size = 14,
+    point_size = 1) +
+  ggplot2::ggtitle("Precursor-Subepidermal Transition (PST)") +
+  center_plot_title(face = "plain")
+
+p4 <- plotLineageCurveOnReduc(
+  sce_me_all, 2, dimred = "PHATE",
+  linewidth = 1.2, theme_size = 14,
+  point_size = 1) +
+  ggplot2::ggtitle("Precursor-Chlorenchymal Transition (PCT)") +
+  center_plot_title(face = "plain")
+
+p <- p1 + p2 + p3 + p4 +
+  patchwork::plot_layout(ncol = 2) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  font_plot_tag(size = 16) &
+  ggplot2::coord_fixed() &
+  theme_dimred()
+
+p
+```
+
+```{r fig.height=12, fig.width=14}
+plist <- purrr::imap(
+  .x = list(
+    "1DPI" = sce_me_1dpi,
+    "2DPI" = sce_me_2dpi,
+    "3DPI" = sce_me_3dpi),
+  .f = function(x, name) {
+    plotPseudotimeDensity(x, c(
+      "Lineage1" = "Precursor-Subepidermal Transition",
+      "Lineage2" = "Precursor-Chlorenchymal Transition"))
+  }
+)
+
+(p <- patchwork::wrap_plots(plist, ncol = 1, guides = "collect") &
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.01)))
+```
+
+#### Outer sheath state transitions
+
+```{r}
+sce_os_all <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_os_all_*.rds"))
+sce_os_1dpi <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_os_1dpi_*.rds"))
+sce_os_2dpi <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_os_2dpi_*.rds"))
+sce_os_3dpi <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_os_3dpi_*.rds"))
+```
+
+```{r fig.height=14, fig.width=14}
+p1 <- plotSlingshotCurveOnReduc(
+    sce_os_all, dimred = "PHATE",
+    colour_by = "cluster_id", linewidth = 1.2,
+    theme_size = 14, point_size = 1,
+    lineage_rename = c(
+      "Lineage1" = "Va_2 branch",
+      "Lineage2" = "Va_4 branch",
+      "Lineage3" = "Va_3 branch"),
+    lineage_label_size = 5) +
+  legend_override("color", list(size = 3, alpha = 1),
+                title = "cluster")
+
+p2 <- plotLineageCurveOnReduc(
+    sce_os_all, 1, dimred = "PHATE",
+    linewidth = 1.2, theme_size = 14,
+    point_size = 1) +
+  ggplot2::ggtitle("Va_2 branch of POT") +
+  center_plot_title(face = "plain")
+
+p3 <- plotLineageCurveOnReduc(
+  sce_os_all, 2, dimred = "PHATE",
+  linewidth = 1.2, theme_size = 14,
+  point_size = 1) +
+  ggplot2::ggtitle("Va_4 branch of POT") +
+  center_plot_title(face = "plain")
+
+p4 <- plotLineageCurveOnReduc(
+  sce_os_all, 3, dimred = "PHATE",
+  linewidth = 1.2, theme_size = 14,
+  point_size = 1) +
+  ggplot2::ggtitle("Va_3 branch of POT") +
+  center_plot_title(face = "plain")
+
+p <- p1 + p2 + p3 + p4 +
+  patchwork::plot_layout(ncol = 2) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  font_plot_tag(size = 16) &
+  ggplot2::coord_fixed() &
+  theme_dimred()
+
+p
+```
+
+```{r fig.height=12, fig.width=14}
+plist <- purrr::imap(
+  .x = list(
+    "1DPI" = sce_os_1dpi,
+    "2DPI" = sce_os_2dpi,
+    "3DPI" = sce_os_3dpi),
+  .f = function(x, name) {
+    plotPseudotimeDensity(x, c(
+      "Lineage1" = "Va_2 branch of POT",
+      "Lineage2" = "Va_4 branch of POT",
+      "Lineage3" = "Va_3 branch of POT"))
+  }
+)
+
+(p <- patchwork::wrap_plots(plist, ncol = 1, guides = "collect") &
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.015)))
+```
+
+## Future plans
+
+### Candidate genes for ISH validation
+
+```{r}
+marker_cosg_ish <- COSG::cosg(
+ obj,
+ groups = "all",
+ assay = "RNA",
+ slot = "data",
+ mu = 1,
+ n_genes_user = 2000
+)
+```
+
+#### Me_1 conserved markers
+
+```{r}
+Me_1_marker <- xfun::cache_rds(
+  file = "conserved_markers_me_1.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindConservedMarkers(
+    obj, ident.1 = "Me_1", grouping.var = "group")
+)
+```
+
+```{r}
+conserved_Me_1 <- intersect(marker_cosg_ish$names$Me_1, rownames(Me_1_marker))
+conserved_Me_1 <- structure(
+  marker_cosg_ish$scores$Me_1[match(conserved_Me_1, marker_cosg_ish$names$Me_1)],
+  names = conserved_Me_1
+)
+
+conserved_Me_1 <- sort(conserved_Me_1, decreasing = TRUE)[1:50]
+```
+
+```{r}
+data.frame(
+  Gene = names(conserved_Me_1),
+  Score = conserved_Me_1
+)
+```
+
+Explanation for negative values in `Seurat::DotPlot`:
+
+> DotPlot uses the scaled data (mean 0 sd 1), so the negative values here correspond to clusters with expression below the mean expression across the whole dataset. This helps to visualize lowly expressing clusters and highly expressing clusters on the same scale.
+> —— https://github.com/satijalab/seurat/issues/3084
+
+```{r fig.height=12, fig.width=16}
+p1 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Me_1))) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Specific markers for Me_1") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p2 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Me_1)),
+    group.by = "group",
+    idents = "Me_1") +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Conserved markers for Me_1") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
+
+p
+```
+
+#### Me_2 conserved markers
+
+```{r}
+Me_2_marker <- xfun::cache_rds(
+  file = "conserved_markers_me_2.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindConservedMarkers(
+    obj, ident.1 = "Me_2", grouping.var = "group")
+)
+```
+
+```{r}
+conserved_Me_2 <- intersect(marker_cosg_ish$names$Me_2, rownames(Me_2_marker))
+conserved_Me_2 <- structure(
+  marker_cosg_ish$scores$Me_2[match(conserved_Me_2, marker_cosg_ish$names$Me_2)],
+  names = conserved_Me_2
+)
+
+conserved_Me_2 <- sort(conserved_Me_2, decreasing = TRUE)[1:50]
+```
+
+```{r}
+data.frame(
+  Gene = names(conserved_Me_2),
+  Score = conserved_Me_2
+)
+```
+
+```{r fig.height=12, fig.width=16}
+p1 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Me_2))) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Specific markers for Me_2") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p2 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Me_2)),
+    group.by = "group",
+    idents = "Me_2") +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Conserved markers for Me_2") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
+
+p
+```
+
+```{r}
+ish_used <- c(
+  F31 = "TraesCS5B02G039000",
+  F32 = "TraesCS1B02G413100",
+  F33 = "TraesCS6B02G402800",
+  F34 = "TraesCS1B02G404500",
+  F35 = "TraesCS5D02G456600",
+  F36 = "TraesCS3B02G523500",
+  F37 = "TraesCS5D02G425100",
+  F38 = "TraesCS5D02G010200"
+)
+
+p <- Seurat::DotPlot(obj,
+    features = rev(setNames(ish_used, NULL))) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Markers used for Me_2") +
+  ggplot2::scale_x_discrete(
+    labels = sprintf("%s (%s)", rev(ish_used), rev(names(ish_used)))) +
+  rotate_x_labels() +
+  center_plot_title()
+
+p
+```
+
+
+#### Va_2 conserved markers
+
+```{r}
+Va_2_marker <- xfun::cache_rds(
+  file = "conserved_markers_va_2.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindConservedMarkers(
+    obj, ident.1 = "Va_2", grouping.var = "group")
+)
+```
+
+```{r}
+conserved_Va_2 <- intersect(marker_cosg_ish$names$Va_2, rownames(Va_2_marker))
+conserved_Va_2 <- structure(
+  marker_cosg_ish$scores$Va_2[match(conserved_Va_2, marker_cosg_ish$names$Va_2)],
+  names = conserved_Va_2
+)
+
+conserved_Va_2 <- sort(conserved_Va_2, decreasing = TRUE)[1:50]
+```
+
+```{r}
+data.frame(
+  Gene = names(conserved_Va_2),
+  Score = conserved_Va_2
+)
+```
+
+```{r fig.height=12, fig.width=16}
+p1 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_2))) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Specific markers for Va_2") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p2 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_2)),
+    group.by = "group",
+    idents = "Va_2") +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Conserved markers for Va_2") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
+
+p
+```
+
+#### Va_3 conserved markers
+
+```{r}
+Va_3_marker <- xfun::cache_rds(
+  file = "conserved_markers_va_3.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindConservedMarkers(
+    obj, ident.1 = "Va_3", grouping.var = "group")
+)
+```
+
+```{r}
+conserved_Va_3 <- intersect(marker_cosg_ish$names$Va_3, rownames(Va_3_marker))
+conserved_Va_3 <- structure(
+  marker_cosg_ish$scores$Va_3[match(conserved_Va_3, marker_cosg_ish$names$Va_3)],
+  names = conserved_Va_3
+)
+
+conserved_Va_3 <- sort(conserved_Va_3, decreasing = TRUE)
+```
+
+```{r}
+data.frame(
+  Gene = names(conserved_Va_3),
+  Score = conserved_Va_3
+)
+```
+
+```{r fig.height=8, fig.width=16}
+p1 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_3))) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Specific markers for Va_3") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p2 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_3)),
+    group.by = "group",
+    idents = "Va_3") +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Conserved markers for Va_3") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
+
+p
+```
+
+#### Va_4 conserved markers
+
+```{r}
+Va_4_marker <- xfun::cache_rds(
+  file = "conserved_markers_va_4.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindConservedMarkers(
+    obj, ident.1 = "Va_4", grouping.var = "group")
+)
+```
+
+```{r}
+conserved_Va_4 <- intersect(marker_cosg_ish$names$Va_4, rownames(Va_4_marker))
+conserved_Va_4 <- structure(
+  marker_cosg_ish$scores$Va_4[match(conserved_Va_4, marker_cosg_ish$names$Va_4)],
+  names = conserved_Va_4
+)
+
+conserved_Va_4 <- sort(conserved_Va_4, decreasing = TRUE)[1:50]
+```
+
+```{r}
+data.frame(
+  Gene = names(conserved_Va_4),
+  Score = conserved_Va_4
+)
+```
+
+```{r fig.height=12, fig.width=16}
+p1 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_4))) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Specific markers for Va_4") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p2 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_4)),
+    group.by = "group",
+    idents = "Va_4") +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Conserved markers for Va_4") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
+
+p
+```
+
+#### Va_234 conserved markers
+
+```{r}
+Va_234_marker <- xfun::cache_rds(
+  file = "conserved_markers_va_234.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = Seurat::FindConservedMarkers(
+    obj, ident.1 = c("Va_2", "Va_3", "Va_4"), grouping.var = "group")
+)
+```
+
+```{r}
+Va_234_cosg <- formatCosgTable(marker_cosg_ish) |>
+  dplyr::filter(cluster %in% paste0("Va_", 2:4)) |>
+  dplyr::group_by(names) |>
+  dplyr::summarise(scores = max(scores)) |>
+  dplyr::arrange(dplyr::desc(scores))
+```
+
+```{r}
+conserved_Va_234 <- intersect(Va_234_cosg$names, rownames(Va_234_marker))
+conserved_Va_234 <- structure(
+  Va_234_cosg$scores[match(conserved_Va_234, Va_234_cosg$names)],
+  names = conserved_Va_234
+)
+
+conserved_Va_234 <- sort(conserved_Va_234, decreasing = TRUE)
+```
+
+```{r}
+data.frame(
+  Gene = names(conserved_Va_234),
+  Score = conserved_Va_234
+)
+```
+
+```{r fig.height=12, fig.width=16}
+p1 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_234))) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Specific markers for Va_234") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p2 <- Seurat::DotPlot(obj,
+    features = rev(names(conserved_Va_234)),
+    group.by = "group",
+    idents = paste0("Va_", 2:4)) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Conserved markers for Va_234") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
+
+p
+```
+
+#### Va_β conserved markers
+
+```{r}
+Va_β_markers <- marker_cosg$names$Va_β[1:50]
+```
+
+```{r fig.height=12, fig.width=16}
+p1 <- Seurat::DotPlot(obj,
+    features = rev(Va_β_markers)) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Specific markers for Va_β") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p2 <- Seurat::DotPlot(obj,
+    features = rev(Va_β_markers),
+    group.by = "group",
+    idents = paste0("Va_", 2:4)) +
+  ggplot2::coord_flip() +
+  ggplot2::ggtitle("Conserved markers for Va_β") +
+  rotate_x_labels() +
+  center_plot_title()
+
+p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
+
+p
+```
+
+```{r}
+knitr::knit_exit()
+```
