@@ -437,10 +437,10 @@ ggpreview <- function(ggobj, ext = ".png",...) {
 
 pltpreview <- function(
     fig, ext = ".png",
-    width = 7, height = 7, ...) {
+    width = 7, height = 7, dpi = 300, ...) {
   temp.file <- paste0(tempfile(), ext)
   fig$set_size_inches(width, height)
-  fig$savefig(temp.file, ...)
+  fig$savefig(temp.file, dpi = dpi, ...)
   utils::browseURL(temp.file)
 }
 
@@ -511,9 +511,9 @@ remove_strip <- function(...) {
     ...)
 }
 
-legend_override <- function(legend_key, overrides, ...) {
+legend_override <- function(key, overrides, ...) {
   args <- list()
-  args[[legend_key]] <- ggplot2::guide_legend(
+  args[[key]] <- ggplot2::guide_legend(
     override.aes = overrides, ...)
   do.call(ggplot2::guides, args)
 }

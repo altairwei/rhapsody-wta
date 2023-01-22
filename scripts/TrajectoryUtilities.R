@@ -391,7 +391,10 @@ runScanorama <- function(sce, nfeatures = 2000L, ..., convert = TRUE) {
 
 plotSlingshotCurveOnReduc <- function(
     sce, dimred = "UMAP",
-    ncomponents = 2, linewidth = 1, ...) {
+    colour_by = "pseudotime",
+    ncomponents = 2, linewidth = 1, 
+    lineage_rename = NULL,
+    lineage_label_size = 4, ...) {
 
   pseudo.paths <- slingshot::slingPseudotime(sce)
 
@@ -423,17 +426,24 @@ plotSlingshotCurveOnReduc <- function(
     curve_list <- list()
 
   curve_list <- purrr::imap(curve_list, function(path, idx) {
-    path$lineage <- paste("Lineage", idx)
+    path$lineage <- paste0("Lineage", idx)
     path
   })
 
   lineage_anno <- lapply(curve_list, function(path) path[nrow(path), ]) |>
     dplyr::bind_rows()
 
+  if (!is.null(lineage_rename))
+    lineage_anno$lineage <- dplyr::recode(
+      lineage_anno$lineage, !!!lineage_rename)
+
   curve <- dplyr::bind_rows(curve_list)
 
   p <- scater::plotReducedDim(
-    sce, dimred = dimred, colour_by = I(shared.pseudo), ...)
+    sce, dimred = dimred,
+    colour_by = if (colour_by == "pseudotime")
+      I(shared.pseudo) else colour_by,
+    ...)
 
   p <- p + ggplot2::geom_path(
       data = curve,
@@ -454,7 +464,8 @@ plotSlingshotCurveOnReduc <- function(
         label = "lineage"
       ),
       bg.color = "white",
-      show.legend = FALSE
+      show.legend = FALSE,
+      size = lineage_label_size
     )
 
   p
@@ -638,9 +649,11 @@ plotCurveTopology <- function(sce) {
     empty_strip()
 }
 
-plotPseudotimeDensity <- function(sce) {
+plotPseudotimeDensity <- function(sce, lineage_rename = NULL) {
   curve_data <- formatCurveData(sce)
-  
+  if (!is.null(lineage_rename))
+    curve_data$lineages <- dplyr::recode(curve_data$lineages, !!!lineage_rename)
+
   p1 <- curve_data |>
     ggplot2::ggplot(ggplot2::aes(
       x = pseudotime, fill = conditions, linetype = conditions)) +
@@ -654,18 +667,19 @@ plotPseudotimeDensity <- function(sce) {
     ggplot2::theme(
       strip.background = ggplot2::element_rect(fill = "white")) +
     remove_x_axis()
-  
+
   p2 <- curve_data |>
     ggplot2::ggplot(ggplot2::aes(
       x = pseudotime, y = conditions, color = cellType)) +
     ggplot2::geom_point(shape = 124, size = 4) +
     ggplot2::facet_wrap(~lineages, scales = "free_x") +
     ggthemes::scale_color_tableau() +
+    ggplot2::scale_y_discrete(limits = rev) +
     legend_override("color", list(shape = 15)) +
     cowplot::theme_cowplot() +
     remove_strip()
-  
-  p1 / p2 + patchwork::plot_layout(heights = c(5, 2), guides = "collect")
+
+  p1 / p2 + patchwork::plot_layout(heights = c(5, 2), guides = "auto")
 }
 
 pairwiseProgressionTest <- function(sce, conditions) {
@@ -691,11 +705,12 @@ pairwiseProgressionTest <- function(sce, conditions) {
   }) |> dplyr::bind_rows()
 }
 
-pairwiseFateSelectionTest <- function(sce, conditions) {
+pairwiseFateSelectionTest <- function(sce, conditions, seed = 1) {
   pst <- slingshot::slingPseudotime(sce)
   ws <- slingshot::slingCurveWeights(sce)
   pairs <- as.list(as.data.frame(
     combn(unique(conditions), 2)))
+  set.seed(seed)
   lapply(pairs, function(pair) {
     cond1 <- conditions == pair[1]
     cond2 <- conditions == pair[2]

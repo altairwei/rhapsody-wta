@@ -76,6 +76,7 @@ scater::plotReducedDim(sce_precursor,
     text_size = 3) +
   ggplot2::guides(color = ggplot2::guide_legend(
     override.aes = list(size = 2))) +
+  ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::coord_fixed() +
   theme_dimred()
 ```
@@ -85,14 +86,16 @@ scater::plotReducedDim(sce_precursor,
 ```{r}
 adata_precursor <- runPAGA(
   sce_precursor, group_key = "cluster_id",
-  use.dimred = "HARMONY", other.dimred = "PHATE",
-  root = "Me_4", calc_dpt = TRUE)
+  use.dimred = "HARMONY", other.dimred = "PHATE")
 ```
 
 ```{r fig.height=7, fig.width=7}
 p <- plotPagaGraph(adata_precursor, basis = "phate",
               edge_cex = 5, node_cex = 5, label_cex = 2, point_alpha = 1) +
-  ggplot2::coord_fixed()
+  ggplot2::xlab("PHATE 1") +
+  ggplot2::ylab("PHATE 2") +
+  ggplot2::coord_fixed() +
+  theme_dimred()
 
 p
 ```
@@ -137,16 +140,18 @@ color_cls <- setNames(
   levels(adata$obs$cellType))
 ```
 
-
-```{python plot-embed-stream, fig.height=7, fig.width=7}
-ax = scv.pl.velocity_embedding_stream(
-  r.adata, basis="phate", color="cellType", palette=r.color_cls,
-  dpi=100, title='', figsize=(7, 7), show=False)
+```{python fig.height=7, fig.width=7}
+fig = plt.figure()
+ax = fig.add_subplot()
 ax.set_aspect('equal', 'box')
+ax = scv.pl.velocity_embedding_stream(
+  r.adata, basis="phate", color="cellType", palette = r.color_cls,
+  figsize = (7, 7), size = 44, alpha = 1,
+  title = "", ax = ax, show=False, xlabel = "PHATE 1", ylabel = "PHATE 2")
 plt.show()
 ```
 
-```{r}
+```{r include=FALSE, results='hide'}
 rm(sce_precursor, adata, adata_precursor)
 gc()
 ```
@@ -232,7 +237,7 @@ p
 > Test whether or not slingshot should be fitted independently for different conditions or not.
 > The null hypothesis that a common trajectory should be fitted.
 
-这个测试应该在多线程的情况下做，不然速度太慢了。
+是否需要为不同的 treatment 分别拟合轨迹：
 
 ```{r eval=FALSE}
 top_res <- condiments::topologyTest(
@@ -240,22 +245,29 @@ top_res <- condiments::topologyTest(
   conditions = sce_me_all$treatment,
   methods = "Classifier",
   parallel = TRUE,
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6),
   threshs = 0.05)
 
 top_res
 ```
 
-很明显，不同 conditions 之间应该拟合不同的轨迹。
+输出结果：`statistic = 0.4794469` 以及 `p.value = 1` ，即不应该为 treatment 分别拟合轨迹。
+
+是否应该为 time 分别拟合轨迹？
 
 ```{r eval=FALSE}
 top_res_time <- condiments::topologyTest(
   sds = sce_me_all$slingshot,
-  conditions = sce_me_all$treatment,
+  conditions = sce_me_all$time,
   methods = "Classifier",
+  parallel = TRUE,
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6),
   threshs = 0.05)
 
 top_res_time
 ```
+
+输出结果：`statistic = 0.5499402` 以及 `p.value = 5.686433e-75` ，应该为 time 分别拟合轨迹。
 
 #### 按时间拆分轨迹
 
@@ -327,7 +339,7 @@ scater::plotReducedDim(sce_me_1dpi, dimred = "PHATE",
 
 #### 轨迹推断 {.tabset}
 
-###### PHATE
+##### PHATE
 
 ```{r fig.height=5, fig.width=14}
 plotLineagesOnReduc(sce_me_1dpi, dimred = "PHATE")
@@ -339,17 +351,20 @@ plotLineagesOnReduc(sce_me_1dpi, dimred = "PHATE")
 > The null hypothesis that a common trajectory should be fitted.
 
 ```{r eval=FALSE}
+sds_1dpi <- metadata(sce_me_all)$sdslist[["1DPI"]]
+conditions <- sce_me_all$treatment[match(rownames(sds_1dpi), colnames(sce_me_all))]
+
 top_res <- condiments::topologyTest(
-  sds = sce_me_1dpi$slingshot,
-  conditions = sce_me_1dpi$treatment,
+  sds = sds_1dpi,
+  conditions = conditions,
   methods = "Classifier",
   parallel = TRUE,
-  threshs = 0.05)
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
 
 top_res
 ```
 
-试验结果拒绝了零假设，需要为每个条件单独构建轨迹。
+试验结果：`statistic = 0.4741313` 以及 `p.value = 1`，不能拒绝零假设，即不应该为 treatment 分别拟合轨迹。
 
 ```{r}
 plotMultipleSlingshot(
@@ -388,7 +403,7 @@ prog_res
 
 ```{r}
 pairwiseProgressionTest(sce_me_1dpi, conditions = sce_me_1dpi$treatment) |>
-  download_table()
+  download_table("1dpi_me_ks")
 ```
 
 可以看出与 Lineage1 相比，Lineage2 的 MOCK 与 PNR2/TR4 的分布差异是显著的 (p-value \< 0.05)。
@@ -451,13 +466,13 @@ dif_res
 
 ```{r}
 pairwiseFateSelectionTest(sce_me_1dpi, conditions = sce_me_1dpi$treatment) |>
-  download_table()
+  download_table("1dpi_me_rfc")
 ```
 
 可以发现 PNR2 与 TR4 的命运选择的显著性 p-value 是最小的。
 
 
-```{r}
+```{r include=FALSE, results='hide'}
 rm(sce_1dpi, sce_me_da_1dpi)
 gc()
 ```
@@ -518,7 +533,7 @@ scater::plotReducedDim(sce_me_2dpi, dimred = "PHATE",
 
 #### 轨迹推断 {.tabset}
 
-###### PHATE
+##### PHATE
 
 ```{r fig.height=5, fig.width=14}
 plotLineagesOnReduc(sce_me_2dpi, dimred = "PHATE")
@@ -527,17 +542,20 @@ plotLineagesOnReduc(sce_me_2dpi, dimred = "PHATE")
 #### 差异拓扑分析
 
 ```{r eval=FALSE}
+sds_2dpi <- metadata(sce_me_all)$sdslist[["2DPI"]]
+conditions <- sce_me_all$treatment[match(rownames(sds_2dpi), colnames(sce_me_all))]
+
 top_res <- condiments::topologyTest(
-  sds = sce_me_2dpi$slingshot,
-  conditions = sce_me_2dpi$treatment,
+  sds = sds_2dpi,
+  conditions = conditions,
   methods = "Classifier",
   parallel = TRUE,
-  threshs = 0.05)
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
 
 top_res
 ```
 
-试验结果拒绝了零假设，需要为每个条件单独构建轨迹。
+试验结果：`statistic = 0.5307083` 以及 `p.value = 5.823994e-10`
 
 ```{r}
 plotMultipleSlingshot(
@@ -576,7 +594,7 @@ prog_res
 
 ```{r}
 pairwiseProgressionTest(sce_me_2dpi, conditions = sce_me_2dpi$treatment) |>
-  download_table()
+  download_table("2dpi_me_ks")
 ```
 
 可以看出与 Lineage1 相比，Lineage2 的 MOCK 与 PNR2/TR4 的分布差异是显著的 (p-value \< 0.05)。
@@ -624,7 +642,7 @@ dif_res
 
 ```{r}
 pairwiseFateSelectionTest(sce_me_2dpi, conditions = sce_me_2dpi$treatment) |>
-  download_table()
+  download_table("2dpi_me_rfc")
 ```
 
 ### 2.4 分析 3DPI 叶肉世系
@@ -683,7 +701,7 @@ scater::plotReducedDim(sce_me_3dpi, dimred = "PHATE",
 
 #### 轨迹推断 {.tabset}
 
-###### PHATE
+##### PHATE
 
 ```{r fig.height=5, fig.width=14}
 plotLineagesOnReduc(sce_me_3dpi, dimred = "PHATE")
@@ -692,17 +710,20 @@ plotLineagesOnReduc(sce_me_3dpi, dimred = "PHATE")
 #### 差异拓扑分析
 
 ```{r eval=FALSE}
+sds_3dpi <- metadata(sce_me_all)$sdslist[["3DPI"]]
+conditions <- sce_me_all$treatment[match(rownames(sds_3dpi), colnames(sce_me_all))]
+
 top_res <- condiments::topologyTest(
-  sds = sce_me_3dpi$slingshot,
-  conditions = sce_me_2dpi$treatment,
+  sds = sds_3dpi,
+  conditions = conditions,
   methods = "Classifier",
   parallel = TRUE,
-  threshs = 0.05)
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
 
 top_res
 ```
 
-试验结果拒绝了零假设，需要为每个条件单独构建轨迹。
+试验结果：`statistic = 0.6295421` 以及 `p.value = 1.361838e-145`
 
 ```{r}
 plotMultipleSlingshot(
@@ -728,7 +749,7 @@ plotCurveTopology(sce_me_3dpi)
 
 ```{r}
 pairwiseProgressionTest(sce_me_3dpi, conditions = sce_me_3dpi$treatment) |>
-  download_table()
+  download_table("3dpi_me_ks")
 ```
 
 #### 差异命运选择
@@ -761,10 +782,10 @@ p
 
 ```{r}
 pairwiseFateSelectionTest(sce_me_3dpi, conditions = sce_me_3dpi$treatment) |>
-  download_table()
+  download_table("3dpi_me_rfc")
 ```
 
-```{r}
+```{r include=FALSE, results='hide'}
 rm(sce_me_all, sce_me_1dpi, sce_me_2dpi, sce_me_3dpi)
 gc()
 ```
@@ -838,6 +859,36 @@ plotSlingshotCurveOnReduc(sce_os_all, dimred = "PHATE",
 ```
 
 #### 差异拓扑分析
+
+是否需要为不同的 treatment 分别拟合轨迹：
+
+```{r eval=FALSE}
+top_res <- condiments::topologyTest(
+  sds = sce_os_all$slingshot,
+  conditions = sce_os_all$treatment,
+  methods = "Classifier",
+  parallel = TRUE,
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
+
+top_res
+```
+
+输出结果：`statistic = 0.8269495` 以及 `p.value = 0` ，即应该为 treatment 分别拟合轨迹。
+
+是否应该为 time 分别拟合轨迹？
+
+```{r eval=FALSE}
+top_res_time <- condiments::topologyTest(
+  sds = sce_os_all$slingshot,
+  conditions = sce_os_all$time,
+  methods = "Classifier",
+  parallel = TRUE,
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
+
+top_res_time
+```
+
+输出结果：`statistic = 0.830416` 以及 `p.value = 0` ，应该为 time 分别拟合轨迹。
 
 ```{r fig.height=5, fig.width=10}
 (p <- plotCurveTopology(sce_os_all))
@@ -945,7 +996,7 @@ scater::plotReducedDim(
 
 #### 轨迹推断 {.tabset}
 
-###### PHATE
+##### PHATE
 
 ```{r}
 plotSlingshotCurveOnReduc(sce_os_1dpi, dimred = "PHATE") +
@@ -960,15 +1011,20 @@ plotLineagesOnReduc(sce_os_1dpi, dimred = "PHATE") &
 #### 差异拓扑分析
 
 ```{r eval=FALSE}
+sds_1dpi <- metadata(sce_os_all)$sdslist[["1DPI"]]
+conditions <- sce_os_all$treatment[match(rownames(sds_1dpi), colnames(sce_os_all))]
+
 top_res <- condiments::topologyTest(
-  sds = sce_os_1dpi$slingshot,
-  conditions = sce_os_1dpi$treatment,
+  sds = sds_1dpi,
+  conditions = conditions,
   methods = "Classifier",
   parallel = TRUE,
-  threshs = 0.05)
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
 
 top_res
 ```
+
+试验结果：`statistic = 0.6681309` 以及 `p.value = 6.353078e-108`
 
 ```{r}
 plotMultipleSlingshot(
@@ -1005,7 +1061,7 @@ prog_res
 
 ```{r}
 pairwiseProgressionTest(sce_os_1dpi, conditions = sce_os_1dpi$treatment) |>
-  download_table()
+  download_table("1dpi_os_ks")
 ```
 
 #### 差异命运选择
@@ -1034,7 +1090,7 @@ p <- formatCurveData(sce_os_1dpi) |>
     color = cellType, shape = conditions)) +
   ggplot2::geom_point(
     size = 1, position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
-  ggplot2::scale_color_brewer(type = "qual") +
+  ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
   legend_override("color", list(size = 2)) +
   ggtern::theme_rgbw(base_size = 10) +
@@ -1063,7 +1119,7 @@ p
 
 ```{r}
 pairwiseFateSelectionTest(sce_os_1dpi, conditions = sce_os_1dpi$treatment) |>
-  download_table()
+  download_table("1dpi_os_rfc")
 ```
 
 ### 3.3 分析 2DPI 外鞘世系
@@ -1127,7 +1183,7 @@ scater::plotReducedDim(
 
 #### 轨迹推断 {.tabset}
 
-###### PHATE
+##### PHATE
 
 ```{r}
 plotSlingshotCurveOnReduc(sce_os_2dpi, dimred = "PHATE") +
@@ -1142,15 +1198,20 @@ plotLineagesOnReduc(sce_os_2dpi, dimred = "PHATE") &
 #### 差异拓扑分析
 
 ```{r eval=FALSE}
+sds_2dpi <- metadata(sce_os_all)$sdslist[["2DPI"]]
+conditions <- sce_os_all$treatment[match(rownames(sds_2dpi), colnames(sce_os_all))]
+
 top_res <- condiments::topologyTest(
-  sds = sce_os_2dpi$slingshot,
-  conditions = sce_os_2dpi$treatment,
+  sds = sds_2dpi,
+  conditions = conditions,
   methods = "Classifier",
   parallel = TRUE,
-  threshs = 0.05)
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
 
 top_res
 ```
+
+试验结果：`statistic = 0.6709302` 以及 `p.value = 5.479993e-114`
 
 ```{r}
 plotMultipleSlingshot(
@@ -1185,7 +1246,7 @@ prog_res
 
 ```{r}
 pairwiseProgressionTest(sce_os_2dpi, conditions = sce_os_2dpi$treatment) |>
-  download_table()
+  download_table("2dpi_os_ks")
 ```
 
 #### 差异命运选择
@@ -1213,7 +1274,7 @@ p <- formatCurveData(sce_os_2dpi) |>
     color = cellType, shape = conditions)) +
   ggplot2::geom_point(
     size = 1, position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
-  ggplot2::scale_color_brewer(type = "qual") +
+  ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
   legend_override("color", list(size = 2)) +
   ggtern::theme_rgbw(base_size = 10) +
@@ -1239,7 +1300,7 @@ p
 
 ```{r}
 pairwiseFateSelectionTest(sce_os_2dpi, conditions = sce_os_2dpi$treatment) |>
-  download_table()
+  download_table("2dpi_os_rfc")
 ```
 
 ### 3.4 分析 3DPI 的外鞘世系
@@ -1303,7 +1364,7 @@ scater::plotReducedDim(
 
 #### 轨迹推断 {.tabset}
 
-###### PHATE
+##### PHATE
 
 ```{r}
 plotSlingshotCurveOnReduc(sce_os_3dpi, dimred = "PHATE") +
@@ -1318,15 +1379,20 @@ plotLineagesOnReduc(sce_os_3dpi, dimred = "PHATE") &
 #### 差异拓扑分析
 
 ```{r eval=FALSE}
+sds_3dpi <- metadata(sce_os_all)$sdslist[["3DPI"]]
+conditions <- sce_os_all$treatment[match(rownames(sds_3dpi), colnames(sce_os_all))]
+
 top_res <- condiments::topologyTest(
-  sds = sce_os_3dpi$slingshot,
-  conditions = sce_os_3dpi$treatment,
+  sds = sds_3dpi,
+  conditions = conditions,
   methods = "Classifier",
   parallel = TRUE,
-  threshs = 0.05)
+  BPPARAM = BiocParallel::MulticoreParam(workers = 6))
 
 top_res
 ```
+
+试验结果：`statistic = 0.845232` 以及 `p.value = 0`
 
 ```{r}
 plotMultipleSlingshot(
@@ -1352,7 +1418,7 @@ plotCurveTopology(sce_os_3dpi)
 
 ```{r}
 pairwiseProgressionTest(sce_os_3dpi, conditions = sce_os_3dpi$treatment) |>
-  download_table()
+  download_table("3dpi_os_ks")
 ```
 
 #### 差异命运选择
@@ -1380,7 +1446,7 @@ p <- formatCurveData(sce_os_3dpi) |>
     color = cellType, shape = conditions)) +
   ggplot2::geom_point(
     size = 1, position= ggtern::position_jitter_tern(0.1, 0.1, 0.1)) +
-  ggplot2::scale_color_brewer(type = "qual") +
+  ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
   legend_override("color", list(size = 2)) +
   ggtern::theme_rgbw(base_size = 10) +
@@ -1405,10 +1471,10 @@ p
 
 ```{r}
 pairwiseFateSelectionTest(sce_os_3dpi, conditions = sce_os_3dpi$treatment) |>
-  download_table()
+  download_table("3dpi_os_rfc")
 ```
 
-```{r}
+```{r include=FALSE, results='hide'}
 rm(sce_os_all, sce_os_1dpi, sce_os_2dpi, sce_os_3dpi)
 gc()
 ```

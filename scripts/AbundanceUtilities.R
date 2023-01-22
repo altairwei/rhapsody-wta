@@ -105,7 +105,9 @@ association.SingleCellExperiment <- function(
   x
 }
 
-plotNcorrRidges <- function(sce) {
+plotNcorrRidges <- function(
+    sce, theme_size = 11,
+    y_expand = ggplot2::expansion(mult = c(0, 0.2))) {
   cnaRes <- metadata(sce)$cnaRes
   data.frame(cna_ncorrs = sce$cna_ncorrs,
              cellType = sce$cluster_id) |>
@@ -122,8 +124,8 @@ plotNcorrRidges <- function(sce) {
     ggplot2::annotate(
       geom = "label", x = -cnaRes$fdr_5p_t, y = Inf, 
       label = "5% FDR", hjust = 0.5, vjust = 1, size = 5) +
-    ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 3))) +
-    ggridges::theme_ridges()
+    ggplot2::scale_y_discrete(limits=rev, expand = y_expand) +
+    ggridges::theme_ridges(theme_size)
 }
 
 coffGeneList <- function(ncorrs, exprs) {
@@ -180,7 +182,8 @@ gseaTable <- function(gsea) {
 
 plot_bootstrap_distribution_for_mock <- function(
     res, clusters = NULL,
-    facet_by = "cellTypes", ncol = NULL, nrow = NULL
+    facet_by = "cellTypes", ncol = NULL, nrow = NULL,
+    theme_size = 11
 ) {
   # Use BCa as CI
   df_to_plot <- res$results %>%
@@ -216,7 +219,7 @@ plot_bootstrap_distribution_for_mock <- function(
       stat = "summary", fun = median,
       position = ggplot2::position_dodge(width = 0.4)) +
     ggplot2::scale_y_continuous(labels = scales::percent) +
-    ggplot2::theme_bw() +
+    ggplot2::theme_bw(theme_size) +
     NULL
   
   if (!is.null(facet_by))
