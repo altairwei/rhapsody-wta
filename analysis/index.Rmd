@@ -13,10 +13,7 @@ editor_options:
   - [Find and Remove Doublets](quality_control_of_doublets.html)
   - [Ambient Gene Expressions Correction](quality_control_of_ambient_rna.html)
 - Integration And Annotation
-  - [Integration by Scanorama](integration_by_scanorama.html)
-  - [Integration by scVI](integration_by_scVI.html)
-  - [Integration by FastMNN](integration_by_FastMNN.html)
-  - [Integration by Seurat v3 RPCA](integration_by_seurat_rpca.html)
+  - [Testing of several data integration methods](integration_testing_report.html)
   - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
   - [Integration adn Annotation of All Samples](integration_of_all_samples.html)
   - [Sample Correlation Analysis](sample_correlation_analysis.html)
