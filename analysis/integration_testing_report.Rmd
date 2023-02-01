@@ -138,7 +138,7 @@ obj_merged <- obj_merged %>%
     Seurat::FindClusters(resolution = 0.2, verbose = FALSE, random.seed = 8964)
 ```
 
-#### 降维图 {.tabset}
+#### 细胞类型 {.tabset}
 
 ```{r}
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_merged))), palette = NULL)
@@ -170,6 +170,30 @@ p2 <- Seurat::DimPlot(obj_merged, reduction = "umap", group.by = "sample", pt.si
   #ggthemes::scale_color_tableau("Tableau 20") +
   ggplot2::coord_fixed()
 p1 + p2
+```
+
+#### 时间分面 {.tabset}
+
+##### t-SNE
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "tsne",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
+
+##### UMAP
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "umap",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
 ```
 
 ### 同源标志基因矩阵
@@ -338,6 +362,29 @@ p2 <- Seurat::DimPlot(obj_merged, reduction = "umap", group.by = "sample", pt.si
 p1 + p2
 ```
 
+#### 时间分面 {.tabset}
+
+##### t-SNE
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "tsne",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
+
+##### UMAP
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "umap",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
 
 ### 同源标志基因矩阵
 
@@ -458,7 +505,7 @@ obj_merged <- obj_merged %>%
     Seurat::FindClusters(resolution = 0.2, verbose = FALSE)
 ```
 
-#### 降维图 {.tabset}
+#### 细胞类型 {.tabset}
 
 ```{r}
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_merged))), palette = NULL)
@@ -492,6 +539,29 @@ p2 <- Seurat::DimPlot(obj_merged, reduction = "umap", group.by = "sample", pt.si
 p1 + p2
 ```
 
+#### 时间分面 {.tabset}
+
+##### t-SNE
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "tsne",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
+
+##### UMAP
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_merged, reduction = "umap",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
 
 ### 同源标志基因矩阵
 
@@ -556,6 +626,8 @@ deconvHeatmap(CIBER)
 
 我们选择 Seurat RPCA 方法来整合样本，因为 0~3DPI 的 MOCK 反应着胚芽鞘的生长发育，样本细胞之间不需要太 “对齐” 。参数 `k.anchor=5` 也选择默认值。
 
+### 数据整合
+
 ```{r message=FALSE, warning=FALSE}
 obj_mock_combined <- rhapsodykit::integrated_sample_analysis(
     obj_list, reduction = "rpca",
@@ -565,6 +637,14 @@ obj_mock_combined <- rhapsodykit::integrated_sample_analysis(
   )
 ```
 
+```{r fig.height=5, fig.width=12}
+p1 <- Seurat::DimPlot(
+  object = obj_mock_combined, reduction = "pca", pt.size = .1, group.by = "group")
+p2 <- Seurat::VlnPlot(
+  object = obj_mock_combined, features = "PC_1", group.by = "sample", pt.size = .1)
+p1 + p2
+```
+
 ### 细胞类型划分
 
 ```{r}
@@ -572,7 +652,7 @@ obj_mock_combined <- Seurat::FindClusters(
   obj_mock_combined, resolution = 0.5, verbose = FALSE)
 ```
 
-#### 降维图 {.tabset}
+#### 细胞类型 {.tabset}
 
 ```{r}
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_mock_combined))), palette = NULL)
@@ -594,6 +674,30 @@ p2 <- Seurat::DimPlot(obj_mock_combined, reduction = "umap", label = TRUE, repel
 p1 + p2 & ggplot2::coord_fixed()
 ```
 
+#### 时间分面 {.tabset}
+
+##### t-SNE
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_mock_combined, reduction = "tsne",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
+
+##### UMAP
+
+```{r fig.height=5, fig.width=18}
+Seurat::DimPlot(
+    obj_mock_combined, reduction = "umap",
+    group.by = "sample", split.by = "time",
+    pt.size = .1) +
+  ggthemes::scale_color_tableau("Tableau 20") +
+  ggplot2::coord_fixed()
+```
+
 ### 标志基因矩阵
 
 ```{r fig.width=15, fig.height=7}
@@ -601,9 +705,9 @@ Seurat::DefaultAssay(obj_mock_combined) <- "RNA"
 plot_markers(obj_mock_combined, cluster.idents = TRUE)
 ```
 
-## 新鉴定的标志基因
+### 新鉴定的标志基因
 
-```{r cache=TRUE}
+```{r}
 marker_cosg <- COSG::cosg(
  obj_mock_combined,
  groups = 'all',
@@ -614,7 +718,7 @@ marker_cosg <- COSG::cosg(
 )
 ```
 
-### 激光显微切割反卷积
+#### 激光显微切割反卷积
 
 ```{r}
 LCM_design <- c(

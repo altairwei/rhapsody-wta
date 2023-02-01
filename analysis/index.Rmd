@@ -12,13 +12,15 @@ editor_options:
   - [Quality Control of Cells and Genes](quality_control_of_cells_and_genes.html)
   - [Find and Remove Doublets](quality_control_of_doublets.html)
   - [Ambient Gene Expressions Correction](quality_control_of_ambient_rna.html)
-- Integration And Annotation
+- Integration
   - [Testing of several data integration methods](integration_testing_report.html)
   - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
   - [Integration adn Annotation of All Samples](integration_of_all_samples.html)
   - [Sample Correlation Analysis](sample_correlation_analysis.html)
-  - [Integrated Analysis of Mock Samples](analysis_of_mock_samples.html)
-  - [Integrated Analysis of All Samples](analysis_of_all_samples.html)
+- Cell Type Annotation
+  - [Developmental Process of MOCK Samples](developmental_process_of_mock_samples.html)
+  - [Mesophyll and Vascular Bundle Lineages](mesophyll_vascular_lineages.html)
+  - [Gene Expression Analysis of Cell Populations in Integrated Samples](analysis_of_all_samples.html)
 - Differential Abundance Analysis
   - [Compositional Analysis by scDC](compositional_analysis_by_scDC.html)
   - [Compositional Analysis by scCODA](compositional_analysis_by_scCODA.html)
@@ -30,8 +32,6 @@ editor_options:
   - [Geneset Enrichment for Differential States](diff_state_geneset_analysis.html)
   - [Pseudobulk Gene Expression Analysis](pseudobulk_gene_expression_analysis.html)
 - Trajectory Inference
-  - [Developmental Process of MOCK Samples](developmental_process_of_mock_samples.html)
-  - [Mesophyll and Vascular Bundle Lineages](mesophyll_vascular_lineages.html)
   - [RNA Velocity Estimation of All Samples](rna_velocity_estimation.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - [Differential Expression along Pseudotime](differential_expression_along_pseudotime.html)

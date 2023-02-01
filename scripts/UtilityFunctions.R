@@ -511,16 +511,21 @@ remove_strip <- function(...) {
     ...)
 }
 
-legend_override <- function(key, overrides, ...) {
+legend_override <- function(key, values, ...) {
   args <- list()
   args[[key]] <- ggplot2::guide_legend(
-    override.aes = overrides, ...)
+    override.aes = values, ...)
   do.call(ggplot2::guides, args)
 }
 
 font_plot_tag <- function(size = 11, ...) {
   ggplot2::theme(plot.tag = ggplot2::element_text(
     size = size, face = "bold", ...))
+}
+
+font_text_title <- function(...) {
+  ggplot2::theme(text = ggplot2::element_text(...),
+                 title = ggplot2::element_text(...))
 }
 
 theme_dimred <- function(

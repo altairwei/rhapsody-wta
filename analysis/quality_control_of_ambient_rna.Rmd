@@ -10,9 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 library(Matrix)
 library(reticulate)
-use_virtualenv()
+source("../scripts/UtilityFunctions.R")
 ```
-
 
 # 环境 RNA 污染
 
@@ -54,7 +53,7 @@ names(samples) <- samples
 ```{r message=FALSE, warning=FALSE, results='hide'}
 sc_list <- xfun::cache_rds(
   file = "sc_list.rds",
-  rerun = TRUE,
+  rerun = FALSE,
   dir = "../results/ObjectCache/QualityControl/",
   expr = lapply(samples, function(sample) {
     obj <- readRDS(Sys.glob(sprintf(
@@ -124,36 +123,41 @@ sc_list <- purrr::imap(sc_list, function(sc, sample) {
 
 ### 细胞数量与污染比例的关系
 
+#### 生成表格
+
 虽然 BD Rhapsody Scanner 的荧光技术算法不适合大体积的植物原生质体（荧光在单个细胞内很分散），但在 Bead Wash 阶段的荧光技术仍然能很好的反应溶液中的细胞数量。
 
 ```{r}
 # Data from BD Rhapsody Scanner outputs
 rho_df <- tidyr::tribble(
   ~sample,          ~captured,    ~total,
-  "1DPI-MOCK-1",    8490,         13128,
-  "1DPI-PNR2-1",    8478,         12840,
-  "3DPI-PNR2-1",    13639,        19407,
-  "3DPI-MOCK-1",    14606,        22983,
   "0DPI-MOCK-1",    10551,        20757,
-  "1DPI-TR4-1",     6683,         13686,
-  "1DPI-MOCK-2",    8609,         17090,
-  "1DPI-PNR2-2",    9922,         18060,
   "0DPI-MOCK-2",    10911,        18153,
+
+  "1DPI-MOCK-1",    8490,         13128,
+  "1DPI-MOCK-2",    8609,         17090,
+  "1DPI-PNR2-1",    8478,         12840,
+  "1DPI-PNR2-2",    9922,         18060,
+  "1DPI-TR4-1",     6683,         13686,
   "1DPI-TR4-2",     7242,         11293,
-  "3DPI-PNR2-2",    20024,        25013,
+
+  "2DPI-MOCK-1",    15009,        25395,
+  "2DPI-MOCK-2",    15226,        27975,
+  "2DPI-PNR2-1",    13742,        24879,
+  "2DPI-PNR2-2",    12285,        21575,
+  "2DPI-TR4-1",     15264,        24511,
+  "2DPI-TR4-2",     14309,        23591,
+
+  "3DPI-MOCK-1",    14606,        22983,
   "3DPI-MOCK-2",    13413,        23045,
+  "3DPI-PNR2-1",    13639,        19407,
+  "3DPI-PNR2-2",    20024,        25013,
   "3DPI-PNR2-3",    17287,        42313,
   "3DPI-TR4-1",     11357,        21722,
-  "3DPI-TR4-2",     11428,        20874,
-  "2DPI-PNR2-1",    13742,        24879,
-  "2DPI-TR4-1",     15264,        24511,
-  "2DPI-MOCK-1",    15009,        25395,
-  "2DPI-PNR2-2",    12285,        21575,
-  "2DPI-TR4-2",     14309,        23591,
-  "2DPI-MOCK-2",    15226,        27975
+  "3DPI-TR4-2",     11428,        20874
 )
 
-purrr::pmap(rho_df, function(sample, captured, total){
+rho_df <- purrr::pmap(rho_df, function(sample, captured, total){
   sc <- sc_list[[sample]]
   data.frame(
     sample = sample,
@@ -162,21 +166,59 @@ purrr::pmap(rho_df, function(sample, captured, total){
     real = ncol(sc$toc),
     rho = sc$fit$rhoEst
   )
-}) %>% dplyr::bind_rows() %>%
-  ggplot2::ggplot(ggplot2::aes(x = captured, y = rho, label = sample, size = real)) +
-  ggplot2::geom_point() +
-  ggplot2::geom_smooth(method = "lm", formula= y~x) +
-  ggrepel::geom_text_repel(size = 3)
+}) %>% dplyr::bind_rows()
+
+download_table(rho_df)
+```
+
+#### 计算相关性 {.tabset}
+
+##### captured cells
+
+```{r}
+rho_df |>
+  ggpubr::ggscatter(
+    x = "captured", y = "rho", group = NULL,
+    label = "sample", repel = TRUE,
+    conf.int = TRUE, cor.coef = TRUE, cor.method = "pearson") +
+  ggplot2::geom_smooth(method = lm, color = "blue", fill = 'lightblue') +
+  NULL
 ```
 
 上面这幅图反应了细胞捕获数量与污染比例的关系，说明 SoupX 的自动评估法是符合期望的。其中 3DPI-PNR-2 样本的高污染是预期的，因为该样本的细胞浓度较低，包含较多碎片。
+
+##### putative cells
+
+```{r}
+rho_df |>
+  ggpubr::ggscatter(
+    x = "real", y = "rho", group = NULL,
+    label = "sample", repel = TRUE,
+    conf.int = TRUE,
+    cor.coef = TRUE, cor.method = "pearson") +
+  ggplot2::geom_smooth(method = lm, color = "blue", fill = 'lightblue') +
+  NULL
+```
+
+##### total inputs
+
+```{r}
+rho_df |>
+  ggpubr::ggscatter(
+    x = "total", y = "rho", group = NULL,
+    label = "sample", repel = TRUE,
+    conf.int = TRUE,
+    cor.coef = TRUE, cor.method = "pearson") +
+  ggplot2::geom_smooth(method = lm, color = "blue", fill = 'lightblue') +
+  NULL
+```
 
 ## 修正数据
 
 ```{r warning=FALSE, message=FALSE}
 out_list <- xfun::cache_rds(
   file = "out_list.rds",
-  rerun = TRUE,
+  rerun = FALSE,
   dir = "../results/ObjectCache/QualityControl/",
   expr = lapply(sc_list, function(sc) SoupX::adjustCounts(sc))
 )
@@ -262,7 +304,7 @@ for (sample in samples) {
   xfun::cache_rds(
     file = paste0("obj_strained_", sample),
     dir = "../results/ObjectCache/QualityControl/",
-    rerun = TRUE,
+    rerun = FALSE,
     expr = local({
       out = out_list[[sample]]
       seurat_obj <- Seurat::CreateSeuratObject(
