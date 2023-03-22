@@ -38,3 +38,4 @@ editor_options:
   - TODO: GRN of trajectory
 - Presentation Documents
   - [Midterm Report for PhD Program](midterm_report.html)
+  - [Slides for PhD Defense](slides_for_phd_defense.html)

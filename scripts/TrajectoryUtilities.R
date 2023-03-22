@@ -723,6 +723,13 @@ pairwiseFateSelectionTest <- function(sce, conditions, seed = 1) {
   }) |> dplyr::bind_rows()
 }
 
+getGridVectors <- function(adata, dimred, ...) {
+  scv$tl$velocity_embedding(adata_mock, basis = dimred)
+  X_basis <- adata_mock$obsm[paste0("X_", dimred)]
+  Vec_basis <- adata_mock$obsm[paste0("velocity_", dimred)]
+  velociraptor::gridVectors(X_basis, Vec_basis, ...)
+}
+
 plotVelocityArrow <- function(sce, reduction, ...) {
   velo.out <- altExp(sce, "scvelo")
   sce$velocity_pseudotime <- velo.out$velocity_pseudotime

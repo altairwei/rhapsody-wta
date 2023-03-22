@@ -155,17 +155,6 @@ sce$body_layer <- do.call(
   dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_body_layers)))
 ```
 
-### Pseudobulk data
-
-```{r}
-pseudobulk_df <- readRDS(Sys.glob("../results/ObjectCache/Pseudobulk/pseudobulk_df_cpm_mean_*.rds"))
-```
-
-```{r}
-pseudobulk_df$cellType <- forcats::fct_relevel(pseudobulk_df$cellType, all_celltypes)
-```
-
-
 ## Cell annotation of developing coleoptile
 
 ### Dimension reduction
@@ -331,6 +320,8 @@ p2 <- Seurat::DotPlot(obj_mock, features = markers) +
   )
 p2
 ```
+
+
 
 ### Newly identified markers
 
@@ -1552,7 +1543,8 @@ fdr_df <- purrr::imap(
 
 p2 <- ggplot2::ggplot(df_ncorrs, ggplot2::aes(
     x = time_ncorrs, y = cellType, fill = cellType)) +
-  ggplot2::ylab("cellType") +
+  ggplot2::ylab("Cell Population") +
+  ggplot2::xlab("Neighborhood coefficients of time") +
   ggridges::geom_density_ridges(scale = 4) +
   ggplot2::geom_vline(
     data = fdr_df, mapping = ggplot2::aes(xintercept = posfdr),
@@ -1563,8 +1555,10 @@ p2 <- ggplot2::ggplot(df_ncorrs, ggplot2::aes(
   ggplot2::facet_wrap(~ treatment) +
   ggplot2::scale_fill_manual(values = all_celltype_colors) +
   ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
-  ggridges::theme_ridges() +
-  empty_strip() +
+  ggridges::theme_ridges(14) +
+  empty_strip(
+    strip.text = ggplot2::element_text(size = 14),
+    panel.spacing = grid::unit(2, "lines")) +
   remove_legend()
 
 p2
@@ -2551,6 +2545,36 @@ p2 <- Seurat::DotPlot(obj,
 p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
 
 p
+```
+
+```{r fig.height=7, fig.width=14}
+p1 <- Seurat::FeaturePlot(
+    obj, features = "TraesCS2A02G350900", order = TRUE) +
+  ggplot2::coord_fixed() +
+  theme_dimred() +
+  font_text_title(size = 10)
+
+p2 <- Seurat::VlnPlot(
+    obj, features = "TraesCS2A02G350900", pt.size = 0) +
+  remove_legend() +
+  font_text_title(size = 10)
+
+(p <- p1 + p2 + patchwork::plot_layout(ncol = 2))
+```
+
+```{r fig.height=7, fig.width=14}
+p1 <- Seurat::FeaturePlot(
+    obj, features = "TraesCS2A02G201700", order = TRUE) +
+  ggplot2::coord_fixed() +
+  theme_dimred() +
+  font_text_title(size = 10)
+
+p2 <- Seurat::VlnPlot(
+    obj, features = "TraesCS2A02G201700", pt.size = 0.1) +
+  remove_legend() +
+  font_text_title(size = 10)
+
+(p <- p1 + p2 + patchwork::plot_layout(ncol = 2))
 ```
 
 #### Va_3 conserved markers

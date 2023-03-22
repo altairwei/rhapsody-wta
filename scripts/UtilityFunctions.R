@@ -318,7 +318,7 @@ deconvLCM <- function(seurat, lcm_file, markers, design, ...) {
 #' @inheritParams deconvLCM
 #'
 #' @return ggplot object
-deconvScatter <- function(CIBER, design, nrow = NULL, ncol = NULL) {
+deconvScatter <- function(CIBER, design, nrow = NULL, ncol = NULL, theme_size = 12) {
   ggplot2::ggplot(
     data = CIBER,
     mapping = ggplot2::aes(
@@ -335,7 +335,7 @@ deconvScatter <- function(CIBER, design, nrow = NULL, ncol = NULL) {
     ggplot2::scale_y_continuous(labels = scales::percent) +
     ggplot2::facet_wrap(~ CellType, scales = "free_y",
                         nrow = nrow, ncol = ncol) +
-    ggplot2::theme_bw(base_size=12) +
+    ggplot2::theme_bw(base_size=theme_size) +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(
         angle = 90, hjust = 1, vjust = 0.5),
