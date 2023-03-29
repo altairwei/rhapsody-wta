@@ -2156,10 +2156,10 @@
     },
     "codetools": {
       "Package": "codetools",
-      "Version": "0.2-18",
+      "Version": "0.2-19",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "019388fc48e48b3da0d3a76ff94608a8",
+      "Hash": "c089a619a7fae175d149d89164f8c7d8",
       "Requirements": []
     },
     "colorRamps": {
@@ -2380,6 +2380,14 @@
         "magrittr",
         "viridis"
       ]
+    },
+    "dendsort": {
+      "Package": "dendsort",
+      "Version": "0.3.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "348b0cb68eb90e8896fb78a506399c7f",
+      "Requirements": []
     },
     "desc": {
       "Package": "desc",
@@ -2945,6 +2953,14 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "03a96bfe9f820e3d4e049cc0a11017e1",
+      "Requirements": []
+    },
+    "fastcluster": {
+      "Package": "fastcluster",
+      "Version": "1.2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f032f97ae2ab52d5c0fc51a1b3b2b91d",
       "Requirements": []
     },
     "fastmap": {
@@ -4479,13 +4495,13 @@
     },
     "muscat": {
       "Package": "muscat",
-      "Version": "1.12.0",
+      "Version": "1.12.1",
       "Source": "Bioconductor",
       "git_url": "https://git.bioconductor.org/packages/muscat",
       "git_branch": "RELEASE_3_16",
-      "git_last_commit": "c539b59",
-      "git_last_commit_date": "2022-11-01",
-      "Hash": "3ab6fb4214877af591a2b7fdf4a74fca",
+      "git_last_commit": "ae0feb7",
+      "git_last_commit_date": "2023-02-08",
+      "Hash": "5c47fbc8069ada6fe19c8a146fafe277",
       "Requirements": [
         "BiocParallel",
         "ComplexHeatmap",
@@ -5402,7 +5418,7 @@
     },
     "rhapsodykit": {
       "Package": "rhapsodykit",
-      "Version": "0.0.0.9028",
+      "Version": "0.0.0.9029",
       "Source": "GitHub",
       "Remotes": "github::altairwei/seurat-disk@fetch-data,\n        github::altairwei/DAseq@fix-large-sparse-matrices,\n        github::genecell/COSGR",
       "RemoteType": "github",
@@ -5410,8 +5426,8 @@
       "RemoteRepo": "rhapsodykit",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "8b7dc1186d1b675956be01ed600532f4e3e46ec9",
-      "Hash": "445a54ebf58e8036b2573f7776c0f53f",
+      "RemoteSha": "6c9b390016a28e6dbd3a64803b6abc4180b014ec",
+      "Hash": "6b4ee11c948cb4f58d656ba8e32a69ea",
       "Requirements": [
         "COSG",
         "ComplexHeatmap",
@@ -5482,10 +5498,10 @@
     },
     "rlang": {
       "Package": "rlang",
-      "Version": "1.0.6",
+      "Version": "1.1.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "4ed1f8336c8d52c3e750adcdc57228a7",
+      "Hash": "dc079ccd156cde8647360f473c1fa718",
       "Requirements": []
     },
     "rmarkdown": {
@@ -6333,10 +6349,10 @@
     },
     "survival": {
       "Package": "survival",
-      "Version": "3.4-0",
+      "Version": "3.5-5",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "04411ae66ab4659230c067c32966fc20",
+      "Hash": "d683341b1fa2e8d817efde27d6e6d35b",
       "Requirements": [
         "Matrix"
       ]

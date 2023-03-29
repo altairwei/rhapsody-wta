@@ -6,63 +6,105 @@ output: html_document
 ```{r setup, include=FALSE}
 library(magrittr)
 library(patchwork)
+library(SingleCellExperiment)
+source("../scripts/UtilityFunctions.R")
 BPPARAM <- BiocParallel::MulticoreParam(workers = 6)
 ```
 
-## 1 数据准备
+## 数据准备
+
+### 细胞注释信息
+
+```{r}
+all_celltypes <- c(
+  "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+names(all_celltype_colors) <- all_celltypes
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+```
+
+### 转换数据格式
 
 `muscat` 包要求输入数据需要预先经过处理，比如整合、聚类和细胞注释等等，因此这里我们直接加载已经处理过的 `Seurat` 对象。
 
-```{r read-seurat-data, message=FALSE, warning=FALSE}
-obj <- readRDS(Sys.glob(
-  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
-ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj))), palette = NULL)
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
-
-## 2 数据概览
-
-### 2.1 样本细胞降维度图
-
-#### 以不同属性标记降维图 {.tabset}
-
-```{r show-dim-plot, results = "asis", echo=FALSE, fig.height=5, fig.width=12, warning=FALSE}
-cat("##### cluster \n")
-Seurat::DimPlot(obj, reduction = "tsne", label = TRUE, label.box = TRUE, label.color = "white", repel = TRUE, cols = ident_cols) +
-Seurat::DimPlot(obj, reduction = "umap", label = TRUE, label.box = TRUE, label.color = "white", repel = TRUE, cols = ident_cols) +
-plot_layout(guides = "collect")
-cat("\n\n")
-
-cat("##### group \n")
-patchwork::wrap_plots(
-  Seurat::DimPlot(obj, reduction = "tsne", group.by = "group") + ggplot2::theme(plot.title = ggplot2::element_blank()),
-  Seurat::DimPlot(obj, reduction = "umap", group.by = "group") + ggplot2::theme(plot.title = ggplot2::element_blank())
-) + plot_layout(guides = "collect")
-cat("\n\n")
-
-cat("##### sample \n")
-patchwork::wrap_plots(
-  Seurat::DimPlot(obj, reduction = "tsne", group.by = "sample") + ggplot2::theme(plot.title = ggplot2::element_blank()),
-  Seurat::DimPlot(obj, reduction = "umap", group.by = "sample") + ggplot2::theme(plot.title = ggplot2::element_blank())
-) + plot_layout(guides = "collect")
-cat("\n\n")
-```
-
-#### 按处理拆分降维图
-
-将所有样本降维图拆解成 "MOCK-AllSample"、"PNR2-AllSample"以及 "TR4-AllSample"：
-
-```{r dim-plot-by-treatment, fig.height=5, fig.width=14}
-Seurat::DimPlot(obj, reduction = "tsne", group.by = "time", split.by = "treatment") +
-  ggplot2::theme(plot.title = ggplot2::element_blank())
-```
-
-### 2.2 准备 {muscat} 要求的输入格式
 
 ```{r read-muscat-sce}
-sce <- rhapsodykit::prepare_muscat_sce(obj, group_make_names = TRUE)
+sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+sce$sample <- make.names(sce$sample)
+sce$group <- make.names(sce$group)
 ```
 
-### 2.3 相对细胞群集丰度
+```{r}
+sce$ident <- forcats::fct_relevel(sce$ident, all_celltypes)
+sce$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce$ident), as.list(all_body_layers)))
+sce$tissue <- do.call(
+  dplyr::recode, c(list(.x = sce$ident), as.list(all_tissues)))
+```
+
+```{r}
+sce <- muscat::prepSCE(sce,
+  kid = "tissue", # cell type
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+rm(obj)
+gc()
+```
+
+### 相对细胞群集丰度
 
 差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
 
@@ -73,38 +115,33 @@ cluster_stats %>% as.data.frame.matrix()
 
 看看各个类群在各自样本中所占的比例：
 
-```{r cluster-abundance-barplot, warning=FALSE}
-rhapsodykit::barplot_cluster_abundance(sce)
+```{r cluster-abundance-barplot, fig.height=7, fig.width=14, warning=FALSE}
+p1 <- scater::plotReducedDim(
+    sce,
+    dimred = "UMAP",
+    point_size = 1,
+    colour_by = "cluster_id",
+    text_by = "cluster_id",
+    text_size = 4,
+    theme_size = 14) +
+  ggthemes::scale_color_tableau() +
+  ggplot2::coord_fixed() +
+  remove_legend() +
+  theme_dimred()
+
+p2 <- rhapsodykit::barplot_cluster_abundance(sce) +
+  ggthemes::scale_fill_tableau() +
+  NULL
+
+p2$data$sample_id <- stringr::str_replace(
+  p2$data$sample_id, "X(\\dDPI)\\.(.*)\\.(\\d)", "\\1-\\2-\\3")
+
+(p <- p1 + p2 + patchwork::plot_layout(widths = c(2, 2)))
 ```
 
-### 2.4 样本细胞数量
+## 实施 DS 分析
 
-```{r sample-cell-number}
-# cell counts by sample
-sample_cells_df <- reshape2::melt(table(sce$sample_id), varnames = "sample_id", value.name = "n_cells")
-sample_cells_df$group_id <- sce$group_id[match(sample_cells_df$sample_id, sce$sample_id)]
-
-p_sample_cells <- sample_cells_df %>%
-  ggplot2::ggplot(ggplot2::aes(
-    x = sample_id, y = n_cells, fill = group_id)) +
-  ggplot2::scale_y_continuous("nb. of cells", limits = c(0, 7500), 
-        breaks = seq(0, 7500, 2500), expand = c(0, 0)) +
-  ggplot2::facet_wrap("group_id", ncol = 1, scales = "free_y") +
-  ggplot2::geom_bar(stat = "identity", col = "white",  width = 1, size = 0.2) + 
-  ggplot2::scale_x_discrete(expand = c(0, 0)) +
-  ggplot2::coord_flip() +
-  ggplot2::theme(aspect.ratio = NULL, 
-    panel.grid = ggplot2::element_blank(), panel.spacing = grid::unit(1, "mm"), 
-    strip.text = ggplot2::element_blank(),  strip.background = ggplot2::element_blank())
-
-p_sample_cells
-```
-
-## 3 差异状态分析
-
-### 3.1 实施 DS 分析
-
-#### 3.1.1 将单细胞聚合成 pseudo-bulk 数据
+### Pseudobulk 聚合
 
 差异状态分析有两类方法，其中之一是基于聚合数据的差异基因表达方法。
 
@@ -113,6 +150,7 @@ p_sample_cells
 ```{r calc-pseudo-bulk, warning=FALSE}
 pb_list <- xfun::cache_rds(
   file = "pb_list.rds",
+  rerun = FALSE,
   dir = "../results/ObjectCache/DifferentialState/",
   expr = {
     list(
@@ -127,124 +165,88 @@ pb_list <- xfun::cache_rds(
 
 变量 `pb` 实际上也是一个 `SingleCellExperiment` 对象，每一个 assay 都是一个 cluster 的 pseudo-bulk 数据。
 
-我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性：
+```{r}
+pb_list$counts |> assays()
+```
+
+```{r}
+pb_list$counts |> assay("Stomata") |> str()
+```
+
+```{r}
+pb_list$counts |> assay("Procambium") |> str()
+```
+
+### 样本间变异性
+
+我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性。注意，在这里我们使用基于 logcounts 的数据而不是 counts 数据。
 
 ```{r pb-mds-plot}
-pb_mds_df <- xfun::cache_rds(
-  file = "pb_mds_df.rds",
+pb_mds_list <- xfun::cache_rds(
+  file = "pb_mds_list.rds",
   dir = "../results/ObjectCache/DifferentialState/",
+  rerun = FALSE,
   expr = local({
-    data <- muscat::pbMDS(pb_list$logcounts)$data
-    data$time <- rhapsodykit::key_mapping(data$group_id, c(
-      "X0DPI.MOCK" = "0DPI,1DPI",
-      "X1DPI.MOCK" = "0DPI,1DPI",
-      "X1DPI.PNR2" = "0DPI,1DPI",
-      "X1DPI.TR4"  = "0DPI,1DPI",
-      "X2DPI.MOCK" = "2DPI",
-      "X2DPI.PNR2" = "2DPI",
-      "X2DPI.TR4"  = "2DPI",
-      "X3DPI.MOCK" = "3DPI",
-      "X3DPI.PNR2" = "3DPI",
-      "X3DPI.TR4"  = "3DPI"
-    ))
-    data$treatment <- rhapsodykit::key_mapping(data$group_id, c(
-      "X0DPI.MOCK" = "MOCK",
-      "X1DPI.MOCK" = "MOCK",
-      "X1DPI.PNR2" = "PNR2",
-      "X1DPI.TR4"  = "TR4",
-      "X2DPI.MOCK" = "MOCK",
-      "X2DPI.PNR2" = "PNR2",
-      "X2DPI.TR4"  = "TR4",
-      "X3DPI.MOCK" = "MOCK",
-      "X3DPI.PNR2" = "PNR2",
-      "X3DPI.TR4"  = "TR4"
-    ))
-    data
+    data1 <- muscat::pbMDS(pb_list$counts)$data
+    data1$time <- stringr::str_extract(data1$group_id, "\\dDPI")
+    data1$treatment <- stringr::str_extract(data1$group_id, "MOCK|PNR2|TR4")
+
+    data2 <- muscat::pbMDS(pb_list$logcounts)$data
+    data2$time <- stringr::str_extract(data2$group_id, "\\dDPI")
+    data2$treatment <- stringr::str_extract(data2$group_id, "MOCK|PNR2|TR4")
+
+    list(counts = data1, logcounts = data2)
   })
 )
 ```
 
 然后我们展示该分布：
 
-```{r mds-plot-by-time, fig.height=7, fig.width=10}
-group_colors <- c(
-  "X0DPI.MOCK" = "#3DD8FF",
-  "X1DPI.MOCK" = "#75B0BF",
-  "X2DPI.MOCK" = "#2B97B3",
-  "X3DPI.MOCK" = "#323738",
+```{r mds-plot-by-time, fig.height=7, fig.width=14}
+plist <- lapply(pb_mds_list, function(pb_mds) {
+  pb_mds %>%
+    ggplot2::ggplot(ggplot2::aes_string(
+      x = "MDS1", y = "MDS2",
+      color = "cluster_id", shape = "treatment")
+    ) +
+    ggplot2::geom_point(size = 2, alpha = 1) +
+    ggplot2::facet_wrap(~time) +
+    ggthemes::scale_color_tableau() +
+    ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
+    ggplot2::guides(
+      color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      aspect.ratio = 1,
+      axis.text = ggplot2::element_text(color = "black"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(linewidth = 0.2, color = "lightgrey")
+    )
+})
 
-  "X1DPI.PNR2" = "#F58664",
-  "X2DPI.PNR2" = "#B7644B",
-  "X3DPI.PNR2" = "#A83513",
+plist$counts <- plist$counts + ggplot2::ggtitle("Pseudobulk Counts")
+plist$logcounts <- plist$logcounts + ggplot2::ggtitle("Pseudobulk Logcounts")
 
-  "X1DPI.TR4"  = "#8DB761",
-  "X2DPI.TR4"  = "#69A827",
-  "X3DPI.TR4"  = "#4A751B"
-)
-
-pb_mds_df %>%
-  ggplot2::ggplot(ggplot2::aes_string(
-    x = "MDS1", y = "MDS2",
-    color = "cluster_id", shape = "treatment")
-  ) +
-  ggplot2::geom_point(size = 2, alpha = 1) +
-  ggplot2::facet_wrap(~time, nrow = 1) +
-  ggplot2::scale_color_manual(values = ident_cols) +
-  ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
-  ggplot2::guides(
-    color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +
-  ggplot2::theme_bw() +
-  ggplot2::theme(
-    aspect.ratio = 1,
-    axis.text = ggplot2::element_text(color = "black"),
-    panel.grid.minor = ggplot2::element_blank(),
-    panel.grid.major = ggplot2::element_line(size = 0.2, color = "lightgrey"),
-    legend.position = "bottom",
-    legend.direction = "horizontal"
-  )
+(p <- patchwork::wrap_plots(plist, guides = "collect") &
+    center_plot_title())
 ```
 
 理论上，MDS 的第一个维度应该将 cluster 分开，第二个维度应该讲 group 分开。从结果上来看，MDS1 确实将 cluster 分开了；而 MDS2 也将 group 区分开。
 
 我们以细胞群集为分面来看看：
 
-```{r mds-plot-by-cluster, fig.height=10, fig.width=10}
-pb_mds_df$time <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
-  "X0DPI.MOCK" = "0DPI",
-  "X1DPI.MOCK" = "1DPI",
-  "X1DPI.PNR2" = "1DPI",
-  "X1DPI.TR4"  = "1DPI",
-  "X2DPI.MOCK" = "2DPI",
-  "X2DPI.PNR2" = "2DPI",
-  "X2DPI.TR4"  = "2DPI",
-  "X3DPI.MOCK" = "3DPI",
-  "X3DPI.PNR2" = "3DPI",
-  "X3DPI.TR4"  = "3DPI"
-))
-
-pb_mds_df$treatment <- rhapsodykit::key_mapping(pb_mds_df$group_id, c(
-  "X0DPI.MOCK" = "MOCK",
-  "X1DPI.MOCK" = "MOCK",
-  "X1DPI.PNR2" = "PNR2",
-  "X1DPI.TR4"  = "TR4",
-  "X2DPI.MOCK" = "MOCK",
-  "X2DPI.PNR2" = "PNR2",
-  "X2DPI.TR4"  = "TR4",
-  "X3DPI.MOCK" = "MOCK",
-  "X3DPI.PNR2" = "PNR2",
-  "X3DPI.TR4"  = "TR4"
-))
-
+```{r mds-plot-by-cluster, fig.height=7, fig.width=14}
 plot_mds_by_cluster <- function(df, clusters = NULL) {
   if (!is.null(clusters))
     df <- dplyr::filter(df, cluster_id %in% clusters)
-  
+
   df %>%
     ggplot2::ggplot(ggplot2::aes_string(
       x = "MDS1", y = "MDS2",
       color = "treatment", size = "time", alpha = "time")) +
     ggplot2::geom_point() +
-    ggplot2::facet_wrap(~cluster_id) +
+    ggplot2::facet_wrap(~cluster_id, nrow = 2) +
+    ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
     ggplot2::scale_alpha_manual(values = c(
       "0DPI" = 1, "1DPI" = .8, "2DPI" = .6, "3DPI" = .4)) +
     ggplot2::scale_size_manual(values = c(
@@ -256,167 +258,68 @@ plot_mds_by_cluster <- function(df, clusters = NULL) {
       axis.text = ggplot2::element_text(color = "black"),
       panel.grid.minor = ggplot2::element_blank(),
       panel.grid.major = ggplot2::element_line(
-        size = 0.2, color = "lightgrey"),
-      legend.position = "bottom",
-      legend.direction = "horizontal"
+        linewidth = 0.2, color = "lightgrey")
     )
 }
 
-plot_mds_by_cluster(pb_mds_df)
+(p <- plot_mds_by_cluster(pb_mds_list$logcounts))
 ```
 
-#### 3.1.2 样品水平的分析: 基于聚合的方法
-
-当我们组装好 pseudo-bulk 数据后，就可以开展基于聚合的差异状态分析了。基于聚合的差异状态方法依赖于 bulk RNA-Seq 领域已经常用的差异基表达分析方法，而这些方法对输入数据的数值类型是有要求的吗，比如：
-
--   limma-voom 和 edgeR 处理 pseudo-bulk counts；DESeq2 应该也是处理 pseudo-bulk counts
--   limma-trend 处理 library-size 归一化并且 log 转化后的 counts 平均值
-
-各种差异状态分析方法依赖的数值类型可以参考 [HelenaLC/muscat-comparison](https://github.com/HelenaLC/muscat-comparison) 仓库库中 `scripts/meth_pars.R` 文件内容:
-
-```{r eval=FALSE, include=FALSE}
-pb <- dplyr::bind_rows(
-    expand.grid(
-        stringsAsFactors = FALSE,
-        assay = "counts", fun = "sum", scale = FALSE, 
-        method = c("edgeR", "limma-voom"),
-        treat = c(FALSE, TRUE)
-    ),
-    expand.grid(
-        stringsAsFactors = FALSE, scale = FALSE,
-        assay = c("logcounts", "vstresiduals"),
-        fun = "mean", method = "limma-trend"
-    ),
-    data.frame(
-        stringsAsFactors = FALSE, scale = TRUE,
-        assay = "cpm", fun = "sum", method = "edgeR",
-        treat = c(FALSE, TRUE)
-    )
-)
-```
+### 基于聚合的差异基因表达
 
 可以使用 `muscat::pbDS` 函数完成任务，不过当要比较的 group 超过两个时，我们需要首先构建 design 矩阵以及 contrast 矩阵：
 
 我们看看实验相关的信息，主要是 sample 属于哪个 group ：
 
-```{r message=FALSE}
-S4Vectors::metadata(sce)$experiment_info
+```{r}
+metadata(sce)$experiment_info
 ```
 
 在需要提供的数据中，design 矩阵起着指示器的作用，它用于表明样本属于哪个组。而 `model.matrix` 的统计学含义以及用法可以参考 [Expressing design formula in R](https://genomicsclass.github.io/book/pages/expressing_design_formula.html) 。contrast 矩阵用于表明我们想要比较哪两个组，以 `stim-ctrl` 字符串的形式指定，实验组在 `-` 前，对照组在后。我在 `rhapsodykit` 中提供了一个方便的帮助函数，自动构建 design 和 contrast 矩阵。
-
-**由于 PNR2 vs TR4 在 1DPI \~ 3DPI 的比较中都没有看出太大的价值，所以把它移除掉。**
 
 ```{r run-ds-analysis}
 # run DS analysis
 contrast_names <- c(
   "X1DPI.PNR2-X1DPI.MOCK",
   "X1DPI.TR4-X1DPI.MOCK",
+  "X1DPI.PNR2-X1DPI.TR4",
 
   "X2DPI.PNR2-X2DPI.MOCK",
   "X2DPI.TR4-X2DPI.MOCK",
+  "X2DPI.PNR2-X2DPI.TR4",
 
   "X3DPI.PNR2-X3DPI.MOCK",
-  "X3DPI.TR4-X3DPI.MOCK"
+  "X3DPI.TR4-X3DPI.MOCK",
+  "X3DPI.PNR2-X3DPI.TR4"
 )
 
 ds_res <- xfun::cache_rds(
   file = "ds_res.rds",
   dir = "../results/ObjectCache/DifferentialState/",
+  rerun = FALSE,
   expr = {
     list(
       edgeR = rhapsodykit::pseudobulk_diff_state(
         sce, pb_list$counts,
         method = "edgeR",
         contrasts = contrast_names,
+        filter = "genes",
         BPPARAM = BPPARAM
       ),
       DESeq2 = rhapsodykit::pseudobulk_diff_state(
         sce, pb_list$counts,
         method = "DESeq2",
         contrasts = contrast_names,
+        filter = "genes",
         BPPARAM = BPPARAM
       )
     )
   }
 )
+```
 
-ds_1dpi <- xfun::cache_rds(
-  file = "ds_1dpi.rds",
-  dir = "../results/ObjectCache/DifferentialState/",
-  expr = list(
-    edgeR = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "edgeR",
-      contrasts = c(
-        "X1DPI.PNR2-X1DPI.MOCK",
-        "X1DPI.TR4-X1DPI.MOCK"
-      ),
-      BPPARAM = BPPARAM
-    ),
-    DESeq2 = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "DESeq2",
-      contrasts = c(
-        "X1DPI.PNR2-X1DPI.MOCK",
-        "X1DPI.TR4-X1DPI.MOCK"
-      ),
-      BPPARAM = BPPARAM
-    )
-  )
-)
-
-ds_2dpi <- xfun::cache_rds(
-  file = "ds_2dpi.rds",
-  dir = "../results/ObjectCache/DifferentialState/",
-  expr = list(
-    edgeR = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "edgeR",
-      contrasts = c(
-        "X2DPI.PNR2-X2DPI.MOCK",
-        "X2DPI.TR4-X2DPI.MOCK"
-      ),
-      BPPARAM = BPPARAM
-    ),
-    DESeq2 = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "DESeq2",
-      contrasts = c(
-        "X2DPI.PNR2-X2DPI.MOCK",
-        "X2DPI.TR4-X2DPI.MOCK"
-      ),
-      BPPARAM = BPPARAM
-    )
-  )
-)
-
-ds_3dpi <- xfun::cache_rds(
-  file = "ds_3dpi.rds",
-  dir = "../results/ObjectCache/DifferentialState/",
-  expr = list(
-    edgeR = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "edgeR",
-      contrasts = c(
-        "X3DPI.PNR2-X3DPI.MOCK",
-        "X3DPI.TR4-X3DPI.MOCK"
-      ),
-      BPPARAM = BPPARAM
-    ),
-    DESeq2 = rhapsodykit::pseudobulk_diff_state(
-      sce, pb_list$counts,
-      method = "DESeq2",
-      contrasts = c(
-        "X3DPI.PNR2-X3DPI.MOCK",
-        "X3DPI.TR4-X3DPI.MOCK"
-      ),
-      BPPARAM = BPPARAM
-    )
-  )
-)
-
-str(ds_res$edgeR$table, max.level = 1)
+```{r}
+str(ds_res$DESeq2$table$`X1DPI.PNR2-X1DPI.MOCK`, max.level = 1)
 ```
 
 差异基因表达分析的结果储存在 `res_list` 列表中，而其成员则是 `contrast` 参数所指定的比较组合。每个比较组合又是一个列表，并且包含了针对每个 cluster 的差异表达分析结果。
@@ -429,26 +332,7 @@ head(cluster1)
 
 1DPI-PNR2 vs. 1DPI-MOCK 比较组合中 cluster 1 的差异基因表达结果如上所示。
 
-#### 3.1.3 细胞水平的分析: 混合模型
-
-如果我们不愿意基于聚合来展开差异状态分析，还可以基于细胞水平数据通过 Mixed Models 来完成差异状态分析。`muscat` 主要实现了三种方法：
-
-1.  fitting linear mixed models (LMMs) on log-normalized data with observational weights;
-2.  fitting LMMs on variance-stabilized data;
-3.  fitting generalized linear mixed models (GLMMs) directly on counts.
-
-```{r message=FALSE, eval=FALSE}
-# 1st approach
-mm_dream = muscat::mmDS(sce, n_threads = 2, method = "dream", n_cells = 10, n_samples = 2, min_count = 1, min_cells = 20)
-
-# 2nd & 3rd approach
-mm_vst = muscat::mmDS(sce, n_threads = 2, method = "vst", vst = "sctransform")
-mm_nbinom = muscat::mmDS(sce, n_threads = 2, method = "nbinom")
-
-str(mm_dream)
-```
-
-#### 3.1.4 寻找组间特异性标识基因
+### 寻找组间特异性标识基因
 
 这里出现一个很有意义的问题：**如何找出 group 特异性的 DS 基因集**？
 
@@ -471,7 +355,7 @@ markers$PNR2 %>%
   as.data.frame.matrix()
 ```
 
-### 3.2 处理结果
+## 处理结果
 
 不同的比较之间需要指定特殊的颜色标记：
 
@@ -480,7 +364,7 @@ contrast_cols = Seurat::DiscretePalette(length(ds_res$DESeq2$table), palette = "
 names(contrast_cols) <- names(ds_res$DESeq2$table)
 ```
 
-#### 3.2.1 结果的过滤与概览
+### 结果的过滤与概览
 
 我们要对差异状态分析的结果进行过滤，我们基于基因表达的变化幅度和显著性来过滤：
 
@@ -491,7 +375,7 @@ ds_res$DESeq2 %>%
   rhapsodykit::diff_state_summary()
 ```
 
-#### 3.2.2 计算表达频率
+### 计算表达频率
 
 除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
 
@@ -502,24 +386,9 @@ ds_res$DESeq2 %>%
   rhapsodykit::diff_state_summary()
 ```
 
-#### 3.2.3 格式化结果
+## 对结果可视化
 
-当比较的组别数量非常多时，我们就需要将它们转化为一个方便查看或者操作的格式。其中 `res` 必须是 `muscat::pbDS` 或 `muscat::mmDS` 的计算结果。
-
-```{r eval=FALSE}
-# tidy format; attach pre-computed expression frequencies
-muscat::resDS(sce, res, bind = "row", frq = frq)
-
-# big-table (wide) format; attach CPMs
-muscat::resDS(sce, res, bind = "col", cpm = TRUE)
-
-# compute expression frequencies on the fly
-muscat::resDS(sce, res, frq = TRUE)
-```
-
-### 3.3 对结果可视化
-
-#### 3.3.1 可视化 DS 基因的数量
+### 可视化 DS 基因的数量
 
 我们可以查看一下 edgeR 和 DESeq2 两种方法发现的差异基因数量：
 
@@ -528,118 +397,192 @@ genecount_df <- ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
   rhapsodykit::diff_state_format()
 
-genecount_df$time <- rhapsodykit::key_mapping(genecount_df$contrast, c(
-  "X1DPI.PNR2-X1DPI.MOCK" = "1DPI",
-  "X1DPI.TR4-X1DPI.MOCK"  = "1DPI",
-
-  "X2DPI.PNR2-X2DPI.MOCK" = "2DPI",
-  "X2DPI.TR4-X2DPI.MOCK"  = "2DPI",
-
-  "X3DPI.PNR2-X3DPI.MOCK" = "3DPI",
-  "X3DPI.TR4-X3DPI.MOCK"  = "3DPI"
-))
-
+genecount_df$cluster_id <- factor(genecount_df$cluster_id, unique(all_tissues))
+genecount_df$time <- stringr::str_extract(genecount_df$contrast, "\\dDPI")
 genecount_df$contrast <- factor(genecount_df$contrast, levels = contrast_names)
+genecount_df$regu_type <- ifelse(genecount_df$logFC > 0, "Up-regulated", "Down-regulated")
 
-plot_genecount <- function(df) {
-  df %>%
-    ggplot2::ggplot(ggplot2::aes(cluster_id, fill = contrast)) +
-    ggplot2::geom_bar(
-      position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
-    ggplot2::ylab("Number of DS genes") +
-    ggplot2::xlab("Cell Subpopulation") +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    )
-}
+df_to_plot <- genecount_df |>
+  dplyr::group_by(time, contrast, cluster_id, regu_type) |>
+  dplyr::count() |>
+  dplyr::mutate(n = ifelse(regu_type == "Up-regulated", n, -1 * n)) |>
+  tidyr::pivot_wider(names_from = "cluster_id", values_from = "n", values_fill = NA) |>
+  tidyr::pivot_longer(cols = -c(time, contrast, regu_type), names_to = "cluster_id", values_to = "n") |>
+  dplyr::mutate(contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2 vs. \\4"))
 
-genecount_df %>%
-  plot_genecount() +
-  ggplot2::scale_fill_manual(values = contrast_cols) +
-  ggplot2::facet_wrap(~time, ncol = 1) +
-  ggplot2::theme(legend.position = "right")
+df_to_plot$cluster_id <- factor(df_to_plot$cluster_id, unique(all_tissues))
+df_to_plot$contrast <- factor(df_to_plot$contrast, c("PNR2 vs. MOCK", "TR4 vs. MOCK", "PNR2 vs. TR4"))
 
-genecount_df %>%
-  plot_genecount() +
-  ggplot2::scale_fill_manual(values = contrast_cols) +
-  ggplot2::facet_wrap(~time, ncol = 1, scales = "free_y") +
-  ggplot2::theme(legend.position = "right")
+p <- ggplot2::ggplot(
+    data = df_to_plot,
+    mapping = ggplot2::aes(x = cluster_id, y = n, fill = contrast)) +
+  ggplot2::geom_bar(
+    data = subset(df_to_plot, regu_type == "Up-regulated"),
+    stat = "identity",
+    position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+  ggplot2::geom_bar(
+    data = subset(df_to_plot, regu_type == "Down-regulated"),
+    stat = "identity", alpha = 0.5,
+    position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+  ggplot2::scale_fill_brewer(palette = "Set1") +
+  ggplot2::ylab("Number of DS genes") +
+  ggplot2::xlab("Cell Types") +
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    strip.background.x = ggplot2::element_blank(),
+    strip.text.x = ggplot2::element_blank()) +
+  ggplot2::facet_grid(time ~ cluster_id, scales = "free_x") +
+  NULL
+
+p
 ```
 
-总体来说，edgeR 与 DESeq2 发现的基因数量大体趋势是一致的，只不过两种方法计算出的 p_adj.loc 可能有所差别。从 TR4 与 PNR2 相对于 MOCK 的转录反应来看，小麦胚芽鞘似乎都不知道 *Fusarium. graminearum* 以及进入体内了。
+总体来说，edgeR 与 DESeq2 发现的基因数量大体趋势是一致的，只不过两种方法计算出的 p_adj.loc 可能有所差别。
 
-我们首先画一下 `X1DPI.PNR2-X1DPI.MOCK` 火山图：
+### 火山图展示上下调基因 {.tabset}
 
-```{r volcano-plot-1}
+```{r}
 df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
+```
+
+#### 1 DPI
+
+```{r}
 dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.MOCK") %>%
   rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs. 1DPI-MOCK")
 ```
 
-然后看一下 `X1DPI.TR4-X1DPI.MOCK` 的火山图：
-
-```{r volcano-plot-2}
+```{r}
 dplyr::filter(df_to_plot, contrast == "X1DPI.TR4-X1DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "X1DPI.TR4-X1DPI.MOCK")
+  rhapsodykit::volcano_diff_state(title = "1DPI-TR4 vs 1DPI.MOCK")
 ```
 
-#### 3.3.2 细胞亚群间差异状态的一致性
-
-首先我们要准备具有丰富数据的 UpSetR 数据格式，参考 <https://github.com/VCG/upset/wiki> 页面来准备。
-
-我们可以通过集合的可视化来看看细胞亚群之间的 DS 基因是否有交集：
-
-```{r diff-gene-intersection-plot}
-tbl_filtered <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  .$table %>% .[["X1DPI.PNR2-X1DPI.MOCK"]]
-
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:13, "gene") %>%
-  rhapsodykit::from_list_to_upset() %>%
-  rhapsodykit::upset_dataframe() %>%
-  rhapsodykit::upset_plot()
-
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_pull("X1DPI.TR4-X1DPI.MOCK", 1:13, "gene") %>%
-  rhapsodykit::from_list_to_upset() %>%
-  rhapsodykit::upset_dataframe() %>%
-  rhapsodykit::upset_plot()
+```{r}
+dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.TR4") %>%
+  rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs 1DPI.TR4")
 ```
 
-TODO: 将上调和下调的基因分别显示出来。如何解决一个问题，某个基因在 cluster_1 中是上调，在 cluster_2 中是下调。 将上调基因与下调基因分成两个类别，分别计算出用于 UpSet Plot 的数据框。当某个基因在在两个集合中分别是上调基因和下调基因时，那么它在交集中就不会出现。
+#### 2 DPI
 
-可以考虑将 up-regulated 和 down-regulated 分别生成两张可以直接画图的表格。然后将两张并合并在一起，标记一个 up 或者 down ，然后用 dogde 条形图绘制出来。
+```{r}
+dplyr::filter(df_to_plot, contrast == "X2DPI.PNR2-X2DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "2DPI-PNR2 vs. 2DPI-MOCK")
+```
 
-```{r up-down-upset}
-plot_updown <- function(contrast) {
-  up_list <- ds_res$DESeq2 %>%
+```{r}
+dplyr::filter(df_to_plot, contrast == "X2DPI.TR4-X2DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "2DPI-TR4 vs 2DPI.MOCK")
+```
+
+```{r}
+dplyr::filter(df_to_plot, contrast == "X2DPI.PNR2-X2DPI.TR4") %>%
+  rhapsodykit::volcano_diff_state(title = "2DPI-PNR2 vs 2DPI.TR4")
+```
+
+#### 3 DPI
+
+```{r}
+dplyr::filter(df_to_plot, contrast == "X3DPI.PNR2-X3DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "3DPI-PNR2 vs. 3DPI-MOCK")
+```
+
+```{r}
+dplyr::filter(df_to_plot, contrast == "X3DPI.TR4-X3DPI.MOCK") %>%
+  rhapsodykit::volcano_diff_state(title = "3DPI-TR4 vs 3DPI.MOCK")
+```
+
+```{r}
+dplyr::filter(df_to_plot, contrast == "X3DPI.PNR2-X3DPI.TR4") %>%
+  rhapsodykit::volcano_diff_state(title = "3DPI-PNR2 vs 3DPI.TR4")
+```
+
+### 细胞类型间 DS 基因交集 {.tabset}
+
+```{r}
+plot_updown <- function(ds, contrast) {
+  p1 <- ds %>%
+    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:8, "gene") %>%
+    rhapsodykit::from_list_to_upset() %>%
+    rhapsodykit::upset_dataframe() %>%
+    rhapsodykit::upset_plot()
+
+  up_list <- ds %>%
     rhapsodykit::diff_state_filter(logFC > 0) %>%
     rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull(contrast, 1:13, "gene")
-  
-  down_list <- ds_res$DESeq2 %>%
+    rhapsodykit::diff_state_pull(contrast, 1:8, "gene")
+
+  down_list <- ds %>%
     rhapsodykit::diff_state_filter(logFC < 0) %>%
     rhapsodykit::diff_state_significant() %>%
-    rhapsodykit::diff_state_pull(contrast, 1:13, "gene")
-  
-  rhapsodykit::upset_updown_regulated(up_list, down_list)
-}
+    rhapsodykit::diff_state_pull(contrast, 1:8, "gene")
 
-plot_updown("X1DPI.PNR2-X1DPI.MOCK") + ggplot2::ggtitle("1DPI PNR2 vs. MOCK")
-plot_updown("X1DPI.TR4-X1DPI.MOCK") + ggplot2::ggtitle("1DPI TR4 vs. MOCK")
+  p2 <- rhapsodykit::upset_updown_regulated(up_list, down_list)
+
+  p1 / p2
+}
 ```
 
-Tips: 为什么 UpSetR 与 ggupset 画出来的数据不一致呢？当 `UpSetR::upset` 设置了 `nsets` 参数时，集合的交集计算只会在选定的集合之间进行。而 ggupset 默认显示所有集合，因此在默认参数状态下 UpSetR 与 ggupset 是有可能不一致的。
+#### 1 DPI
 
-#### 3.3.3 样本间差异状态的一致性
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK") &
+   ggplot2::ggtitle("1DPI PNR2 vs. MOCK")
+```
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK") &
+   ggplot2::ggtitle("1DPI TR4 vs. MOCK")
+```
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.TR4") &
+   ggplot2::ggtitle("1DPI PNR2 vs. TR4")
+```
+
+#### 2 DPI
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X2DPI.PNR2-X2DPI.MOCK") &
+   ggplot2::ggtitle("2DPI PNR2 vs. MOCK")
+```
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X2DPI.TR4-X2DPI.MOCK") &
+   ggplot2::ggtitle("2DPI TR4 vs. MOCK")
+```
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X2DPI.PNR2-X2DPI.TR4") &
+   ggplot2::ggtitle("2DPI PNR2 vs. TR4")
+```
+
+#### 3 DPI
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X3DPI.PNR2-X3DPI.MOCK") &
+   ggplot2::ggtitle("3DPI PNR2 vs. MOCK")
+```
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X3DPI.TR4-X3DPI.MOCK") &
+   ggplot2::ggtitle("3DPI TR4 vs. MOCK")
+```
+
+```{r fig.height=10, fig.width=7}
+plot_updown(ds_res$DESeq2, "X3DPI.PNR2-X3DPI.TR4") &
+   ggplot2::ggtitle("3DPI PNR2 vs. TR4")
+```
+
+### 样本间差异状态的一致性
 
 筛选出一部分 contrast 再比较。
 
-```{r upset-across-contrast}
-upset_contrasts <- function(input) {
+```{r upset-across-contrast, fig.height=10, fig.width=7}
+upset_contrasts <- function(input, ...) {
   sets_list <- input$table %>%
     purrr::map(function(x) {
       purrr::map(x, "gene") %>%
@@ -649,7 +592,11 @@ upset_contrasts <- function(input) {
   sets_metadata <- sets_list %>%
     purrr::imap(function(contrast, key) {
       cbind(
-        sets = sprintf("%s [%s]", key, names(contrast)),
+        sets = sprintf(
+          "%s [%s]",
+          stringr::str_replace(key,
+            "X(\\dDPI)\\.(.*)-X.*", "\\1-\\2"),
+          names(contrast)),
         contrast = key,
         cluster = names(contrast)
       )
@@ -665,7 +612,7 @@ upset_contrasts <- function(input) {
   sets_to_plot %>%
     rhapsodykit::from_list_to_upset() %>%
     rhapsodykit::upset_dataframe() %>%
-    rhapsodykit::upset_plot(order_by = "degree")
+    rhapsodykit::upset_plot(order_by = "degree", ...)
 }
 
 diff_state_subset <- function(input, contrast = NULL, cluster = NULL) {
@@ -680,21 +627,52 @@ diff_state_subset <- function(input, contrast = NULL, cluster = NULL) {
 
   input
 }
+```
 
+#### 所有集合比较
+
+```{r fig.height=10, fig.width=7}
+p <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant() %>%
+  diff_state_subset(contrast = c(
+    "X1DPI.PNR2-X1DPI.MOCK",
+    "X1DPI.TR4-X1DPI.MOCK",
+    "X2DPI.PNR2-X2DPI.MOCK",
+    "X2DPI.TR4-X2DPI.MOCK",
+    "X3DPI.PNR2-X3DPI.MOCK",
+    "X3DPI.TR4-X3DPI.MOCK")) %>%
+  upset_contrasts(n_intersections = 50)
+
+p
+```
+
+#### 按时间划分 {.tabset}
+
+##### 1 DPI
+
+```{r }
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
   diff_state_subset(contrast = c(
     "X1DPI.PNR2-X1DPI.MOCK",
     "X1DPI.TR4-X1DPI.MOCK")) %>%
   upset_contrasts()
+```
 
+##### 2 DPI
+
+```{r}
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
   diff_state_subset(contrast = c(
     "X2DPI.PNR2-X2DPI.MOCK",
     "X2DPI.TR4-X2DPI.MOCK")) %>%
   upset_contrasts()
+```
 
+##### 3 DPI
+
+```{r}
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
   diff_state_subset(contrast = c(
@@ -705,381 +683,222 @@ ds_res$DESeq2 %>%
 
 因为有不同的 contrast ，所以无法显示上调与下调的基因。
 
-TODO: 针对某个 cluster ，绘制所有 contrast 的 UpSet 图。
+#### 按细胞类型划分 {.tabset}
 
-```{r cluster-upset}
+```{r}
+plot_upset_by_cluster <- function(ds, cluster) {
+  ds %>%
+  rhapsodykit::diff_state_significant() %>%
+  diff_state_subset(
+    contrast = c(
+      "X1DPI.PNR2-X1DPI.MOCK",
+      "X1DPI.TR4-X1DPI.MOCK",
+      "X2DPI.PNR2-X2DPI.MOCK",
+      "X2DPI.TR4-X2DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK"),
+    cluster = cluster) %>%
+  upset_contrasts()
+}
+```
+
+##### Stomata
+
+```{r}
 ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
-  diff_state_subset(cluster = "Va_4") %>%
+  diff_state_subset(
+    contrast = c(
+      #"X1DPI.PNR2-X1DPI.MOCK",
+      "X1DPI.TR4-X1DPI.MOCK",
+      "X2DPI.PNR2-X2DPI.MOCK",
+      "X2DPI.TR4-X2DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK"),
+    cluster = "Stomata") %>%
   upset_contrasts()
 ```
 
-#### 3.3.4 表达量在降维图上的投影
-
-既然知道了差异基因，那么我们可以尝试将表达量投影到降维散点图中。
-
-```{r dotplot-projection}
-# pull top-4 DS genes across all clusters
-top4 <- dplyr::bind_rows(tbl_filtered) %>% 
-  dplyr::top_n(4, dplyr::desc(p_adj.loc)) %>% 
-  dplyr::pull("gene") %>%
-  .[1:4]
-
-# for ea. gene in 'top4', plot t-SNE colored by its expression 
-ps <- lapply(top4, function(gene) {
-  Seurat::DefaultAssay(obj) <- "RNA"
-  Seurat::FeaturePlot(
-      obj, gene,
-      reduction = "tsne",
-      pt.size = 0.05,
-      label = FALSE) +
-    ggplot2::ggtitle(gene) +
-    ggplot2::theme_bw(8) +
-    ggplot2::theme(legend.position = "none")
-})
-
-# arrange plots
-cowplot::plot_grid(plotlist = ps, ncol = 2, align = "vh")
-```
-
-#### 3.3.5 细胞水平的可视化: 小提琴图
-
-我们可以从细胞水平来看看这些 DS 基因的差异性分布：
-
-```{r violin-plot, fig.height=5, fig.width=14}
-scater::plotExpression(sce[, sce$cluster_id == "Va_4"],
-  features = tbl_filtered$`Va_4`$gene[seq_len(6)],
-  x = "sample_id", colour_by = "group_id", ncol = 3) +
-  ggplot2::guides(fill = ggplot2::guide_legend(override.aes = list(size = 5, alpha = 1))) +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-```
-
-用 `Seurat::VlnPlot` 画不出上面这个图。
-
-#### 3.3.6 样本水平的可视化: Pseudobulk 热图
-
-如果我们基于聚合来做 DS 分析，那么我们天然会想到画一个热图：
-
-```{r heatmap}
-pb_arr <- abind::abind(as.list(pb_list$logcounts@assays@data), along = 3)
-
-genes <- dplyr::bind_rows(tbl_filtered) %>%
-  dplyr::pull("gene")
-
-# top-5 DS genes per cluster
-rhapsodykit::heatmap_cross_sample(
-  pb_arr, genes,
-  clusters = c("Va_4", "Me_1"),
-  type = "logcounts",
-  show_row_names = FALSE)
-```
-
-待改进之处：
-
--   添加横坐标 group 注释
--   将横坐标以 group 分割
-
-TODO: 参考 (Crowell et al. 2020) Fig. 4D 绘制一幅热图，寻找差异表达模组。
-
-#### 3.3.7 差异基因的热图
-
-利用 logFC 的表达情况来对基因集进行聚类，找出在表达模式上一致的模块。然后对这些模块再进行富集分析。
-
-```{r eval=FALSE}
-pbs <- pb_list$counts
-ns <- length(levels(sce$sample_id))
-
-
-# construct SCE containing logFCs for ea. cluster
-ref <- pbs$group_id == "X1DPI.MOCK"
-lfc <- lapply(
-  SummarizedExperiment::assays(pbs),
-  function(u) {
-    y <- edgeR::DGEList(u)
-    y <- edgeR::calcNormFactors(y)
-    lcpm <- log1p(edgeR::cpm.DGEList(y))
-    lfc <- lcpm - rowMeans(lcpm[, ref])
-    SingleCellExperiment::SingleCellExperiment(
-      lfc, colData = SingleCellExperiment::colData(pbs)
-    )
-  }
-) %>% do.call(what = cbind)
-
-lfc$cluster_id <- factor(
-    rep(SummarizedExperiment::assayNames(pbs), each = ns), 
-    levels = SummarizedExperiment::assayNames(pbs))
-
-# consensus clustering of DS genes
-ds_gs_by_k <- ds_res$edgeR %>%
-  rhapsodykit::diff_state_significant() %>%
-  .$table %>% .[["X1DPI.PNR2-X1DPI.MOCK"]] %>%
-  purrr::map("gene")
-
-ds_gs <- unique(unlist(ds_gs_by_k))
-cc <- M3C::M3C(
-  t(SummarizedExperiment::assay(lfc[ds_gs, ])),
-  method = 2, 
-  seed = NULL,
-  removeplots = TRUE)
-cc_ids <- cc$realdataresults[[3]]$assignments
-cc_cols <- RColorBrewer::brewer.pal(length(unique(cc_ids)), "Set2")
-names(cc_cols) <- unique(cc_ids)
-
-# column & row annoations 
-col_df <- data.frame(
-    cluster_id = rep(SummarizedExperiment::assayNames(pbs), each = ns), 
-    group_id = rep(pbs$group_id, length(SummarizedExperiment::assays(pbs))))
-col_anno <- ComplexHeatmap::HeatmapAnnotation(
-    df = col_df,
-    show_annotation_name = FALSE,
-    annotation_legend_param = list(
-      title_gp = grid::gpar(fontsize = 8), 
-      labels_gp = grid::gpar(fontsize = 6)
-    )
-)
-
-row_anno <- ComplexHeatmap::rowAnnotation(
-    show_annotation_name = FALSE,
-    df = data.frame(consensus_id = cc_ids),
-    col = list(consensus_id = cc_cols),
-    simple_anno_size = grid::unit(2, "mm"),
-    annotation_legend_param = list(
-      title_gp = grid::gpar(fontsize = 8), 
-      labels_gp = grid::gpar(fontsize = 6)
-    )
-)
-# get axis limits by rounding limits of x to nearest n -------------------------
-.get_brks <- function(x, n) {
-    n <- 1 / n
-    min <- floor(min(x) * n) / n
-    max <- ceiling(max(x) * n) / n
-    c(0, min, max)
-}
-
-.hm_lgd_aes <- list(
-    title_gp = grid::gpar(fontsize = 8), 
-    labels_gp = grid::gpar(fontsize = 6))
-
-# cluster-wise logFC heatmap wrapper -------------------------------------------
-.hm_cols <- c("navy", "cyan", "violet")
-
-.plot_hm <- function(sce, col, brks, col_anno = NULL, row_anno = NULL, 
-    row_split = NULL, row_nms = FALSE, col_title = NULL, ...)
-    ComplexHeatmap::Heatmap(assay(sce), col, name = "logFC", 
-        column_title = col_title, cluster_columns = FALSE, 
-        show_row_names = row_nms, show_column_names = FALSE,
-        show_row_dend = FALSE, show_column_dend = TRUE,
-        row_split = row_split, column_split = sce$cluster_id,
-        top_annotation = col_anno, left_annotation = row_anno, 
-        heatmap_legend_param = c(.hm_lgd_aes, list(at = brks)),
-        row_names_side = "left", ...)
-
-qs <- quantile(SummarizedExperiment::assay(lfc[ds_gs, ]), c(0.01, 0.99))
-brks <- .get_brks(qs, 0.5)
-cols <- circlize::colorRamp2(brks, .hm_cols)
-(hm <- .plot_hm(lfc[ds_gs, ], cols, brks, 
-    col_anno, row_anno, cc_ids, row_title = NULL, 
-    cluster_row_slices = FALSE, cluster_column_slices = FALSE, 
-    use_raster = TRUE, raster_device = "CairoPNG"))
-```
+##### Epidermis
 
 ```{r}
-knitr::knit_exit()
+plot_upset_by_cluster(ds_res$DESeq2, "Epidermis")
 ```
 
-## 4 时间线差异状态
-
-### 4.1 以 0DPI-MOCK 为共同对照
-
-```{r run-ds-timeline-analysis}
-# run DS analysis
-contrast_names <- c(
-  "X1DPI.MOCK-X0DPI.MOCK",
-  "X2DPI.MOCK-X0DPI.MOCK",
-  "X3DPI.MOCK-X0DPI.MOCK",
-  
-  "X1DPI.PNR2-X0DPI.MOCK",
-  "X2DPI.PNR2-X0DPI.MOCK",
-  "X3DPI.PNR2-X0DPI.MOCK",
-
-  "X1DPI.TR4-X0DPI.MOCK",
-  "X2DPI.TR4-X0DPI.MOCK",
-  "X3DPI.TR4-X0DPI.MOCK"
-)
-
-ds_res_time <- xfun::cache_rds(
-  file = "ds_timeline.rds",
-  dir = "../output/",
-  expr = {
-    list(
-      edgeR = rhapsodykit::pseudobulk_diff_state(
-        sce, pb_list$counts,
-        method = "edgeR",
-        contrasts = contrast_names,
-        BPPARAM = BPPARAM
-      ),
-      DESeq2 = rhapsodykit::pseudobulk_diff_state(
-        sce, pb_list$counts,
-        method = "DESeq2",
-        contrasts = contrast_names,
-        BPPARAM = BPPARAM
-      )
-    )
-  }
-)
-
-str(ds_res_time$edgeR$table, max.level = 1)
-```
-
-### 4.2 可视化时间线 {.tabset}
-
-```{r results = "asis"}
-genecount_df <- ds_res_time$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  rhapsodykit::diff_state_format()
-
-genecount_df$time <- rhapsodykit::key_mapping(genecount_df$contrast, c(
-  "X1DPI.MOCK-X0DPI.MOCK" = "1DPI",
-  "X2DPI.MOCK-X0DPI.MOCK" = "2DPI",
-  "X3DPI.MOCK-X0DPI.MOCK" = "3DPI",
-  
-  "X1DPI.PNR2-X0DPI.MOCK" = "1DPI",
-  "X2DPI.PNR2-X0DPI.MOCK" = "2DPI",
-  "X3DPI.PNR2-X0DPI.MOCK" = "3DPI",
-
-  "X1DPI.TR4-X0DPI.MOCK"  = "1DPI",
-  "X2DPI.TR4-X0DPI.MOCK"  = "2DPI",
-  "X3DPI.TR4-X0DPI.MOCK"  = "3DPI"
-))
-
-genecount_df$treatment <- rhapsodykit::key_mapping(genecount_df$contrast, c(
-  "X1DPI.MOCK-X0DPI.MOCK" = "MOCK",
-  "X2DPI.MOCK-X0DPI.MOCK" = "MOCK",
-  "X3DPI.MOCK-X0DPI.MOCK" = "MOCK",
-  
-  "X1DPI.PNR2-X0DPI.MOCK" = "PNR2",
-  "X2DPI.PNR2-X0DPI.MOCK" = "PNR2",
-  "X3DPI.PNR2-X0DPI.MOCK" = "PNR2",
-
-  "X1DPI.TR4-X0DPI.MOCK"  = "TR4",
-  "X2DPI.TR4-X0DPI.MOCK"  = "TR4",
-  "X3DPI.TR4-X0DPI.MOCK"  = "TR4"
-))
-
-genecount_df$contrast <- factor(genecount_df$contrast, levels = contrast_names)
-
-plot_timeline <- function(df) {
-  df %>%
-    ggplot2::ggplot(ggplot2::aes(time, fill = treatment)) +
-    ggplot2::geom_bar(
-      position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
-    ggplot2::ylab("Number of DS genes") +
-    ggplot2::xlab("Cell Subpopulation") +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    )
-}
-
-contrast_cols = Seurat::DiscretePalette(length(ds_res_time$DESeq2$table), palette = "glasbey")
-names(contrast_cols) <- names(ds_res_time$DESeq2$table)
-```
-
-#### fixed_y
-
-```{r fig.height=5, fig.width=7}
-genecount_df %>%
-  plot_timeline() +
-  ggplot2::facet_wrap(~cluster_id) +
-  ggplot2::theme(legend.position = "right")
-```
-
-#### free_y
-
-```{r fig.height=5, fig.width=7}
-genecount_df %>%
-  plot_timeline() +
-  ggplot2::facet_wrap(~cluster_id, scales = "free_y") +
-  ggplot2::theme(legend.position = "right")
-```
-
-### 4.3 时间线之间的比较 {.tabset}
-
-```{r upset-across-contrast-timeline}
-upset_contrasts <- function(input) {
-  sets_list <- input$table %>%
-    purrr::map(function(x) {
-      purrr::map(x, "gene") %>%
-        purrr::compact()
-    })
-
-  sets_metadata <- sets_list %>%
-    purrr::imap(function(contrast, key) {
-      cbind(
-        sets = sprintf("%s [%s]", key, names(contrast)),
-        contrast = key,
-        cluster = names(contrast)
-      )
-    }) %>%
-    do.call(rbind, .) %>%
-    as.data.frame()
-
-  sets_to_plot <- sets_list %>%
-    unlist(recursive = FALSE)
-  
-  names(sets_to_plot) <- sets_metadata$sets
-
-  sets_to_plot %>%
-    rhapsodykit::from_list_to_upset() %>%
-    rhapsodykit::upset_dataframe() %>%
-    rhapsodykit::upset_plot(order_by = "degree")
-}
-
-diff_state_subset <- function(input, contrast = NULL, cluster = NULL) {
-  if (!is.null(contrast))
-    input$table <- input$table[contrast]
-
-  if (!is.null(cluster)) {
-    input$table <- purrr::map(input$table, function(contr) contr[cluster])
-    input$data <- input$data[cluster]
-    input$fit <- input$fit[cluster]
-  }
-
-  input
-}
-```
-
-#### 1DPI
+##### Chlorenchyma
 
 ```{r}
-ds_res_time$DESeq2 %>%
+plot_upset_by_cluster(ds_res$DESeq2, "Chlorenchyma")
+```
+
+##### Parenchyma
+
+```{r}
+plot_upset_by_cluster(ds_res$DESeq2, "Parenchyma")
+```
+
+##### Outer sheath
+
+```{r}
+plot_upset_by_cluster(ds_res$DESeq2, "Outer sheath")
+```
+
+##### Inner sheath
+
+```{r}
+ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
-  diff_state_subset(contrast = c(
-    "X1DPI.MOCK-X0DPI.MOCK",
-    "X1DPI.PNR2-X0DPI.MOCK",
-    "X1DPI.TR4-X0DPI.MOCK")) %>%
+  diff_state_subset(
+    contrast = c(
+      #"X1DPI.PNR2-X1DPI.MOCK",
+      "X1DPI.TR4-X1DPI.MOCK",
+      "X2DPI.PNR2-X2DPI.MOCK",
+      "X2DPI.TR4-X2DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK"),
+    cluster = "Inner sheath") %>%
   upset_contrasts()
 ```
 
-#### 2DPI
+##### Phloem
 
 ```{r}
-ds_res_time$DESeq2 %>%
+plot_upset_by_cluster(ds_res$DESeq2, "Phloem")
+```
+
+##### Procambium
+
+```{r}
+ds_res$DESeq2 %>%
   rhapsodykit::diff_state_significant() %>%
-  diff_state_subset(contrast = c(
-    "X2DPI.MOCK-X0DPI.MOCK",
-    "X2DPI.PNR2-X0DPI.MOCK",
-    "X2DPI.TR4-X0DPI.MOCK")) %>%
+  diff_state_subset(
+    contrast = c(
+      #"X1DPI.PNR2-X1DPI.MOCK",
+      #"X1DPI.TR4-X1DPI.MOCK",
+      "X2DPI.PNR2-X2DPI.MOCK",
+      "X2DPI.TR4-X2DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK"),
+    cluster = "Procambium") %>%
   upset_contrasts()
 ```
 
-#### 3DPI
+### 差异基因的整体展示
+
+#### 表达倍数散点图
+
+```{r fig.height=7, fig.width=14}
+df_to_plot <- ds_res$DESeq2 |>
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::filter(!stringr::str_detect(contrast, "X\\dDPI\\.PNR2-X\\dDPI\\.TR4")) |>
+  dplyr::select(gene, cluster_id, contrast, logFC) |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2-\\4")) |>
+  tidyr::pivot_wider(names_from = "time", values_from = "logFC", values_fill = 0) |>
+  tidyr::pivot_longer(cols = dplyr::ends_with("DPI"), names_to = "time", values_to = "logFC") |>
+  tidyr::pivot_wider(names_from = contrast, values_from = logFC, values_fill = 0)
+
+p <- df_to_plot |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = `PNR2-MOCK`, y = `TR4-MOCK`, color = cluster_id)) +
+  ggplot2::geom_point(shape = 1, size = 1) +
+  ggthemes::scale_color_tableau() +
+  ggplot2::facet_grid(time ~ cluster_id) +
+  ggplot2::theme_bw() +
+  remove_legend()
+
+p
+```
+
+#### 表达倍数的热图
 
 ```{r}
-ds_res_time$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
-  diff_state_subset(contrast = c(
-    "X3DPI.MOCK-X0DPI.MOCK",
-    "X3DPI.PNR2-X0DPI.MOCK",
-    "X3DPI.TR4-X0DPI.MOCK")) %>%
-  upset_contrasts()
+logfc_df <- ds_res$DESeq2 |>
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::filter(!stringr::str_detect(contrast, "X\\dDPI\\.PNR2-X\\dDPI\\.TR4")) |>
+  dplyr::select(gene, cluster_id, contrast, logFC) |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2-\\4")) |>
+  tidyr::pivot_wider(names_from = "time", values_from = "logFC", values_fill = NA) |>
+  tidyr::pivot_longer(cols = dplyr::ends_with("DPI"), names_to = "time", values_to = "logFC")
+
+logfc_mtx <- logfc_df |>
+  tidyr::pivot_wider(names_from = c(cluster_id, contrast, time),
+                     names_sep = "#",
+                     values_from = logFC) |>
+  tibble::column_to_rownames("gene") |>
+  as.matrix()
+
+str_coldata <- strsplit(colnames(logfc_mtx), "#")
+
+mtx_coldata <- data.frame(
+  colidx = seq_along(colnames(logfc_mtx)),
+  cell_types = factor(sapply(str_coldata, function(x) x[[1]]),
+                      levels = unique(all_tissues)),
+  contrast = factor(sapply(str_coldata, function(x) x[[2]]),
+                    #levels = c("PNR2-MOCK", "TR4-MOCK", "PNR2-TR4")),
+                    levels = c("PNR2-MOCK", "TR4-MOCK")),
+  times = factor(sapply(str_coldata, function(x) x[[3]]),
+                 levels = c("1DPI", "2DPI", "3DPI"))
+)
+
+mtx_coldata <- mtx_coldata[with(mtx_coldata, order(cell_types, contrast, times)),]
+
+logfc_mtx <- logfc_mtx[, mtx_coldata$colidx]
 ```
+
+在热图中用灰色表示不显著的基因，即在差异基因列表中缺失的那些。有些基因明明不显著，但 logFC 可能非常大，会干扰判断。
+
+学习 dendsort: modular leaf ordering methods for dendrogram representations in R
+
+```{r fig.height=7, fig.width=10}
+dend_mtx <- logfc_mtx
+dend_mtx[is.na(dend_mtx)] <- 0
+dend_row_hc <- dendsort::dendsort(fastcluster::hclust(dist(dend_mtx)))
+```
+
+```{r fig.height=7, fig.width=14}
+ha = ComplexHeatmap::HeatmapAnnotation(
+      which = "column",
+      df = mtx_coldata[-1],
+      col = list(
+        cell_types = structure(
+          ggthemes::tableau_color_pal()(
+            length(levels(mtx_coldata$cell_types))),
+          names = levels(mtx_coldata$cell_types)
+        ),
+        contrast = structure(
+          c("#E41A1C", "#377EB8"),
+          names = levels(mtx_coldata$contrast)
+        ),
+        times = structure(
+          RColorBrewer::brewer.pal(3, "YlGn"),
+          names = levels(mtx_coldata$times)
+        )
+      ))
+
+p <- ComplexHeatmap::Heatmap(
+    matrix = logfc_mtx,
+    name = "Log2 Fold Change",
+    column_split = mtx_coldata$cell_types,
+    use_raster = TRUE,
+    na_col = "grey",
+    cluster_rows = dend_row_hc,
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = FALSE,
+    top_annotation = ha,
+    heatmap_legend_param = list(
+      title_position = "leftcenter-rot",
+      legend_height  = grid::unit(4, "cm")
+    ))
+
+p <- ComplexHeatmap::draw(p, merge_legend = TRUE)
+```
+
