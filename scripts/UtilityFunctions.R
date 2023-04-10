@@ -547,6 +547,21 @@ theme_dimred <- function(
   )
 }
 
+theme_upset <- function(...) {
+  ggplot2::theme(
+    panel.background = ggplot2::element_blank(),
+    panel.border = ggplot2::element_blank(),
+    panel.grid.major = ggplot2::element_blank(),
+    panel.grid.minor = ggplot2::element_blank(),
+    axis.line = ggplot2::element_line(
+      colour = "black", linewidth = ggplot2::rel(1)),
+    legend.key = ggplot2::element_blank(), 
+    strip.background = ggplot2::element_rect(
+      fill = "white", colour = "black", linewidth = ggplot2::rel(2)),
+    ...
+  )
+}
+
 download_table <- function(df, table_id = "table", ...) {
   htmltools::tagList(
     htmltools::tags$button(
@@ -559,4 +574,8 @@ download_table <- function(df, table_id = "table", ...) {
   )
 }
 
-
+convertV11ToV10 <- function(genes) {
+  # IWGSC annotation v1.1 add wrongly removed genes during the integration,
+  # so it's safe to just change version of annotation in ID of HC genes.
+  stringr::str_replace(genes, "(?<=TraesCS([1-7][ABD]|U))02G", "01G")
+}

@@ -1,0 +1,600 @@
+---
+title: "Transcription Factor Regulation Network of DEGs"
+author: "Altair Wei"
+date: "2023-04-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/UtilityFunctions.R")
+```
+
+
+## Load Data
+
+### Metadata
+
+```{r}
+cell_types <- c(
+  "Stomata",
+  "Epidermis",
+  "Chlorenchyma",
+  "Parenchyma",
+  "Outer sheath",
+  "Inner sheath",
+  "Phloem",
+  "Procambium"
+)
+```
+
+### DEGs of Cell Types
+
+```{r}
+ds_res <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_res_*.rds"))
+
+ds_df <- ds_res$DESeq2 |>
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) |>
+  rhapsodykit::diff_state_format()
+```
+
+```{r}
+marker_df <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_identity_genes_*.rds")) |>
+  dplyr::filter(
+    # Min in group fraction
+    pct.1 > 0.2,
+    # Max out group fraction
+    pct.2 < 0.2) |>
+  dplyr::group_by(time, cluster) |>
+  dplyr::top_n(n = 300, wt = avg_log2FC)
+```
+
+### Functions
+
+```{r}
+enrichTFs <- function(genes, timeout = 60, browse = FALSE) {
+  job_id = as.character(as.numeric(Sys.time()) * 1000000000)
+
+  RCurl::postForm(
+    uri = "http://bioinfo.sibs.ac.cn/Wheat-RegNet/wait.php",
+    style = "httppost",
+    .params = list(
+      method = "gene_list_anno_tf",
+      job_id = job_id,
+      gene_list_id = "",
+      upload_gene_file = RCurl::fileUpload(
+        filename = "query_genes.txt",
+        contents = paste0(genes, collapse = "\n"),
+        contentType = "text/plain"))
+  )
+
+  message("Running task...")
+  RCurl::postForm(
+    uri = "http://bioinfo.sibs.ac.cn/Wheat-RegNet/run_web_task.php",
+    style = "post",
+    .opts = list(timeout = timeout),
+    .params = list(
+      method = "gene_list_anno_tf",
+      job_id = job_id,
+      input_file = "gene_list_id_txt"
+    )
+  )
+
+  result_url <- paste0("http://bioinfo.sibs.ac.cn/Wheat-RegNet/result.php?job_id=", job_id)
+
+  if (browse)
+    utils::browseURL(result_url)
+
+  df <- rvest::read_html(result_url) |>
+    rvest::html_element("#tf_list_table") |>
+    rvest::html_table() |>
+    dplyr::select(-Checkbox)
+
+  df
+}
+```
+
+```{r}
+expandToMatrix <- function(df, name_cols, value_col, rownames_col) {
+  df <- df |>
+    tidyr::pivot_wider(
+      names_from = {{name_cols}},
+      names_sep = "#",
+      names_expand = TRUE,
+      values_from = {{value_col}},
+      values_fill = NA) |>
+    tidyr::pivot_longer(
+      cols = -TF,
+      names_to = {{name_cols}},
+      names_sep = "#",
+      values_to = {{value_col}})
+
+  df |>
+    tidyr::pivot_wider(names_from = {{name_cols}},
+                       names_sep = "#",
+                       values_from = {{value_col}}) |>
+    tibble::column_to_rownames(rownames_col) |>
+    as.matrix()
+}
+```
+
+```{r}
+plotTFsEnrichHeatmap <- function(mtx, max = 10, ...) {
+  outliers_idx <- which(mtx > max, arr.ind = TRUE)
+  if (length(outliers_idx) != 0)
+    warning(sprintf(paste0("%i TF%s with FoldChange greater than %i were shown",
+                    " in maximum color and marked with white asterisk.\n"),
+                    nrow(outliers_idx),
+                    if (nrow(outliers_idx) > 1) "s" else "",
+                    max))
+
+  dend_mtx <- mtx
+  dend_mtx[is.na(dend_mtx)] <- 0
+  dend_row_hc <- dendsort::dendsort(
+    fastcluster::hclust(dist(dend_mtx)),
+    isReverse = TRUE)
+
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    name = "Ratio Fold Change",
+    col = circlize::colorRamp2(c(0, max), c("blue", "red")),
+    use_raster = TRUE,
+    na_col = "grey",
+    cluster_rows = dend_row_hc,
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = TRUE,
+    heatmap_legend_param = list(
+      title_position = "leftcenter-rot",
+      legend_height  = grid::unit(4, "cm")
+    ),
+    cell_fun = function(j, i, x, y, width, height, fill) {
+      val <- abs(mtx[i, j])
+      if (!is.na(val) && val > max)
+        grid::grid.text("★", x, y, gp = grid::gpar(
+          fontsize = 8, col = "white", fontface = "bold"))
+    },
+    ...)
+
+  ComplexHeatmap::draw(p, merge_legend = TRUE)
+}
+```
+
+## Overlapping of Itentity and Immunity
+
+### Combine DEG list
+
+```{r}
+df_imm <- ds_df |>
+  dplyr::filter(!stringr::str_detect(contrast, "X\\dDPI\\.PNR2-X\\dDPI\\.TR4")) |>
+  dplyr::select(gene, cluster_id, contrast, logFC) |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2-\\4")) |>
+  dplyr::select(time, cluster_id, contrast, gene) |>
+  dplyr::rename(type = contrast)
+```
+
+```{r}
+df_ide <- marker_df |>
+  dplyr::mutate(type = "identity") |>
+  dplyr::select(time, cluster, type, gene) |>
+  dplyr::rename(cluster_id = cluster)
+```
+
+```{r}
+df_deg <- dplyr::bind_rows(df_imm, df_ide)
+```
+
+```{r}
+str(df_deg)
+```
+
+
+### Venn plot of DEG list {.tabset}
+
+```{r}
+plotVennOverlap <- function(df, cluster) {
+  venn_list <- df |>
+    dplyr::filter(cluster_id == cluster, time != "0DPI") |>
+    dplyr::select(time, type, gene) |>
+    dplyr::group_by(time, type) |>
+    dplyr::summarise(
+      genes = list(gene),
+      .groups = "drop") |>
+    dplyr::group_by(time) |>
+    tidyr::nest() |>
+    dplyr::rowwise() |>
+    dplyr::summarise(
+      data = list(tibble::deframe(data)),
+      .groups = "drop") |>
+    tibble::deframe()
+
+
+  plots <- mapply(
+    venn_list, names(venn_list),
+    SIMPLIFY = FALSE,
+    USE.NAMES = FALSE,
+    FUN = function(lst, name) {
+      if (length(lst) < 2) {
+        warning("Less than 2 gene sets.")
+        return(NULL)
+      }
+      gridExtra::arrangeGrob(
+        plot(eulerr::venn(lst)), top = name)
+    })
+
+  gridExtra::grid.arrange(grobs = plots, nrow = 1)
+}
+```
+
+```{r fig.height=5, fig.width=14, results='asis'}
+for (ct in cell_types) {
+  cat("####", ct, "\n\n")
+  suppressWarnings(plotVennOverlap(df_deg, ct))
+  cat("\n\n")
+}
+```
+
+## Enriched TFs of Marker Genes
+
+### TFs enrich for identity genes
+
+```{r}
+TFs_enrich_identity <- xfun::cache_rds(
+  file = "ds_identity_TFs_enrich_df.rds",
+  dir = "../results/ObjectCache/DifferentialState/",
+  expr = marker_df |>
+    dplyr::group_by(time, cluster) |>
+    dplyr::summarise(DEGs = list(gene)) |>
+    dplyr::rowwise() |>
+    dplyr::filter(length(DEGs) > 50) |>
+    dplyr::mutate(DEGs = list(convertV11ToV10(DEGs))) |>
+    dplyr::mutate(TFs = list(enrichTFs(DEGs)))
+)
+```
+
+```{r}
+head(TFs_enrich_identity)
+```
+
+```{r}
+df_to_plot <- TFs_enrich_identity |>
+  dplyr::select(-DEGs) |>
+  tidyr::unnest(TFs)
+
+df_to_plot
+```
+
+### Heatmap of enriched TFs
+
+```{r}
+plotIdentityTFsHeatmap <- function(df, max = 10, ...) {
+  tf_fc_df <- tibble::tibble(
+    time = factor(df$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")),
+    cluster_id = factor(df$cluster, levels = cell_types),
+    TF = df$TF,
+    FoldChange = df$FoldChange
+  )
+
+  tf_fc_mtx <- expandToMatrix(
+    tf_fc_df, c("cluster_id", "time"), "FoldChange", "TF")
+
+  str_coldata <- strsplit(colnames(tf_fc_mtx), "#")
+
+  mtx_coldata <- data.frame(
+    colidx = seq_along(colnames(tf_fc_mtx)),
+    cell_types = factor(sapply(str_coldata, function(x) x[[1]]),
+                        levels = cell_types),
+    times = factor(sapply(str_coldata, function(x) x[[2]]),
+                   levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+  )
+
+  mtx_coldata <- mtx_coldata[with(mtx_coldata, order(cell_types, times)),]
+
+  mtx <- tf_fc_mtx[, mtx_coldata$colidx]
+
+  ha = ComplexHeatmap::HeatmapAnnotation(
+        which = "column",
+        df = mtx_coldata[-1],
+        col = list(
+          cell_types = structure(
+            ggthemes::tableau_color_pal()(
+              length(levels(mtx_coldata$cell_types))),
+            names = levels(mtx_coldata$cell_types)
+          ),
+          times = structure(
+            RColorBrewer::brewer.pal(4, "YlGn"),
+            names = levels(mtx_coldata$times)
+          )
+        ))
+
+  plotTFsEnrichHeatmap(
+    mtx,
+    top_annotation = ha,
+    column_split = mtx_coldata$cell_types,
+    ...)
+}
+```
+
+```{r fig.height=10, fig.width=14}
+plotIdentityTFsHeatmap(df_to_plot)
+```
+
+
+## Enriched TFs of Immunity DEGs
+
+### Generate DEG lists
+
+```{r}
+logfc_df <- ds_res$DESeq2 |>
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::filter(!stringr::str_detect(contrast, "X\\dDPI\\.PNR2-X\\dDPI\\.TR4")) |>
+  dplyr::select(gene, cluster_id, contrast, logFC) |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2-\\4")) |>
+  tidyr::pivot_wider(names_from = "time", values_from = "logFC", values_fill = NA) |>
+  tidyr::pivot_longer(cols = dplyr::ends_with("DPI"), names_to = "time", values_to = "logFC")
+
+str(logfc_df)
+```
+
+```{r}
+DEGs_list_df <- logfc_df |>
+  dplyr::filter(!is.na(logFC)) |>
+  dplyr::mutate(regu_type = ifelse(logFC > 0, "UP", "DOWN")) |>
+  dplyr::select(-logFC) |>
+  dplyr::group_by(time, contrast, cluster_id, regu_type) |>
+  dplyr::summarise(DEGs = list(gene), .groups = "drop")
+```
+
+### TFs enrich for DEG lists
+
+FoldChange 是指 GeneRatio/BgRatio
+
+只有 DEGs 数量大于 50 的列表才用于 TFs 富集分析。
+
+```{r}
+TFs_enrich_df <- xfun::cache_rds(
+  file = "ds_DEGs_TFs_enrich_df.rds",
+  dir = "../results/ObjectCache/DifferentialState/",
+  expr = DEGs_list_df |>
+    dplyr::rowwise() |>
+    dplyr::filter(length(DEGs) > 50) |>
+    dplyr::mutate(DEGs = list(convertV11ToV10(DEGs))) |>
+    dplyr::mutate(TFs = list(enrichTFs(DEGs)))
+)
+```
+
+```{r}
+head(TFs_enrich_df)
+```
+
+```{r}
+df_to_plot <- TFs_enrich_df |>
+  dplyr::select(-DEGs) |>
+  tidyr::unnest(TFs)
+
+df_to_plot
+```
+
+### Bubble Chart {.tabset}
+
+#### Up-regulated DEGs
+
+```{r fig.height=7, fig.width=14}
+df_to_plot |>
+  dplyr::filter(regu_type == "UP") |>
+  ggplot2::ggplot(
+    mapping = ggplot2::aes(
+      x = cluster_id,
+      y = TF, color = Pvalue, size = `Ratio(%)`
+    )) +
+  ggplot2::geom_point() +
+  ggplot2::scale_color_continuous(
+    low=  "red", high = "blue", name = "P-value",
+    guide = ggplot2::guide_colorbar(reverse = TRUE)) +
+  ggplot2::facet_wrap(ggplot2::vars(time, contrast), scale = "free_x", nrow = 1) +
+  rotate_x_labels()
+```
+
+#### Down-regulated DEGs
+
+```{r fig.height=7, fig.width=14}
+df_to_plot |>
+  dplyr::filter(regu_type == "DOWN") |>
+  ggplot2::ggplot(
+    mapping = ggplot2::aes(
+      x = cluster_id,
+      y = TF, color = Pvalue, size = `Ratio(%)`
+    )) +
+  ggplot2::geom_point() +
+  ggplot2::scale_color_continuous(
+    low=  "red", high = "blue", name = "P-value",
+    guide = ggplot2::guide_colorbar(reverse = TRUE)) +
+  ggplot2::facet_wrap(ggplot2::vars(time, contrast), scale = "free_x", nrow = 1) +
+  rotate_x_labels()
+```
+
+### Heatmap {.tabset}
+
+```{r}
+plotTFsImmunityHeatmap <- function(df, ...) {
+  tf_fc_df <- tibble::tibble(
+    time = factor(df$time, levels = c("1DPI", "2DPI", "3DPI")),
+    contrast = factor(df$contrast, levels = c("PNR2-MOCK", "TR4-MOCK")),
+    cluster_id = factor(df$cluster_id, levels = cell_types),
+    TF = df$TF,
+    FoldChange = df$FoldChange
+  )
+
+  tf_fc_mtx <- expandToMatrix(
+    tf_fc_df, c("cluster_id", "contrast", "time"), "FoldChange", "TF")
+
+  str_coldata <- strsplit(colnames(tf_fc_mtx), "#")
+
+  mtx_coldata <- data.frame(
+    colidx = seq_along(colnames(tf_fc_mtx)),
+    cell_types = factor(sapply(str_coldata, function(x) x[[1]]),
+                        levels = cell_types),
+    contrast = factor(sapply(str_coldata, function(x) x[[2]]),
+                      #levels = c("PNR2-MOCK", "TR4-MOCK", "PNR2-TR4")),
+                      levels = c("PNR2-MOCK", "TR4-MOCK")),
+    times = factor(sapply(str_coldata, function(x) x[[3]]),
+                   levels = c("1DPI", "2DPI", "3DPI"))
+  )
+
+  mtx_coldata <- mtx_coldata[with(mtx_coldata, order(cell_types, contrast, times)),]
+
+  mtx <- tf_fc_mtx[, mtx_coldata$colidx]
+
+  ha = ComplexHeatmap::HeatmapAnnotation(
+        which = "column",
+        df = mtx_coldata[-1],
+        col = list(
+          cell_types = structure(
+            ggthemes::tableau_color_pal()(
+              length(levels(mtx_coldata$cell_types))),
+            names = levels(mtx_coldata$cell_types)
+          ),
+          contrast = structure(
+            c("#E41A1C", "#377EB8"),
+            names = levels(mtx_coldata$contrast)
+          ),
+          times = structure(
+            RColorBrewer::brewer.pal(3, "YlGn"),
+            names = levels(mtx_coldata$times)
+          )
+        ))
+
+  plotTFsEnrichHeatmap(
+    mtx,
+    top_annotation = ha,
+    column_split = mtx_coldata$cell_types,
+    ...)
+}
+```
+
+#### Up-regulated DEGs
+
+```{r fig.height=7, fig.width=14}
+df_to_plot |>
+  dplyr::filter(regu_type == "UP") |>
+  plotTFsImmunityHeatmap()
+```
+
+#### Down-regulated DEGs
+
+```{r fig.height=10, fig.width=14}
+df_to_plot |>
+  dplyr::filter(regu_type == "DOWN") |>
+  plotTFsImmunityHeatmap()
+```
+
+## Interaction of Two Networks
+
+### Combine TF list
+
+```{r}
+df_id <- TFs_enrich_identity |>
+  dplyr::filter(time != "0DPI") |>
+  dplyr::mutate(type = "identity", cluster_id = cluster) |>
+  dplyr::select(time, type, cluster_id, TFs) |>
+  tidyr::unnest(TFs)
+```
+
+```{r}
+df_up <- TFs_enrich_df |>
+  dplyr::filter(regu_type == "UP") |>
+  dplyr::mutate(type = contrast) |>
+  dplyr::select(time, type, cluster_id, TFs) |>
+  tidyr::unnest(TFs)
+```
+
+```{r}
+df_down <- TFs_enrich_df |>
+  dplyr::filter(regu_type == "DOWN") |>
+  dplyr::mutate(type = contrast) |>
+  dplyr::select(time, type, cluster_id, TFs) |>
+  tidyr::unnest(TFs)
+```
+
+### Heatmap of overlap TFs {.tabset}
+
+```{r}
+plotTFsOverlap <- function(df, ...) {
+  tf_fc_df <- tibble::tibble(
+    time = factor(df$time, levels = c("1DPI", "2DPI", "3DPI")),
+    type = factor(df$type, levels = c("identity", "PNR2-MOCK", "TR4-MOCK")),
+    cluster_id = factor(df$cluster_id, levels = cell_types),
+    TF = df$TF,
+    FoldChange = df$FoldChange
+  )
+
+  tf_fc_mtx <- expandToMatrix(
+    tf_fc_df, c("cluster_id", "type", "time"), "FoldChange", "TF")
+
+  str_coldata <- strsplit(colnames(tf_fc_mtx), "#")
+
+  mtx_coldata <- data.frame(
+    colidx = seq_along(colnames(tf_fc_mtx)),
+    cell_types = factor(sapply(str_coldata, function(x) x[[1]]),
+                        levels = cell_types),
+    type = factor(sapply(str_coldata, function(x) x[[2]]),
+                      levels = c("identity", "PNR2-MOCK", "TR4-MOCK")),
+    times = factor(sapply(str_coldata, function(x) x[[3]]),
+                   levels = c("1DPI", "2DPI", "3DPI"))
+  )
+
+  mtx_coldata <- mtx_coldata[with(mtx_coldata, order(cell_types, type, times)),]
+
+  mtx <- tf_fc_mtx[, mtx_coldata$colidx]
+
+  ha = ComplexHeatmap::HeatmapAnnotation(
+        which = "column",
+        df = mtx_coldata[-1],
+        col = list(
+          cell_types = structure(
+            ggthemes::tableau_color_pal()(
+              length(levels(mtx_coldata$cell_types))),
+            names = levels(mtx_coldata$cell_types)
+          ),
+          type = structure(
+            c("#8856a7", "#E41A1C", "#377EB8"),
+            names = levels(mtx_coldata$type)
+          ),
+          times = structure(
+            RColorBrewer::brewer.pal(3, "YlGn"),
+            names = levels(mtx_coldata$times)
+          )
+        ))
+
+  plotTFsEnrichHeatmap(
+    mtx,
+    top_annotation = ha,
+    column_split = mtx_coldata$cell_types,
+    ...)
+
+}
+```
+
+#### Up-regulated
+
+```{r fig.height=8, fig.width=18}
+plotTFsOverlap(
+  df = dplyr::bind_rows(df_id, df_up))
+```
+
+#### Down-regulated
+
+```{r fig.height=10, fig.width=18}
+plotTFsOverlap(
+  df = dplyr::bind_rows(df_id, df_down)
+)
+```

@@ -1,0 +1,373 @@
+---
+title: "Find Identity DEGs from MOCK Samples"
+author: "Altair Wei"
+date: "2023-04-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(SingleCellExperiment)
+BPPARAM <- BiocParallel::MulticoreParam(workers = 6)
+source("../scripts/UtilityFunctions.R")
+```
+
+## Load Data
+
+### Cell Metadata
+
+```{r}
+all_celltypes <- c(
+  "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+names(all_celltype_colors) <- all_celltypes
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+```
+
+### Import Data Object
+
+`muscat` 包要求输入数据需要预先经过处理，比如整合、聚类和细胞注释等等，因此这里我们直接加载已经处理过的 `Seurat` 对象。
+
+```{r}
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+obj <- subset(obj, subset = treatment == "MOCK")
+```
+
+```{r}
+Seurat::Idents(obj) <- forcats::fct_relevel(
+  Seurat::Idents(obj), all_celltypes)
+obj$body_layer <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_body_layers)))
+obj$tissue <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_tissues)))
+Seurat::Idents(obj) <- "tissue"
+```
+
+```{r}
+obj_list <- Seurat::SplitObject(obj, "time")
+```
+
+### Functions
+
+```{r}
+plotExpressionHeatmap <- function(srt, features, max = 5, ...) {
+  mtx <- Seurat::GetAssayData(srt, "data")
+  mtx <- as.matrix(mtx[features,])
+  cell_labels <- Seurat::Idents(srt)
+
+  outliers_idx <- which(mtx > max, arr.ind = TRUE)
+  if (length(outliers_idx) != 0)
+    warning(sprintf(paste0(
+      "%i gene%s with expression level greater than ",
+      "%i were shown in maximum color.\n"),
+      nrow(outliers_idx),
+      if (nrow(outliers_idx) > 1) "s" else "",
+      max))
+
+  ha = ComplexHeatmap::HeatmapAnnotation(
+        which = "column",
+        cell_types = cell_labels,
+        col = list(
+          cell_types = structure(
+            ggthemes::tableau_color_pal()(
+              length(levels(cell_labels))),
+            names = levels(cell_labels)
+          )
+        ))
+
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    name = "Expression Level",
+    col = circlize::colorRamp2(c(0, max), c("lightgrey", "blue")),
+    cluster_columns = TRUE,
+    cluster_rows = FALSE,
+    column_split = cell_labels,
+    column_title_rot = 45,
+    show_column_dend = FALSE,
+    cluster_column_slices = FALSE,
+    top_annotation = ha,
+    use_raster = TRUE,
+    show_column_names = FALSE,
+    show_row_names = FALSE,
+    ...
+  )
+  
+  ComplexHeatmap::draw(p, merge_legend = TRUE)
+}
+```
+
+```{r}
+plotMarkerUpset <- function(df, cls) {
+  df |>
+    dplyr::filter(cluster == cls) |>
+    dplyr::select(time, gene) |>
+    dplyr::group_by(gene) |>
+    dplyr::summarise(time = list(time)) |>
+    ggplot2::ggplot(ggplot2::aes(x = time)) +
+    ggplot2::geom_bar() +
+    ggplot2::geom_text(
+      stat = "count", size = 2, vjust = -1,
+      mapping = ggplot2::aes(label = ggplot2::after_stat(count))) +
+    ggupset::scale_x_upset(
+      n_intersections = 40, order_by = c("degree")) +
+    ggplot2::scale_y_continuous(
+      expand = ggplot2::expansion(c(0, 0.1), c(0, 0))) +
+    theme_upset()
+}
+```
+
+## Marker Genes Identification
+
+### Generate DEG list
+
+#### Wilcoxon one-vs-rest
+
+[Annotation --- Single-cell best practices](https://www.sc-best-practices.org/cellular_structure/annotation.html#from-cluster-differentially-expressed-genes-to-cluster-annotation) says:
+
+> For marker gene calculation of clusters simple methods such as the **Wilcoxon rank-sum test** are thought to perform best [Pullin and McCarthy, 2022](https://www.biorxiv.org/content/10.1101/2022.05.09.490241v2)
+>
+> Importantly, as the definition of the clusters is based on the same data as used for these statistical tests, the p-values of these tests will be inflated as also described here [Zhang *et al.*, 2019](https://www.sciencedirect.com/science/article/pii/S2405471219302698).
+>
+> Let’s calculate the differentially expressed genes for every cluster, compared to the rest of the cells in our adata.
+
+我检查了 `Seurat::FindMarkers` 的源代码，发现 wilcox 接收 ... 作为额外参数。但该函数默认使用 limma 的实现，而只有当使用 `wilcox.test` 时才接收 ... 参数。通过查看 `limma::rankSumTestWithCorrelation` 可以发现，该方法包含了 tie correction.
+
+```{r}
+ds_identity_df <- xfun::cache_rds(
+  file = "ds_identity_genes.rds",
+  dir = "../results/ObjectCache/DifferentialState/",
+  expr = lapply(obj_list,
+    function(obj_t) Seurat::FindAllMarkers(
+      obj_t, test.use = "wilcox", only.pos = TRUE,
+      min.pct = 0.25, logfc.threshold = 0.25, verbose = FALSE)) |>
+    tibble::enframe(name = "time", value = "df") |>
+    tidyr::unnest(cols = c(df))
+)
+```
+
+```{r}
+str(ds_identity_df)
+```
+
+#### COSine similarity
+
+```{r}
+marker_cosg <- xfun::cache_rds(
+  file = "ds_identity_cosg.rds",
+  dir = "../results/ObjectCache/DifferentialState/",
+  expr = lapply(obj_list,
+    function(obj_t) COSG::cosg(
+      obj, groups = 'all', assay = 'RNA',
+      slot = 'data', mu = 1,
+      n_genes_user = 50)) |>
+    tibble::enframe(name = "time", value = "df") |>
+    dplyr::rowwise() |>
+    dplyr::mutate(df = list(formatCosgTable(df))) |>
+    tidyr::unnest(cols = c(df))
+)
+```
+
+```{r}
+str(marker_cosg)
+```
+
+综合来看 Wilcoxon 鉴定出的 identity 基因要更特异些。
+
+#### Wilcoxon pairwise
+
+{scran}
+
+### TN-test adjusted
+
+TODO: perform TN-test before filtering
+
+这个方法要求将数据集分割成两份，其中一份用来聚类，另一份用来做差异表达分析。
+
+### Filter out non-specific DEGs
+
+Pullin, J.M., and McCarthy, D.J. (2022). A comparison of marker gene selection methods for single-cell RNA sequencing data. 2022.05.09.490241. 10.1101/2022.05.09.490241.
+
+> While these methods do provide a strategy for selecting a set of marker genes, say taking those with a p-value below a given threshold, in practice the strategy is not feasible due to the small size of the returned p-values even after multiple testing correction (Figure S1, see below), which makes selecting a principled threshold challenging.
+>
+> To account for the difficulty of selecting **a fixed set of markers** we follow convention and select only a fixed-size set of the top n marker genes (for n = 5, 10, 20 say) as ranked by the method.
+
+```{r}
+marker_df <- ds_identity_df |>
+  dplyr::filter(
+    # Min in group fraction
+    pct.1 > 0.2,
+    # Max out group fraction
+    pct.2 < 0.2)
+```
+
+### Visualization of marker genes
+
+#### Heatmap {.tabset}
+
+```{r eval=FALSE}
+marker_list <- marker_cosg |>
+  dplyr::select(time, names) |>
+  dplyr::group_by(time) |>
+  dplyr::summarise(genes = list(names)) |>
+  dplyr::rowwise() |>
+  dplyr::mutate(genes = list(unique(genes))) |>
+  tibble::deframe()
+```
+
+```{r eval=TRUE}
+marker_list <- marker_df |>
+  dplyr::group_by(time, cluster) |>
+  dplyr::top_n(n = 50, wt = avg_log2FC) |>
+  dplyr::select(time, gene) |>
+  dplyr::group_by(time) |>
+  dplyr::summarise(genes = list(gene)) |>
+  dplyr::rowwise() |>
+  dplyr::mutate(genes = list(unique(genes))) |>
+  tibble::deframe()
+```
+
+##### 0DPI
+
+```{r fig.height=7, fig.width=10}
+plotExpressionHeatmap(obj_list[["0DPI"]], marker_list[["0DPI"]])
+```
+
+##### 1DPI
+
+```{r fig.height=7, fig.width=10}
+plotExpressionHeatmap(obj_list[["1DPI"]], marker_list[["1DPI"]])
+```
+
+##### 2DPI
+
+```{r fig.height=7, fig.width=10}
+plotExpressionHeatmap(obj_list[["2DPI"]], marker_list[["2DPI"]])
+```
+
+##### 3DPI
+
+```{r fig.height=7, fig.width=10}
+plotExpressionHeatmap(obj_list[["3DPI"]], marker_list[["3DPI"]])
+```
+
+#### Dotplot {.tabset}
+
+```{r}
+top_marker_list <- marker_df |>
+  dplyr::group_by(time, cluster) |>
+  dplyr::top_n(n = 5, wt = avg_log2FC) |>
+  dplyr::select(time, cluster, gene) |>
+  dplyr::group_by(time, cluster) |>
+  dplyr::summarise(markers = list(gene)) |>
+  dplyr::rowwise() |>
+  dplyr::mutate(markers = list(unique(markers))) |>
+  dplyr::group_by(time) |>
+  tidyr::nest() |>
+  dplyr::rowwise() |>
+  dplyr::mutate(data = list(tibble::deframe(data))) |>
+  tibble::deframe()
+```
+
+##### 0DPI
+
+```{r fig.height=6, fig.width=14}
+p <- Seurat::DotPlot(
+    obj_list[["0DPI"]],
+    features = unique(unlist(top_marker_list[["0DPI"]], use.names = FALSE))) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(panel.grid = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+p
+```
+
+##### 1DPI
+
+```{r fig.height=6, fig.width=14}
+p <- Seurat::DotPlot(obj_list[["1DPI"]], features = top_marker_list[["1DPI"]]) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(panel.grid = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+p
+```
+
+##### 2DPI
+
+```{r fig.height=6, fig.width=14}
+p <- Seurat::DotPlot(obj_list[["2DPI"]], features = top_marker_list[["2DPI"]]) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(panel.grid = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+p
+```
+
+##### 3DPI
+
+```{r fig.height=6, fig.width=14}
+p <- Seurat::DotPlot(obj_list[["3DPI"]], features = top_marker_list[["3DPI"]]) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(panel.grid = ggplot2::element_blank()) +
+  rotate_x_labels()
+
+p
+```
+
+## Cell Type Identity Across Time
+
+### Identity genes intersection {.tabset}
+
+```{r results='asis'}
+for (ts in unique(all_tissues)) {
+  cat("####", ts, "\n\n")
+  print(plotMarkerUpset(marker_df, ts))
+  cat("\n\n")
+}
+```
