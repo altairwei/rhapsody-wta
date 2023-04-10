@@ -11,16 +11,16 @@ reactable::reactable(iris)
 source("../scripts/UtilityFunctions.R")
 ```
 
-## 加载数据集
+## Load Datasets
 
 ```{r}
 obj <- readRDS(Sys.glob(
   "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
 
-## 细胞群体的标识基因
+## Marker Genes of Cell Populations
 
-### 鉴定 Marker 基因
+### Identify Marker Genes
 
 ```{r}
 marker_cosg <- COSG::cosg(
@@ -37,7 +37,7 @@ marker_cosg <- COSG::cosg(
 markers <- formatCosgTable(marker_cosg)
 ```
 
-### Marker 基因列表 {.tabset}
+### List of Marker Genes {.tabset}
 
 ```{r message=FALSE, warning=FALSE}
 anno <- brookite::pull_annotation(
@@ -83,7 +83,7 @@ for (cls in names(markers_list)) {
 ```
 
 
-### 表达值投影 {.tabset}
+### Expression Projection {.tabset}
 
 ```{r fig.height=6, fig.width=9, results='asis'}
 for (cls in names(markers_list)) {
@@ -106,6 +106,10 @@ for (cls in names(markers_list)) {
 ### TODO: 从 COSG 方法的角度探究 Va_2/3/4 的功能。
 
 取 Top 500? 还是研究一下 cosg score 的分布。
+
+## 细胞集群的功能刻画
+
+
 
 ## 特定细胞类型的局部标志基因
 

@@ -215,6 +215,17 @@ p
 
 ### Primary annotation
 
+参考：https://github.com/dpeerlab/SEACellsReproducibility/blob/main/notebooks/Fig1.ipynb
+
+```{r}
+scater::ggcells(sce,
+    mapping = ggplot2::aes(
+      x = UMAP.1, y = UMAP.2, group = ident)) +
+  ggplot2::geom_point(color = "grey") +
+  ggplot2::stat_density_2d(geom = "contour") +
+  ggplot2::coord_fixed()
+```
+
 #### Cluster and resolution tree
 
 ```{r}
@@ -1572,8 +1583,7 @@ ggplot2::qplot(x = pts, y = act) +
   ggplot2::geom_point()
 ```
 
-
-## Cell Death
+## Taget genes analysis
 
 ### NHR-induced PCD
 
@@ -1876,9 +1886,6 @@ Seurat::DotPlot(obj, features = MAPKs) +
   )
 ```
 
-
-## Transcription factors
-
 ### TaGRAS
 
 Liu, Y. & Wang, W. Characterization of the GRAS gene family reveals their contribution to the high adaptability of wheat. PeerJ 9, e10811 (2021).
@@ -2158,6 +2165,34 @@ Seurat::FeaturePlot(
 ```{r}
 Seurat::FeaturePlot(
     obj_mock, features = "TraesCS5D02G148800",
+    reduction = "umap", order = TRUE) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+```
+
+### TaACT
+
+> Kage, U., Karre, S., Kushalappa, A. C., & McCartney, C. (2017). Identification and characterization of a fusarium head blight resistance gene TaACT in wheat QTL-2DL. Plant Biotechnology Journal, 15(4), 447–457.
+
+```{r}
+Seurat::FeaturePlot(
+    obj, features = "TraesCS2D02G490400",
+    reduction = "umap", order = TRUE) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+```
+
+```{r}
+Seurat::FeaturePlot(
+    obj, features = "TraesCS2A02G490000",
+    reduction = "umap", order = TRUE) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+```
+
+```{r}
+Seurat::FeaturePlot(
+    obj, features = "TraesCS2B02G518300",
     reduction = "umap", order = TRUE) +
   ggplot2::coord_fixed() +
   theme_dimred()
