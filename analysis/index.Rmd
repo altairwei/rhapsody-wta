@@ -25,12 +25,14 @@ editor_options:
   - [Compositional Analysis by scDC](compositional_analysis_by_scDC.html)
   - [Compositional Analysis by scCODA](compositional_analysis_by_scCODA.html)
   - [Identify Differentially Abundant Subpopulation](differential_abundance_subpopulation.html)
-  - [Geneset Enrichment for Differential Abundant Subpopulation](diff_abundance_geneset_analysis.html)
   - [Co-varying Neighborhood Analysis](covarying_neighborhood_analysis.html)
 - Differential State Analysis
-  - [Perform Differential State Analysis](differential_state_analysis.html)
-  - [Geneset Enrichment for Differential States](diff_state_geneset_analysis.html)
   - [Pseudobulk Gene Expression Analysis](pseudobulk_gene_expression_analysis.html)
+  - [Perform Differential State Analysis](differential_state_analysis.html)
+  - [Known Pathways in DEGs of Each Cell Types](diff_state_known_pathways.html)
+  - [Geneset Enrichment for Differential States](diff_state_geneset_analysis.html)
+  - [Find Identity DEGs from MOCK Samples](diff_state_identity_genes.html)
+  - [Transcription Factor Regulation Network of DEGs](diff_state_tf_network.html)
 - Trajectory Inference
   - [RNA Velocity Estimation of All Samples](rna_velocity_estimation.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)

@@ -350,7 +350,7 @@ markers <- list(
 )
 
 markers$PNR2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   rhapsodykit::diff_state_summary() %>%
   as.data.frame.matrix()
 ```
@@ -371,7 +371,7 @@ names(contrast_cols) <- names(ds_res$DESeq2$table)
 ```{r show-diff-results}
 # filter FDR < 5%, abs(logFC) > 1 & sort by adj. p-value
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(0.05, 1) %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   rhapsodykit::diff_state_summary()
 ```
 
@@ -381,7 +381,7 @@ ds_res$DESeq2 %>%
 
 ```{r gene-expr-freq, eval=FALSE}
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(0.05, 1) %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   rhapsodykit::expr_freq_filter(sce) %>%
   rhapsodykit::diff_state_summary()
 ```
@@ -394,7 +394,7 @@ ds_res$DESeq2 %>%
 
 ```{r diff-gene-count-plot, fig.height=7, fig.width=7}
 genecount_df <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   rhapsodykit::diff_state_format()
 
 genecount_df$cluster_id <- factor(genecount_df$cluster_id, unique(all_tissues))
@@ -504,7 +504,7 @@ dplyr::filter(df_to_plot, contrast == "X3DPI.PNR2-X3DPI.TR4") %>%
 ```{r}
 plot_updown <- function(ds, contrast) {
   p1 <- ds %>%
-    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
     rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:8, "gene") %>%
     rhapsodykit::from_list_to_upset() %>%
     rhapsodykit::upset_dataframe() %>%
@@ -512,12 +512,12 @@ plot_updown <- function(ds, contrast) {
 
   up_list <- ds %>%
     rhapsodykit::diff_state_filter(logFC > 0) %>%
-    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
     rhapsodykit::diff_state_pull(contrast, 1:8, "gene")
 
   down_list <- ds %>%
     rhapsodykit::diff_state_filter(logFC < 0) %>%
-    rhapsodykit::diff_state_significant() %>%
+    rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
     rhapsodykit::diff_state_pull(contrast, 1:8, "gene")
 
   p2 <- rhapsodykit::upset_updown_regulated(up_list, down_list)
@@ -633,7 +633,7 @@ diff_state_subset <- function(input, contrast = NULL, cluster = NULL) {
 
 ```{r fig.height=10, fig.width=7}
 p <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(contrast = c(
     "X1DPI.PNR2-X1DPI.MOCK",
     "X1DPI.TR4-X1DPI.MOCK",
@@ -652,7 +652,7 @@ p
 
 ```{r }
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(contrast = c(
     "X1DPI.PNR2-X1DPI.MOCK",
     "X1DPI.TR4-X1DPI.MOCK")) %>%
@@ -663,7 +663,7 @@ ds_res$DESeq2 %>%
 
 ```{r}
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(contrast = c(
     "X2DPI.PNR2-X2DPI.MOCK",
     "X2DPI.TR4-X2DPI.MOCK")) %>%
@@ -674,7 +674,7 @@ ds_res$DESeq2 %>%
 
 ```{r}
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(contrast = c(
     "X3DPI.PNR2-X3DPI.MOCK",
     "X3DPI.TR4-X3DPI.MOCK")) %>%
@@ -688,7 +688,7 @@ ds_res$DESeq2 %>%
 ```{r}
 plot_upset_by_cluster <- function(ds, cluster) {
   ds %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(
     contrast = c(
       "X1DPI.PNR2-X1DPI.MOCK",
@@ -706,7 +706,7 @@ plot_upset_by_cluster <- function(ds, cluster) {
 
 ```{r}
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(
     contrast = c(
       #"X1DPI.PNR2-X1DPI.MOCK",
@@ -747,7 +747,7 @@ plot_upset_by_cluster(ds_res$DESeq2, "Outer sheath")
 
 ```{r}
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(
     contrast = c(
       #"X1DPI.PNR2-X1DPI.MOCK",
@@ -770,7 +770,7 @@ plot_upset_by_cluster(ds_res$DESeq2, "Phloem")
 
 ```{r}
 ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant() %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
   diff_state_subset(
     contrast = c(
       #"X1DPI.PNR2-X1DPI.MOCK",
@@ -856,6 +856,8 @@ logfc_mtx <- logfc_mtx[, mtx_coldata$colidx]
 在热图中用灰色表示不显著的基因，即在差异基因列表中缺失的那些。有些基因明明不显著，但 logFC 可能非常大，会干扰判断。
 
 学习 dendsort: modular leaf ordering methods for dendrogram representations in R
+
+学习 ComplexHeatmap 中 outliers 的处理方式，避免其影响聚类效果。
 
 ```{r fig.height=7, fig.width=10}
 dend_mtx <- logfc_mtx

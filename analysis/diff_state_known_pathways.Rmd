@@ -1,0 +1,446 @@
+---
+title: "Known Pathways in DEGs of Each Cel Types"
+author: "Altair Wei"
+date: "2023-03-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Data
+
+### Metadata
+
+```{r}
+cell_types <- c(
+  "Stomata",
+  "Epidermis",
+  "Chlorenchyma",
+  "Parenchyma",
+  "Outer sheath",
+  "Inner sheath",
+  "Phloem",
+  "Procambium"
+)
+```
+
+
+### Gene Lists
+
+```{r}
+filelist <- Sys.glob("../data/pathways/*.txt")
+names(filelist) <- basename(filelist) |> stringr::str_remove(stringr::fixed(".txt"))
+
+pathways <- lapply(filelist, function(filename) {
+  genes <- stringr::str_trim(readLines(filename))
+  genes[genes != ""]
+})
+```
+
+```{r}
+summary(pathways)[, 1, drop = FALSE]
+```
+
+
+### DEGs of Cell Types
+
+```{r}
+ds_res <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_res_*.rds"))
+```
+
+```{r}
+logfc_df <- ds_res$DESeq2 |>
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::filter(!stringr::str_detect(contrast, "X\\dDPI\\.PNR2-X\\dDPI\\.TR4")) |>
+  dplyr::select(gene, cluster_id, contrast, logFC) |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2-\\4")) |>
+  tidyr::pivot_wider(names_from = "time", values_from = "logFC", values_fill = NA) |>
+  tidyr::pivot_longer(cols = dplyr::ends_with("DPI"), names_to = "time", values_to = "logFC")
+```
+
+```{r}
+logfc_mtx <- logfc_df |>
+  tidyr::pivot_wider(names_from = c(cluster_id, contrast, time),
+                     names_sep = "#",
+                     values_from = logFC) |>
+  tibble::column_to_rownames("gene") |>
+  as.matrix()
+
+str_coldata <- strsplit(colnames(logfc_mtx), "#")
+
+mtx_coldata <- data.frame(
+  colidx = seq_along(colnames(logfc_mtx)),
+  cell_types = factor(sapply(str_coldata, function(x) x[[1]]),
+                      levels = cell_types),
+  contrast = factor(sapply(str_coldata, function(x) x[[2]]),
+                    #levels = c("PNR2-MOCK", "TR4-MOCK", "PNR2-TR4")),
+                    levels = c("PNR2-MOCK", "TR4-MOCK")),
+  times = factor(sapply(str_coldata, function(x) x[[3]]),
+                 levels = c("1DPI", "2DPI", "3DPI"))
+)
+
+mtx_coldata <- mtx_coldata[with(mtx_coldata, order(cell_types, contrast, times)),]
+
+logfc_mtx <- logfc_mtx[, mtx_coldata$colidx]
+```
+
+```{r}
+ha = ComplexHeatmap::HeatmapAnnotation(
+      which = "column",
+      df = mtx_coldata[-1],
+      col = list(
+        cell_types = structure(
+          ggthemes::tableau_color_pal()(
+            length(levels(mtx_coldata$cell_types))),
+          names = levels(mtx_coldata$cell_types)
+        ),
+        contrast = structure(
+          c("#E41A1C", "#377EB8"),
+          names = levels(mtx_coldata$contrast)
+        ),
+        times = structure(
+          RColorBrewer::brewer.pal(3, "YlGn"),
+          names = levels(mtx_coldata$times)
+        )
+      ))
+```
+
+### Functions
+
+```{r}
+plotDEGsHeatmap <- function(mtx, genes, colAnno, max = 5, ...) {
+  detected <- intersect(rownames(mtx), genes)
+  mtx <- mtx[detected,]
+
+  # undetected <- setdiff(genes, detected)
+  # mtx <- rbind(mtx, matrix(
+  #   NA, nrow = length(undetected), ncol = ncol(mtx), dimnames = list(undetected)))
+  # mtx <- mtx[genes,]
+  if (length(detected) != length(genes))
+    warning(sprintf(
+      "Only %i out of %i genes were detected in DEGs\n",
+      length(detected), length(genes)))
+
+  outliers_idx <- which(abs(mtx) > max, arr.ind = TRUE)
+  if (length(outliers_idx) != 0)
+    warning(sprintf(paste0("%i gene%s with abs(logFC) greater than %i were shown",
+                    " in maximum color and marked with white asterisk.\n"),
+                    nrow(outliers_idx),
+                    if (nrow(outliers_idx) > 1) "s" else "",
+                    max))
+
+  dend_mtx <- mtx
+  dend_mtx[is.na(dend_mtx)] <- 0
+  dend_row_hc <- dendsort::dendsort(
+    fastcluster::hclust(dist(dend_mtx)),
+    isReverse = TRUE)
+
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    name = "Log2 Fold Change",
+    col = circlize::colorRamp2(c(-max, 0, max), c("blue", "white", "red")),
+    use_raster = TRUE,
+    na_col = "grey",
+    cluster_rows = dend_row_hc,
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = TRUE,
+    top_annotation = colAnno,
+    heatmap_legend_param = list(
+      title_position = "leftcenter-rot",
+      legend_height  = grid::unit(4, "cm")
+    ),
+    cell_fun = function(j, i, x, y, width, height, fill) {
+      val <- abs(mtx[i, j])
+      if (!is.na(val) && val > max)
+        grid::grid.text("★", x, y, gp = grid::gpar(
+          fontsize = 8, col = "white", fontface = "bold"))
+    },
+    ...)
+
+  ComplexHeatmap::draw(p, merge_legend = TRUE)
+}
+```
+
+## Analysis Based on Known Pathways
+
+TODO: perform ORA for each pathway.
+
+### Phytosynthesis related {.tabset}
+
+#### PhotosynAnt
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["PhotosynAnt"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### PhotosynCfix
+
+```{r fig.height=14, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["PhotosynCfix"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### PhotosynPSEA
+
+```{r fig.height=14, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["PhotosynPSEA"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+### Cell wall related {.tabset}
+
+#### Aromatic amino acid
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["Aromatic amino acid"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### General phenylpropanoid
+
+```{r fig.height=8, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["General phenylpropanoid"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### Lignin biosynthesis
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["Lignin biosynthesis"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### Flavanones
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["Flavanones"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### HCAAs
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["HCAAs"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### Suberin
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["Suberin"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### CalloseSyn
+
+```{r fig.height=7, fig.width=14}
+detected <- intersect(rownames(logfc_mtx), pathways[["CalloseSyn"]])
+print(detected)
+logfc_mtx[detected,][!is.na(logfc_mtx[detected,])]
+```
+
+#### Polyamine
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["Polyamine"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+### Immune related {.tabset}
+
+#### CCNBLRR
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["CCNBLRR"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### NBLRR
+
+```{r fig.height=10, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["NBLRR"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### TIR
+
+```{r fig.height=7, fig.width=14}
+detected <- intersect(rownames(logfc_mtx), pathways[["TIR"]])
+print(detected)
+logfc_mtx[detected,][!is.na(logfc_mtx[detected,])]
+```
+
+#### PR
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["PR"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### RLK
+
+```{r fig.height=16, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["RLK"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### TaNPR
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["TaNPR"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### RxNonly
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["RxNonly"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### GOSAR
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["GOSAR"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+### Metabolism related {.tabset}
+
+#### gluconeogenesis
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["gluconeogenesis"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### glycolysis
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["glycolysis"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### OxiPhos
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["OxiPhos"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### Sweet
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["Sweet"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### TaSUT
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["TaSUT"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+### Signaling {.tabset}
+
+#### GOCaSignaling
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["GOCaSignaling"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### MAPK
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["MAPK"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+### Transcription Factors {.tabset}
+
+#### Myb
+
+```{r fig.height=18, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["Myb"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### NAC
+
+```{r fig.height=14, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["NAC"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### WRKY
+
+```{r fig.height=14, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["WRKY"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+## Analysis of Other RNA-seq results
+
+### fusaoctaxin A {.tabset}
+
+#### FA3FB3up
+
+```{r fig.height=14, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["FA3FB3up"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### FA3hUp
+
+```{r fig.height=26, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["FA3hUp"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+#### FAFB-3hUp
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["FAFB-3hUp"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
