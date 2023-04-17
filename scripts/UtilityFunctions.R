@@ -269,6 +269,15 @@ centerPopulationMockData <- function(sce) {
   sce
 }
 
+getMatrixLCM <- function(lcm_file) {
+  lcm_counts <- readr::read_tsv(lcm_file, comment = "#")
+  lcm_counts <- lcm_counts[!(names(lcm_counts) %in% c("Chr", "Start", "End", "Strand", "Length"))]
+  names(lcm_counts) <- c("Gene", basename(dirname(names(lcm_counts)[-1])))
+  lcm_mtx <- as.matrix(lcm_counts[-1])
+  rownames(lcm_mtx) <- lcm_counts$Gene
+  lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
+}
+
 #' Deconvolution of LCM Samples
 #'
 #' @param seurat Seurat object
@@ -281,12 +290,7 @@ centerPopulationMockData <- function(sce) {
 #' @return A data frame returned by \link[RNAMagnet]{runCIBERSORT}
 deconvLCM <- function(seurat, lcm_file, markers, design, ...) {
   # Load LCM data
-  lcm_counts <- readr::read_tsv(lcm_file, comment = "#")
-  lcm_counts <- lcm_counts[!(names(lcm_counts) %in% c("Chr", "Start", "End", "Strand", "Length"))]
-  names(lcm_counts) <- c("Gene", basename(dirname(names(lcm_counts)[-1])))
-  lcm_mtx <- as.matrix(lcm_counts[-1])
-  rownames(lcm_mtx) <- lcm_counts$Gene
-  lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
+  lcm_mtx <- getMatrixLCM(lcm_file)
 
   # scRNA-seq data
   # 是否需要使用归一化后的表达之呢？不需要，MuSiC 就是 raw counts
@@ -442,6 +446,36 @@ pltpreview <- function(
   fig$set_size_inches(width, height)
   fig$savefig(temp.file, dpi = dpi, ...)
   utils::browseURL(temp.file)
+}
+
+ggpowerpoint <- function(ggobj, template, file = NULL, ...) {
+  target.file <- file
+  if (is.null(file))
+    target.file <- paste0(tempfile(), ".pptx")
+
+  if (!is.null(template))
+    file.copy(template, target.file, overwrite = TRUE)
+
+  # TODO: allow create pptx with given size using internal function sof {officer}.
+  # Refer to: https://learn.microsoft.com/en-us/office/open-xml/open-xml-sdk
+  margins = c(top = 0.5, right = 0.5,bottom = 0.5, left = 0.5)
+  doc <- officer::read_pptx(path = target.file)
+  doc = officer::add_slide(doc, layout = "Blank", master = "Office Theme")
+  pagesize = export:::get.slide.size(doc)
+  pagesize["width"] = pagesize["width"] - (margins["left"] + margins["right"])
+  pagesize["height"] = pagesize["height"] - (margins["top"] + margins["bottom"])
+
+  doc = officer::ph_with(
+    x = doc,
+    value = rvg::dml(ggobj = ggobj, ...),
+    location = officer::ph_location(
+      left = margins["left"], top = margins["top"],
+      width = pagesize["width"], height = pagesize["height"]))
+
+  print(doc, target = target.file)
+
+  if (is.null(file))
+    utils::browseURL(target.file)
 }
 
 plotpreview <- function(x, width = 7, height = 7, res = 300, ...) {

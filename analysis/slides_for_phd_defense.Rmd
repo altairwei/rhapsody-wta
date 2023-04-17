@@ -7,10 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(magrittr)
-source("../scripts/UtilityFunctions.R")
-source("../scripts/TrajectoryUtilities.R")
-source("../scripts/EnrichmentUtilities.R")
-source("../scripts/AbundanceUtilities.R")
+source("../scripts/LoadUtils.R")
 knitr::opts_chunk$set(dev = "png")
 scv <- reticulate::import("scvelo")
 plt <- reticulate::import("matplotlib.pyplot")
@@ -412,6 +409,68 @@ p2 <- deconvScatter(CIBER, LCM_design, ncol = 5, theme_size = 14) +
 
 (p <- p1 / p2 +
     patchwork::plot_layout(heights = c(1, 1)))
+```
+
+```{r}
+mtx_tpm <- xfun::cache_rds(
+  file = "lcmseq_tpm_mtx.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = local({
+    LCM_samples <- c(
+      "VC_1" = "vb.1",
+      "VC_2" = "vb.2",
+      "VC_3" = "vb.3",
+      "CC_1" = "bp.1",
+      "CC_2" = "bp.2",
+      "CC_3" = "bp.3",
+      "MC3_1" = "dp.1",
+      "MC3_2" = "dp.2",
+      "MC3_3" = "dp.3",
+      "MC_1" = "me.1",
+      "MC_2" = "me.2",
+      "MC_3" = "me.3",
+      "EC_1" = "ep.1",
+      "EC_2" = "ep.2",
+      "EC_3" = "ep.3"
+    )
+
+    tpm_files <- Sys.glob("../results/LCMSeq/gene_quanti/tpm/*.out")
+    names(tpm_files) <- stringr::str_remove(
+      basename(Sys.glob("../results/LCMSeq/gene_quanti/tpm/*.out")),
+      stringr::fixed(".out"))
+
+    df <- mapply(
+      SIMPLIFY = FALSE,
+      USE.NAMES = FALSE,
+      tpm_files,
+      names(tpm_files),
+      FUN = function(fi, name) {
+        readr::read_tsv(fi, show_col_types = FALSE) |>
+          dplyr::select(Gene_Id, TPM) |>
+          dplyr::mutate(Sample = name)
+      }) |> dplyr::bind_rows()
+
+    df_tpm <- df |>
+      dplyr::mutate(Sample = dplyr::recode(Sample, !!!LCM_samples)) |>
+      dplyr::group_by(Gene_Id, Sample) |>
+      dplyr::summarise(n = length(TPM), TPM = list(TPM)) |>
+      # Filter out same chloroplast and mitochondria genes
+      dplyr::filter(n == 1) |>
+      tidyr::unnest(TPM) |>
+      dplyr::select(Gene_Id, Sample, TPM) |>
+      tidyr::pivot_wider(names_from = Sample, values_from = TPM, values_fill = 0)
+
+    df_tpm <- df_tpm[, c("Gene_Id", LCM_samples)]
+
+    writexl::write_xlsx(df_tpm, path = "../results/DataPlots/lcmseq_mock_tpm.xlsx")
+
+    mtx_tpm <- df_tpm |>
+      tibble::column_to_rownames("Gene_Id") |>
+      as.matrix()
+
+    mtx_tpm
+  })
+)
 ```
 
 

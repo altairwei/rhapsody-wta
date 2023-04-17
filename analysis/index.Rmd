@@ -27,11 +27,10 @@ editor_options:
   - [Identify Differentially Abundant Subpopulation](differential_abundance_subpopulation.html)
   - [Co-varying Neighborhood Analysis](covarying_neighborhood_analysis.html)
 - Differential State Analysis
-  - [Pseudobulk Gene Expression Analysis](pseudobulk_gene_expression_analysis.html)
   - [Perform Differential State Analysis](differential_state_analysis.html)
   - [Known Pathways in DEGs of Each Cell Types](diff_state_known_pathways.html)
-  - [Geneset Enrichment for Differential States](diff_state_geneset_analysis.html)
   - [Find Identity DEGs from MOCK Samples](diff_state_identity_genes.html)
+  - [Geneset Enrichment for DEGs of Identity and Immunity](diff_state_geneset_analysis.html)
   - [Transcription Factor Regulation Network of DEGs](diff_state_tf_network.html)
 - Trajectory Inference
   - [RNA Velocity Estimation of All Samples](rna_velocity_estimation.html)

@@ -8,40 +8,12 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
-source("../scripts/UtilityFunctions.R")
+source("../scripts/LoadUtils.R")
 ```
 
 ```{r message=FALSE, warning=FALSE, results="hide"}
 library(org.Taestivum.iwgsc.db)
 orgdb <- org.Taestivum.iwgsc.db
-```
-
-```{r}
-runGSEA <- function(x) {
-  rankLists <- x
-  stopifnot(length(rankLists) > 0)
-
-  if (length(rankLists) == 1) {
-    gsea <- clusterProfiler::gseGO(
-      geneList = rankLists[[1]],
-      ont = "BP",
-      OrgDb = org.Taestivum.iwgsc.db,
-      keyType = "GID"
-    )
-  } else {
-    gsea <- clusterProfiler::compareCluster(
-      geneClusters = rankLists,
-      fun = "gseGO",
-      ont = "BP",
-      OrgDb = org.Taestivum.iwgsc.db,
-      keyType = "GID"
-    )
-  }
-
-  gsea <- clusterProfiler::simplify(gsea)
-
-  gsea
-}
 ```
 
 ## 生成 Pseudobulk 数据
@@ -65,6 +37,7 @@ expr <- xfun::cache_rds(
 df <- xfun::cache_rds(
   file = "pseudobulk_df_cpm_mean.rds",
   dir = "../results/ObjectCache/Pseudobulk/",
+  rerun = TRUE,
   expr = as.data.frame(expr) |>
     tibble::rownames_to_column("Gene") |>
     tidyr::pivot_longer(-Gene, names_to = "bulk", values_to = "CPM") |>
