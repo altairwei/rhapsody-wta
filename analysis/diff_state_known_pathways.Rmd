@@ -26,7 +26,6 @@ cell_types <- c(
 )
 ```
 
-
 ### Gene Lists
 
 ```{r}
@@ -112,7 +111,51 @@ ha = ComplexHeatmap::HeatmapAnnotation(
       ))
 ```
 
+### Calculate GSVA
+
+```{r}
+pseudobulk_cpm_mean <- readRDS(Sys.glob(
+  "../results/ObjectCache/Pseudobulk/pseudobulk_cpm_mean_*.rds"))
+```
+
+```{r}
+expr_gsva <- GSVA::gsva(
+  pseudobulk_cpm_mean, pathways,
+  method = "gsva", kcdf = "Gaussian",
+  verbose = FALSE)
+
+gsva_df <- as.data.frame(expr_gsva) |>
+    tibble::rownames_to_column("Pathway") |>
+    tidyr::pivot_longer(-Pathway, names_to = "bulk", values_to = "ES") |>
+    tidyr::separate(bulk, sep = "\\.", into = c("treatment", "time", "cellType"))
+```
+
+```{r}
+gsva_df$cellType <- factor(gsva_df$cellType, levels = cell_types)
+```
+
 ### Functions
+
+```{r}
+plotRadarGSVA <- function(gsva, pathw) {
+  dplyr::filter(gsva,
+      Pathway == pathw) |>
+    ggplot2::ggplot(
+      ggplot2::aes(
+          x = cellType,
+          y = ES,
+          group = treatment,
+          color = treatment,
+          fill = treatment
+        )) +
+    ggplot2::geom_polygon(linewidth = 1, alpha = .1) +
+    ggplot2::geom_point() +
+    see::coord_radar() +
+    ggplot2::facet_wrap(~ time, nrow = 1) +
+    see::theme_radar() +
+    NULL
+}
+```
 
 ```{r}
 plotDEGsHeatmap <- function(mtx, genes, colAnno, max = 5, ...) {
@@ -177,13 +220,21 @@ TODO: perform ORA for each pathway.
 
 #### PhotosynAnt
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "PhotosynAnt")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["PhotosynAnt"]],
   ha, column_split = mtx_coldata$cell_types)
 ```
 
 #### PhotosynCfix
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "PhotosynCfix")
+```
 
 ```{r fig.height=14, fig.width=14}
 plotDEGsHeatmap(
@@ -192,6 +243,10 @@ plotDEGsHeatmap(
 ```
 
 #### PhotosynPSEA
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "PhotosynPSEA")
+```
 
 ```{r fig.height=14, fig.width=14}
 plotDEGsHeatmap(
@@ -203,13 +258,21 @@ plotDEGsHeatmap(
 
 #### Aromatic amino acid
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "Aromatic amino acid")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["Aromatic amino acid"]],
   ha, column_split = mtx_coldata$cell_types)
 ```
 
 #### General phenylpropanoid
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "General phenylpropanoid")
+```
 
 ```{r fig.height=8, fig.width=14}
 plotDEGsHeatmap(
@@ -219,7 +282,11 @@ plotDEGsHeatmap(
 
 #### Lignin biosynthesis
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "Lignin biosynthesis")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["Lignin biosynthesis"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -227,7 +294,11 @@ plotDEGsHeatmap(
 
 #### Flavanones
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "Flavanones")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["Flavanones"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -235,7 +306,11 @@ plotDEGsHeatmap(
 
 #### HCAAs
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "HCAAs")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["HCAAs"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -243,7 +318,11 @@ plotDEGsHeatmap(
 
 #### Suberin
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "Suberin")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["Suberin"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -251,7 +330,11 @@ plotDEGsHeatmap(
 
 #### CalloseSyn
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "CalloseSyn")
+```
+
+```{r fig.height=5, fig.width=14}
 detected <- intersect(rownames(logfc_mtx), pathways[["CalloseSyn"]])
 print(detected)
 logfc_mtx[detected,][!is.na(logfc_mtx[detected,])]
@@ -259,7 +342,11 @@ logfc_mtx[detected,][!is.na(logfc_mtx[detected,])]
 
 #### Polyamine
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "Polyamine")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["Polyamine"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -269,13 +356,21 @@ plotDEGsHeatmap(
 
 #### CCNBLRR
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "CCNBLRR")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["CCNBLRR"]],
   ha, column_split = mtx_coldata$cell_types)
 ```
 
 #### NBLRR
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "NBLRR")
+```
 
 ```{r fig.height=10, fig.width=14}
 plotDEGsHeatmap(
@@ -285,7 +380,11 @@ plotDEGsHeatmap(
 
 #### TIR
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "TIR")
+```
+
+```{r fig.height=5, fig.width=14}
 detected <- intersect(rownames(logfc_mtx), pathways[["TIR"]])
 print(detected)
 logfc_mtx[detected,][!is.na(logfc_mtx[detected,])]
@@ -293,13 +392,21 @@ logfc_mtx[detected,][!is.na(logfc_mtx[detected,])]
 
 #### PR
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "PR")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["PR"]],
   ha, column_split = mtx_coldata$cell_types)
 ```
 
 #### RLK
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "RLK")
+```
 
 ```{r fig.height=16, fig.width=14}
 plotDEGsHeatmap(
@@ -309,7 +416,11 @@ plotDEGsHeatmap(
 
 #### TaNPR
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "TaNPR")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["TaNPR"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -317,7 +428,11 @@ plotDEGsHeatmap(
 
 #### RxNonly
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "RxNonly")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["RxNonly"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -325,7 +440,11 @@ plotDEGsHeatmap(
 
 #### GOSAR
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "GOSAR")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["GOSAR"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -335,7 +454,11 @@ plotDEGsHeatmap(
 
 #### gluconeogenesis
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "gluconeogenesis")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["gluconeogenesis"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -343,7 +466,11 @@ plotDEGsHeatmap(
 
 #### glycolysis
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "glycolysis")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["glycolysis"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -351,7 +478,11 @@ plotDEGsHeatmap(
 
 #### OxiPhos
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "OxiPhos")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["OxiPhos"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -359,7 +490,11 @@ plotDEGsHeatmap(
 
 #### Sweet
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "Sweet")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["Sweet"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -367,7 +502,11 @@ plotDEGsHeatmap(
 
 #### TaSUT
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "TaSUT")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["TaSUT"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -377,7 +516,11 @@ plotDEGsHeatmap(
 
 #### GOCaSignaling
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "GOCaSignaling")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["GOCaSignaling"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -385,7 +528,11 @@ plotDEGsHeatmap(
 
 #### MAPK
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "MAPK")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["MAPK"]],
   ha, column_split = mtx_coldata$cell_types)
@@ -395,6 +542,10 @@ plotDEGsHeatmap(
 
 #### Myb
 
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "Myb")
+```
+
 ```{r fig.height=18, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["Myb"]],
@@ -403,6 +554,10 @@ plotDEGsHeatmap(
 
 #### NAC
 
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "NAC")
+```
+
 ```{r fig.height=14, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["NAC"]],
@@ -410,6 +565,10 @@ plotDEGsHeatmap(
 ```
 
 #### WRKY
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "WRKY")
+```
 
 ```{r fig.height=14, fig.width=14}
 plotDEGsHeatmap(
@@ -423,6 +582,10 @@ plotDEGsHeatmap(
 
 #### FA3FB3up
 
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "FA3FB3up")
+```
+
 ```{r fig.height=14, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["FA3FB3up"]],
@@ -430,6 +593,10 @@ plotDEGsHeatmap(
 ```
 
 #### FA3hUp
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "FA3hUp")
+```
 
 ```{r fig.height=26, fig.width=14}
 plotDEGsHeatmap(
@@ -439,8 +606,24 @@ plotDEGsHeatmap(
 
 #### FAFB-3hUp
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "FAFB-3hUp")
+```
+
+```{r fig.height=5, fig.width=14}
 plotDEGsHeatmap(
   logfc_mtx, pathways[["FAFB-3hUp"]],
+  ha, column_split = mtx_coldata$cell_types)
+```
+
+### TIRH2Y
+
+```{r fig.height=5, fig.width=14}
+plotRadarGSVA(gsva_df, "TIRH2Y")
+```
+
+```{r fig.height=5, fig.width=14}
+plotDEGsHeatmap(
+  logfc_mtx, pathways[["TIRH2Y"]],
   ha, column_split = mtx_coldata$cell_types)
 ```
