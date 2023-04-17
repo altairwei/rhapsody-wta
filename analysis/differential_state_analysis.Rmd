@@ -7,13 +7,13 @@ output: html_document
 library(magrittr)
 library(patchwork)
 library(SingleCellExperiment)
-source("../scripts/UtilityFunctions.R")
+source("../scripts/LoadUtils.R")
 BPPARAM <- BiocParallel::MulticoreParam(workers = 6)
 ```
 
-## 数据准备
+## Prepare Data
 
-### 细胞注释信息
+### Cell Annotation
 
 ```{r}
 all_celltypes <- c(
@@ -68,7 +68,7 @@ all_tissues <- c(
 )
 ```
 
-### 转换数据格式
+### Convert Data Format
 
 `muscat` 包要求输入数据需要预先经过处理，比如整合、聚类和细胞注释等等，因此这里我们直接加载已经处理过的 `Seurat` 对象。
 
@@ -101,10 +101,10 @@ sce <- muscat::prepSCE(sce,
 
 ```{r}
 rm(obj)
-gc()
+invisible(gc())
 ```
 
-### 相对细胞群集丰度
+### Cell Abundance
 
 差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
 
@@ -139,11 +139,97 @@ p2$data$sample_id <- stringr::str_replace(
 (p <- p1 + p2 + patchwork::plot_layout(widths = c(2, 2)))
 ```
 
-## 实施 DS 分析
+### Functions
 
-### Pseudobulk 聚合
+```{r}
+upset_contrasts_list <- function(input, ...) {
+  sets_list <- input$table %>%
+    purrr::map(function(x) {
+      purrr::map(x, "gene") %>%
+        purrr::compact()
+    })
 
-差异状态分析有两类方法，其中之一是基于聚合数据的差异基因表达方法。
+  sets_list <- Filter(\(x) length(x) > 0, sets_list)
+
+  sets_metadata <- sets_list %>%
+    purrr::imap(function(contrast, key) {
+      cbind(
+        sets = sprintf(
+          "%s [%s]",
+          stringr::str_replace(key,
+            "X(\\dDPI)\\.(.*)-X.*", "\\1-\\2"),
+          names(contrast)),
+        contrast = key,
+        cluster = names(contrast)
+      )
+    }) %>%
+    do.call(rbind, .) %>%
+    as.data.frame()
+
+  sets_to_plot <- sets_list %>%
+    unlist(recursive = FALSE)
+  
+  names(sets_to_plot) <- sets_metadata$sets
+
+  sets_to_plot
+}
+```
+
+## Perform Differential State
+
+### Pseudobulk Aggregation
+
+#### For biologist
+
+Pseudobulk CPM mean expression matrix:
+
+```{r}
+pseudobulk_cpm_mean <- xfun::cache_rds(
+  file = "pseudobulk_cpm_mean.rds",
+  dir = "../results/ObjectCache/Pseudobulk/",
+  expr = local({
+    splits <- unique(sce$treatment)
+    names(splits) <- splits
+    pb_list <- splits |>
+      lapply(function(tr) sce[, sce$treatment == tr]) |>
+      lapply(function(sub) {
+        pb <- rhapsodykit::calculate_pseudo_bulk(
+          sub, type = "cpm", fun = "mean", by = c("time", "cluster_id"))
+        as.list(pb@assays@data)
+      })
+  
+    pb_list <- unlist(pb_list, recursive = FALSE, use.names = TRUE) |>
+      purrr::imap(function(mtx, name) {
+        colnames(mtx) <- paste(name, colnames(mtx), sep = ".")
+        mtx
+      })
+  
+    pb_mtx <- do.call(cbind, pb_list)
+
+    writexl::write_xlsx(
+      x = as.data.frame(pb_mtx, row.names = rownames(pb_mtx)) |>
+        tibble::rownames_to_column("Gene"),
+      path = "../results/DataPlots/pseudobulk_cpm_mean.xlsx")
+    
+    pb_mtx
+  })
+)
+```
+
+```{r}
+pseudobulk_cpm_mean_df <- xfun::cache_rds(
+  file = "pseudobulk_df_cpm_mean.rds",
+  dir = "../results/ObjectCache/Pseudobulk/",
+  expr = as.data.frame(pseudobulk_cpm_mean) |>
+    tibble::rownames_to_column("Gene") |>
+    tidyr::pivot_longer(-Gene, names_to = "bulk", values_to = "CPM") |>
+    tidyr::separate(bulk, sep = "\\.", into = c("treatment", "time", "cellType"))
+)
+```
+
+#### For differential state
+
+差异状态分析有两类方法，其中之一是基于聚合数据的差异基因表达方法，这种方法的稳定性和表现都很不错。
 
 所以我们首先将单细胞数据聚合成 pseudo-bulk 数据：
 
@@ -173,11 +259,7 @@ pb_list$counts |> assays()
 pb_list$counts |> assay("Stomata") |> str()
 ```
 
-```{r}
-pb_list$counts |> assay("Procambium") |> str()
-```
-
-### 样本间变异性
+### Variance of Samples
 
 我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性。注意，在这里我们使用基于 logcounts 的数据而不是 counts 数据。
 
@@ -231,8 +313,6 @@ plist$logcounts <- plist$logcounts + ggplot2::ggtitle("Pseudobulk Logcounts")
     center_plot_title())
 ```
 
-理论上，MDS 的第一个维度应该将 cluster 分开，第二个维度应该讲 group 分开。从结果上来看，MDS1 确实将 cluster 分开了；而 MDS2 也将 group 区分开。
-
 我们以细胞群集为分面来看看：
 
 ```{r mds-plot-by-cluster, fig.height=7, fig.width=14}
@@ -265,7 +345,7 @@ plot_mds_by_cluster <- function(df, clusters = NULL) {
 (p <- plot_mds_by_cluster(pb_mds_list$logcounts))
 ```
 
-### 基于聚合的差异基因表达
+### Pseudobulk differential expression
 
 可以使用 `muscat::pbDS` 函数完成任务，不过当要比较的 group 超过两个时，我们需要首先构建 design 矩阵以及 contrast 矩阵：
 
@@ -332,50 +412,27 @@ head(cluster1)
 
 1DPI-PNR2 vs. 1DPI-MOCK 比较组合中 cluster 1 的差异基因表达结果如上所示。
 
-### 寻找组间特异性标识基因
+## Handle DS Results
 
-这里出现一个很有意义的问题：**如何找出 group 特异性的 DS 基因集**？
+### Filtering and summary
 
-是否可以参考 Seurat 包鉴定 cluster 特异性 marker 的方法，将某个 group 与其余所有 group 一起比较。
+Here we only filter results with P-adjusted value smaller than 0.05:
 
-阅读 `Seurat::FindAllMarkers` 源代码，找到鉴定 Marker 的方法。
-
-> Seurat can help you find markers that define clusters via differential expression. By default, it identifies positive and negative markers of a single cluster (specified in `ident.1`), compared to all other cells.
-
-也就是说，contrast 的一方是目标组，另一方是剩下所有样品。
-
-```{r, eval=FALSE}
-markers <- list(
-  "PNR2"= rhapsodykit::find_group_marker_genes(sce, pb_list$counts, "X1DPI.PNR2" ,method = "DESeq2")
-)
-
-markers$PNR2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  rhapsodykit::diff_state_summary() %>%
-  as.data.frame.matrix()
+```{r}
+ds_sig <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0)
 ```
-
-## 处理结果
-
-不同的比较之间需要指定特殊的颜色标记：
-
-```{r define-contrast-colors}
-contrast_cols = Seurat::DiscretePalette(length(ds_res$DESeq2$table), palette = "glasbey")
-names(contrast_cols) <- names(ds_res$DESeq2$table)
-```
-
-### 结果的过滤与概览
-
-我们要对差异状态分析的结果进行过滤，我们基于基因表达的变化幅度和显著性来过滤：
 
 ```{r show-diff-results}
-# filter FDR < 5%, abs(logFC) > 1 & sort by adj. p-value
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  rhapsodykit::diff_state_summary()
+rhapsodykit::diff_state_summary(ds_sig) |>
+  dplyr::rename(
+    `Cell Type` = cluster_id,
+    `No. DS` = num_of_DS,
+    `Pct. DS` = percent_of_DS,
+    Contrast = contrast)
 ```
 
-### 计算表达频率
+### Filter by epxression frequency
 
 除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
 
@@ -386,17 +443,21 @@ ds_res$DESeq2 %>%
   rhapsodykit::diff_state_summary()
 ```
 
-## 对结果可视化
+We don't filter DEGs by expression frequency.
 
-### 可视化 DS 基因的数量
+## Visualization of DS Results
 
-我们可以查看一下 edgeR 和 DESeq2 两种方法发现的差异基因数量：
+### Visualize No. of DEGs
+
+```{r}
+genecount_df <- rhapsodykit::diff_state_format(ds_sig)
+```
+
+```{r eval=FALSE}
+writexl::write_xlsx(genecount_df, "../results/DataPlots/DS_DESeq2_Significant_DEGs.xlsx")
+```
 
 ```{r diff-gene-count-plot, fig.height=7, fig.width=7}
-genecount_df <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  rhapsodykit::diff_state_format()
-
 genecount_df$cluster_id <- factor(genecount_df$cluster_id, unique(all_tissues))
 genecount_df$time <- stringr::str_extract(genecount_df$contrast, "\\dDPI")
 genecount_df$contrast <- factor(genecount_df$contrast, levels = contrast_names)
@@ -440,256 +501,155 @@ p <- ggplot2::ggplot(
 p
 ```
 
-总体来说，edgeR 与 DESeq2 发现的基因数量大体趋势是一致的，只不过两种方法计算出的 p_adj.loc 可能有所差别。
+edgeR 与 DESeq2 发现的基因数量大体趋势是一致的，只不过两种方法计算出的 p_adj.loc 可能有所差别。
 
-### 火山图展示上下调基因 {.tabset}
+### Volcano plot to show DEGs {.tabset}
 
-```{r}
+```{r results='asis'}
 df_to_plot <- ds_res$DESeq2 %>% rhapsodykit::diff_state_format()
+
+for (dp in c("1DPI", "2DPI", "3DPI")) {
+  cat("####", dp, "{.tabset}\n\n")
+  for (tr in list(c("PNR2", "MOCK"),
+                  c("TR4", "MOCK"),
+                  c("PNR2", "TR4"))) {
+
+    cont = sprintf("X%s.%s-X%s.%s", dp, tr[[1]], dp, tr[[2]])
+    title = sprintf("%s-%s vs. %s-%s", dp, tr[[1]], dp, tr[[2]])
+    cat("#####", title, "\n\n")
+
+    dplyr::filter(df_to_plot, contrast == cont) |>
+      rhapsodykit::volcano_diff_state(title = title) |>
+      print()
+
+    cat("\n\n")
+  }
+  cat("\n\n")
+}
 ```
 
-#### 1 DPI
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs. 1DPI-MOCK")
-```
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X1DPI.TR4-X1DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "1DPI-TR4 vs 1DPI.MOCK")
-```
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X1DPI.PNR2-X1DPI.TR4") %>%
-  rhapsodykit::volcano_diff_state(title = "1DPI-PNR2 vs 1DPI.TR4")
-```
-
-#### 2 DPI
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X2DPI.PNR2-X2DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "2DPI-PNR2 vs. 2DPI-MOCK")
-```
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X2DPI.TR4-X2DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "2DPI-TR4 vs 2DPI.MOCK")
-```
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X2DPI.PNR2-X2DPI.TR4") %>%
-  rhapsodykit::volcano_diff_state(title = "2DPI-PNR2 vs 2DPI.TR4")
-```
-
-#### 3 DPI
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X3DPI.PNR2-X3DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "3DPI-PNR2 vs. 3DPI-MOCK")
-```
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X3DPI.TR4-X3DPI.MOCK") %>%
-  rhapsodykit::volcano_diff_state(title = "3DPI-TR4 vs 3DPI.MOCK")
-```
-
-```{r}
-dplyr::filter(df_to_plot, contrast == "X3DPI.PNR2-X3DPI.TR4") %>%
-  rhapsodykit::volcano_diff_state(title = "3DPI-PNR2 vs 3DPI.TR4")
-```
-
-### 细胞类型间 DS 基因交集 {.tabset}
+### Intersections between cell types {.tabset}
 
 ```{r}
 plot_updown <- function(ds, contrast) {
   p1 <- ds %>%
-    rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
     rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:8, "gene") %>%
     rhapsodykit::from_list_to_upset() %>%
     rhapsodykit::upset_dataframe() %>%
-    rhapsodykit::upset_plot()
+    rhapsodykit::upset_plot(n_intersections = 30)
 
   up_list <- ds %>%
     rhapsodykit::diff_state_filter(logFC > 0) %>%
-    rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-    rhapsodykit::diff_state_pull(contrast, 1:8, "gene")
+    rhapsodykit::diff_state_pull(contrast, seq_along(ds$data), "gene")
 
   down_list <- ds %>%
     rhapsodykit::diff_state_filter(logFC < 0) %>%
-    rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-    rhapsodykit::diff_state_pull(contrast, 1:8, "gene")
+    rhapsodykit::diff_state_pull(contrast, seq_along(ds$data), "gene")
 
-  p2 <- rhapsodykit::upset_updown_regulated(up_list, down_list)
+  p2 <- rhapsodykit::upset_updown_regulated(
+    up_list, down_list, n_intersections = 30)
 
   p1 / p2
 }
 ```
 
-#### 1 DPI
+```{r results='asis', fig.height=10, fig.width=10}
+for (dp in c("1DPI", "2DPI", "3DPI")) {
+  cat("####", dp, "{.tabset}\n\n")
+  for (tr in list(c("PNR2", "MOCK"),
+                  c("TR4", "MOCK"),
+                  c("PNR2", "TR4"))) {
 
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.MOCK") &
-   ggplot2::ggtitle("1DPI PNR2 vs. MOCK")
+    cont = sprintf("X%s.%s-X%s.%s", dp, tr[[1]], dp, tr[[2]])
+    title = sprintf("%s-%s vs. %s-%s", dp, tr[[1]], dp, tr[[2]])
+    cat("#####", title, "\n\n")
+
+    p <- plot_updown(ds_sig, cont) &
+      ggplot2::ggtitle(title)
+    print(p)
+
+    cat("\n\n")
+  }
+  cat("\n\n")
+}
 ```
 
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X1DPI.TR4-X1DPI.MOCK") &
-   ggplot2::ggtitle("1DPI TR4 vs. MOCK")
-```
+### The concordance between treatments
 
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X1DPI.PNR2-X1DPI.TR4") &
-   ggplot2::ggtitle("1DPI PNR2 vs. TR4")
-```
-
-#### 2 DPI
-
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X2DPI.PNR2-X2DPI.MOCK") &
-   ggplot2::ggtitle("2DPI PNR2 vs. MOCK")
-```
-
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X2DPI.TR4-X2DPI.MOCK") &
-   ggplot2::ggtitle("2DPI TR4 vs. MOCK")
-```
-
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X2DPI.PNR2-X2DPI.TR4") &
-   ggplot2::ggtitle("2DPI PNR2 vs. TR4")
-```
-
-#### 3 DPI
-
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X3DPI.PNR2-X3DPI.MOCK") &
-   ggplot2::ggtitle("3DPI PNR2 vs. MOCK")
-```
-
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X3DPI.TR4-X3DPI.MOCK") &
-   ggplot2::ggtitle("3DPI TR4 vs. MOCK")
-```
-
-```{r fig.height=10, fig.width=7}
-plot_updown(ds_res$DESeq2, "X3DPI.PNR2-X3DPI.TR4") &
-   ggplot2::ggtitle("3DPI PNR2 vs. TR4")
-```
-
-### 样本间差异状态的一致性
-
-筛选出一部分 contrast 再比较。
-
-```{r upset-across-contrast, fig.height=10, fig.width=7}
-upset_contrasts <- function(input, ...) {
-  sets_list <- input$table %>%
-    purrr::map(function(x) {
-      purrr::map(x, "gene") %>%
-        purrr::compact()
-    })
-
-  sets_metadata <- sets_list %>%
-    purrr::imap(function(contrast, key) {
-      cbind(
-        sets = sprintf(
-          "%s [%s]",
-          stringr::str_replace(key,
-            "X(\\dDPI)\\.(.*)-X.*", "\\1-\\2"),
-          names(contrast)),
-        contrast = key,
-        cluster = names(contrast)
-      )
-    }) %>%
-    do.call(rbind, .) %>%
-    as.data.frame()
-
-  sets_to_plot <- sets_list %>%
-    unlist(recursive = FALSE)
-  
-  names(sets_to_plot) <- sets_metadata$sets
-
-  sets_to_plot %>%
+```{r}
+plot_updown_contrast <- function(ds, contrast, clusters = NULL) {
+  p1 <- ds %>%
+    rhapsodykit::diff_state_subset(
+      contrast = contrast,
+      clusters = clusters) %>%
+    upset_contrasts_list() %>%
     rhapsodykit::from_list_to_upset() %>%
     rhapsodykit::upset_dataframe() %>%
-    rhapsodykit::upset_plot(order_by = "degree", ...)
-}
+    rhapsodykit::upset_plot(
+      order_by = "degree",
+      n_intersections = 100)
 
-diff_state_subset <- function(input, contrast = NULL, cluster = NULL) {
-  if (!is.null(contrast))
-    input$table <- input$table[contrast]
+  up_list <- ds %>%
+    rhapsodykit::diff_state_subset(
+      contrast = contrast,
+      clusters = clusters) %>%
+    rhapsodykit::diff_state_filter(logFC > 0) %>%
+    upset_contrasts_list()
 
-  if (!is.null(cluster)) {
-    input$table <- purrr::map(input$table, function(contr) contr[cluster])
-    input$data <- input$data[cluster]
-    input$fit <- input$fit[cluster]
-  }
+  down_list <- ds %>%
+    rhapsodykit::diff_state_subset(
+      contrast = contrast,
+      clusters = clusters) %>%
+    rhapsodykit::diff_state_filter(logFC < 0) %>%
+    upset_contrasts_list()
 
-  input
+  p2 <- rhapsodykit::upset_updown_regulated(
+    up_list, down_list,
+    order_by = "degree", n_intersections = 100)
+
+  p1 / p2
 }
 ```
 
-#### 所有集合比较
+因为有不同的 contrast ，所以无法显示上调与下调的基因？也对，某个基因可能在一个集合（cellType或者contrast）里面上调，但在另一个集合里面下调，这种基因会被漏掉。这个困局对任何在 UpsetPlot 上显示上下调基因的绘图来说都是存在的。
 
-```{r fig.height=10, fig.width=7}
-p <- ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(contrast = c(
+#### Compare all DEG list
+
+```{r fig.height=20, fig.width=20}
+plot_updown_contrast(
+  ds_sig,
+  contrast = c(
     "X1DPI.PNR2-X1DPI.MOCK",
     "X1DPI.TR4-X1DPI.MOCK",
     "X2DPI.PNR2-X2DPI.MOCK",
     "X2DPI.TR4-X2DPI.MOCK",
     "X3DPI.PNR2-X3DPI.MOCK",
-    "X3DPI.TR4-X3DPI.MOCK")) %>%
-  upset_contrasts(n_intersections = 50)
-
-p
+    "X3DPI.TR4-X3DPI.MOCK")
+)
 ```
 
-#### 按时间划分 {.tabset}
+#### Compare by time {.tabset}
 
-##### 1 DPI
-
-```{r }
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(contrast = c(
-    "X1DPI.PNR2-X1DPI.MOCK",
-    "X1DPI.TR4-X1DPI.MOCK")) %>%
-  upset_contrasts()
+```{r fig.height=14, fig.width=18, results='asis'}
+for (dp in c("1DPI", "2DPI", "3DPI")) {
+  cat("#####", dp, "\n\n")
+  contrast <- sprintf(c(
+    "X%s.PNR2-X%s.MOCK",
+    "X%s.TR4-X%s.MOCK"), dp, dp)
+  p <- plot_updown_contrast(
+    ds_sig, contrast = contrast)
+  print(p)
+  cat("\n\n")
+}
 ```
 
-##### 2 DPI
+#### Compare by cell type {.tabset}
 
-```{r}
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(contrast = c(
-    "X2DPI.PNR2-X2DPI.MOCK",
-    "X2DPI.TR4-X2DPI.MOCK")) %>%
-  upset_contrasts()
-```
-
-##### 3 DPI
-
-```{r}
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(contrast = c(
-    "X3DPI.PNR2-X3DPI.MOCK",
-    "X3DPI.TR4-X3DPI.MOCK")) %>%
-  upset_contrasts()
-```
-
-因为有不同的 contrast ，所以无法显示上调与下调的基因。
-
-#### 按细胞类型划分 {.tabset}
-
-```{r}
-plot_upset_by_cluster <- function(ds, cluster) {
-  ds %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(
+```{r fig.height=14, fig.width=14, results='asis'}
+for (cls in unique(all_tissues)) {
+  cat("#####", cls, "\n\n")
+  p <- plot_updown_contrast(
+    ds_sig,
     contrast = c(
       "X1DPI.PNR2-X1DPI.MOCK",
       "X1DPI.TR4-X1DPI.MOCK",
@@ -697,95 +657,15 @@ plot_upset_by_cluster <- function(ds, cluster) {
       "X2DPI.TR4-X2DPI.MOCK",
       "X3DPI.PNR2-X3DPI.MOCK",
       "X3DPI.TR4-X3DPI.MOCK"),
-    cluster = cluster) %>%
-  upset_contrasts()
+    clusters = cls)
+  print(p)
+  cat("\n\n")
 }
 ```
 
-##### Stomata
+### Overview of DEGs
 
-```{r}
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(
-    contrast = c(
-      #"X1DPI.PNR2-X1DPI.MOCK",
-      "X1DPI.TR4-X1DPI.MOCK",
-      "X2DPI.PNR2-X2DPI.MOCK",
-      "X2DPI.TR4-X2DPI.MOCK",
-      "X3DPI.PNR2-X3DPI.MOCK",
-      "X3DPI.TR4-X3DPI.MOCK"),
-    cluster = "Stomata") %>%
-  upset_contrasts()
-```
-
-##### Epidermis
-
-```{r}
-plot_upset_by_cluster(ds_res$DESeq2, "Epidermis")
-```
-
-##### Chlorenchyma
-
-```{r}
-plot_upset_by_cluster(ds_res$DESeq2, "Chlorenchyma")
-```
-
-##### Parenchyma
-
-```{r}
-plot_upset_by_cluster(ds_res$DESeq2, "Parenchyma")
-```
-
-##### Outer sheath
-
-```{r}
-plot_upset_by_cluster(ds_res$DESeq2, "Outer sheath")
-```
-
-##### Inner sheath
-
-```{r}
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(
-    contrast = c(
-      #"X1DPI.PNR2-X1DPI.MOCK",
-      "X1DPI.TR4-X1DPI.MOCK",
-      "X2DPI.PNR2-X2DPI.MOCK",
-      "X2DPI.TR4-X2DPI.MOCK",
-      "X3DPI.PNR2-X3DPI.MOCK",
-      "X3DPI.TR4-X3DPI.MOCK"),
-    cluster = "Inner sheath") %>%
-  upset_contrasts()
-```
-
-##### Phloem
-
-```{r}
-plot_upset_by_cluster(ds_res$DESeq2, "Phloem")
-```
-
-##### Procambium
-
-```{r}
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  diff_state_subset(
-    contrast = c(
-      #"X1DPI.PNR2-X1DPI.MOCK",
-      #"X1DPI.TR4-X1DPI.MOCK",
-      "X2DPI.PNR2-X2DPI.MOCK",
-      "X2DPI.TR4-X2DPI.MOCK",
-      "X3DPI.PNR2-X3DPI.MOCK",
-      "X3DPI.TR4-X3DPI.MOCK"),
-    cluster = "Procambium") %>%
-  upset_contrasts()
-```
-
-### 差异基因的整体展示
-
-#### 表达倍数散点图
+#### LogFC Scatters
 
 ```{r fig.height=7, fig.width=14}
 df_to_plot <- ds_res$DESeq2 |>
@@ -813,7 +693,7 @@ p <- df_to_plot |>
 p
 ```
 
-#### 表达倍数的热图
+#### LogFC Heatmap
 
 ```{r}
 logfc_df <- ds_res$DESeq2 |>
