@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(magrittr)
-source("../scripts/LoadUtils.R")
+source("../scripts/LoadUtils.R", chdir = TRUE)
 knitr::opts_chunk$set(dev = "png")
 scv <- reticulate::import("scvelo")
 plt <- reticulate::import("matplotlib.pyplot")

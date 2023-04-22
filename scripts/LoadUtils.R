@@ -1,4 +1,6 @@
 local({
+  # Use this file as: source("../scripts/LoadUtils.R", chdir = TRUE)
+
   if ("wta:utils" %in% search()) {
     warning("Environment `wta:utils` already attached and it will be refreshed",
             call. = FALSE)
@@ -9,12 +11,11 @@ local({
     assign(".WtaUtilsEnv", utils_env, envir = utils_env)
   }
 
-  # LoadUtils.R was generally used in "analysis" folder which is a sibling
-  # of "scripts", so here we use "../scripts/" to load all utilities.
-  source("../scripts/UtilityFunctions.R", local = utils_env)
-  source("../scripts/EnrichmentUtilities.R", local = utils_env)
-  source("../scripts/TrajectoryUtilities.R", local = utils_env)
-  source("../scripts/AbundanceUtilities.R", local = utils_env)
+  # Scripts must be placed within the same directory as LoadUtils.R
+  source("UtilityFunctions.R", local = utils_env)
+  source("EnrichmentUtilities.R", local = utils_env)
+  source("TrajectoryUtilities.R", local = utils_env)
+  source("AbundanceUtilities.R", local = utils_env)
 
   args <- list(what = utils_env, name = "wta:utils")
   do.call(base::attach, args)
