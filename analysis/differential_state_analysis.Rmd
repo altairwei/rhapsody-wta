@@ -7,7 +7,7 @@ output: html_document
 library(magrittr)
 library(patchwork)
 library(SingleCellExperiment)
-source("../scripts/LoadUtils.R")
+source("../scripts/LoadUtils.R", chdir = TRUE)
 BPPARAM <- BiocParallel::MulticoreParam(workers = 6)
 ```
 
@@ -109,13 +109,13 @@ invisible(gc())
 差异状态分析依赖于细胞亚群的大小，因此群体规模太小的亚群应该事先排除掉。
 
 ```{r cluster-prop-table}
-cluster_stats <- table(sce$cluster_id, sce$sample_id)
-cluster_stats %>% as.data.frame.matrix()
+table(sce$cluster_id, sce$sample_id) |>
+  as.data.frame.matrix()
 ```
 
 看看各个类群在各自样本中所占的比例：
 
-```{r cluster-abundance-barplot, fig.height=7, fig.width=14, warning=FALSE}
+```{r}
 p1 <- scater::plotReducedDim(
     sce,
     dimred = "UMAP",
@@ -128,51 +128,57 @@ p1 <- scater::plotReducedDim(
   ggplot2::coord_fixed() +
   remove_legend() +
   theme_dimred()
-
-p2 <- rhapsodykit::barplot_cluster_abundance(sce) +
-  ggthemes::scale_fill_tableau() +
-  NULL
-
-p2$data$sample_id <- stringr::str_replace(
-  p2$data$sample_id, "X(\\dDPI)\\.(.*)\\.(\\d)", "\\1-\\2-\\3")
-
-(p <- p1 + p2 + patchwork::plot_layout(widths = c(2, 2)))
 ```
 
-### Functions
-
 ```{r}
-upset_contrasts_list <- function(input, ...) {
-  sets_list <- input$table %>%
-    purrr::map(function(x) {
-      purrr::map(x, "gene") %>%
-        purrr::compact()
-    })
+df <- rhapsodykit::calculateClusterProportion(
+  sce$cluster_id, sce$sample_id, sce$group_id)
 
-  sets_list <- Filter(\(x) length(x) > 0, sets_list)
+matched <- stringr::str_match(
+  df$sample_id, "X(\\dDPI)\\.(MOCK|PNR2|TR4)\\.(\\d)")
 
-  sets_metadata <- sets_list %>%
-    purrr::imap(function(contrast, key) {
-      cbind(
-        sets = sprintf(
-          "%s [%s]",
-          stringr::str_replace(key,
-            "X(\\dDPI)\\.(.*)-X.*", "\\1-\\2"),
-          names(contrast)),
-        contrast = key,
-        cluster = names(contrast)
-      )
-    }) %>%
-    do.call(rbind, .) %>%
-    as.data.frame()
+df$time <- factor(matched[, 2], levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+df$treatment <- factor(matched[, 3], levels = c("MOCK", "PNR2", "TR4"))
+df$rep <- matched[, 4]
 
-  sets_to_plot <- sets_list %>%
-    unlist(recursive = FALSE)
-  
-  names(sets_to_plot) <- sets_metadata$sets
+df <- dplyr::select(df, treatment, time, rep, cluster_id, frequency)
 
-  sets_to_plot
-}
+df <- df |>
+  dplyr::group_by(treatment, time, cluster_id) |>
+  dplyr::summarise(frequency = mean(frequency), .groups = "drop")
+
+df_0dpi <- dplyr::filter(df, time == "0DPI")
+
+df <- df |>
+  dplyr::bind_rows(
+    dplyr::mutate(df_0dpi, treatment = "PNR2"),
+    dplyr::mutate(df_0dpi, treatment = "TR4")) |>
+  dplyr::arrange(time, treatment, cluster_id)
+
+p2 <- df %>%
+  ggplot2::ggplot(ggplot2::aes(
+    x = time, y = frequency, fill = cluster_id)) +
+  ggplot2::facet_wrap(
+    ~treatment, ncol = 1, scales = "free_y",
+    strip.position = "right", dir = "v") +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2, position = "stack") +
+  ggplot2::coord_flip() +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+  ggplot2::scale_x_discrete(expand = c(0, 0), limits=rev) +
+  ggthemes::scale_fill_tableau("Tableau 10") +
+  ggplot2::theme(
+    aspect.ratio = NULL,
+    panel.grid = ggplot2::element_blank(),
+    panel.spacing = grid::unit(6, "mm"),
+    strip.background = ggplot2::element_blank(),
+    strip.text.y = ggplot2::element_text(angle = 0)
+  )
+```
+
+```{r cluster-abundance-barplot, fig.height=7, fig.width=16}
+(p <- p1 + p2 + patchwork::plot_layout(widths = c(1, 1)))
 ```
 
 ## Perform Differential State
@@ -261,7 +267,7 @@ pb_list$counts |> assay("Stomata") |> str()
 
 ### Variance of Samples
 
-我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性。注意，在这里我们使用基于 logcounts 的数据而不是 counts 数据。
+我们需要通过 MDS plot 查看一下 pseudo-bulk 是否能够反应样本间的相似性。
 
 ```{r pb-mds-plot}
 pb_mds_list <- xfun::cache_rds(
@@ -284,15 +290,15 @@ pb_mds_list <- xfun::cache_rds(
 
 然后我们展示该分布：
 
-```{r mds-plot-by-time, fig.height=7, fig.width=14}
+```{r mds-plot-by-time, fig.height=7, fig.width=16}
 plist <- lapply(pb_mds_list, function(pb_mds) {
   pb_mds %>%
     ggplot2::ggplot(ggplot2::aes_string(
       x = "MDS1", y = "MDS2",
-      color = "cluster_id", shape = "treatment")
-    ) +
+      color = "cluster_id", shape = "treatment")) +
     ggplot2::geom_point(size = 2, alpha = 1) +
     ggplot2::facet_wrap(~time) +
+    ggthemes::scale_fill_tableau() +
     ggthemes::scale_color_tableau() +
     ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
     ggplot2::guides(
@@ -309,11 +315,79 @@ plist <- lapply(pb_mds_list, function(pb_mds) {
 plist$counts <- plist$counts + ggplot2::ggtitle("Pseudobulk Counts")
 plist$logcounts <- plist$logcounts + ggplot2::ggtitle("Pseudobulk Logcounts")
 
-(p <- patchwork::wrap_plots(plist, guides = "collect") &
+(p <- patchwork::wrap_plots(plist) &
     center_plot_title())
 ```
 
+```{r fig.height=7, fig.width=16}
+plist <- lapply(pb_mds_list, function(pb_mds) {
+  pb_mds %>%
+    ggplot2::ggplot(ggplot2::aes_string(
+      x = "MDS1", y = "MDS2",
+      color = "cluster_id", shape = "treatment")) +
+    ggforce::geom_mark_ellipse(
+      ggplot2::aes(group = cluster_id, fill = cluster_id),
+      linetype = 2, alpha = 0.05, expand = grid::unit(2, "mm")) +
+    ggplot2::geom_point(size = 2, alpha = 1) +
+    ggplot2::facet_wrap(~time) +
+    ggthemes::scale_fill_tableau() +
+    ggthemes::scale_color_tableau() +
+    ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
+    ggplot2::guides(
+      fill = "none",
+      color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +
+    ggplot2::theme_bw() +
+    ggplot2::theme(
+      aspect.ratio = 1,
+      axis.text = ggplot2::element_text(color = "black"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(linewidth = 0.2, color = "lightgrey")
+    )
+})
+
+plist$counts <- plist$counts + ggplot2::ggtitle("Pseudobulk Counts")
+plist$logcounts <- plist$logcounts + ggplot2::ggtitle("Pseudobulk Logcounts")
+
+(p <- patchwork::wrap_plots(plist) &
+    center_plot_title())
+```
+
+通过查看 `muscat::pbMDS` 源代码，发现它调用了 `edgeR::calcNormFactors` 来归一化 pseudobulk 表达值，因此我倾向于认为 summed counts 适合作 MDS 分析。
+
 我们以细胞群集为分面来看看：
+
+```{r}
+pb_mds_list$counts %>%
+  ggplot2::ggplot(ggplot2::aes_string(
+    x = "MDS1", y = "MDS2")) +
+  ggforce::geom_mark_ellipse(
+    ggplot2::aes(
+      group = cluster_id,
+      fill = cluster_id,
+      color = cluster_id),
+    linetype = 2, alpha = 0.05,
+    expand = grid::unit(2, "mm")) +
+  ggthemes::scale_fill_tableau() +
+  ggthemes::scale_color_tableau() +
+  ggnewscale::new_scale_color() +
+  ggplot2::geom_point(
+    mapping = ggplot2::aes(
+      color = treatment, size = time, alpha = time)) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::scale_alpha_manual(values = c(
+    "0DPI" = 1, "1DPI" = .8, "2DPI" = .6, "3DPI" = .4)) +
+  ggplot2::scale_size_manual(values = c(
+    "0DPI" = 1, "1DPI" = 2, "2DPI" = 3, "3DPI" = 4)) +
+  ggplot2::guides(
+    color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    axis.text = ggplot2::element_text(color = "black"),
+    panel.grid.minor = ggplot2::element_blank(),
+    panel.grid.major = ggplot2::element_line(
+      linewidth = 0.2, color = "lightgrey")) +
+  ggplot2::ggtitle("Pseudobulk Counts")
+```
 
 ```{r mds-plot-by-cluster, fig.height=7, fig.width=14}
 plot_mds_by_cluster <- function(df, clusters = NULL) {
@@ -342,7 +416,8 @@ plot_mds_by_cluster <- function(df, clusters = NULL) {
     )
 }
 
-(p <- plot_mds_by_cluster(pb_mds_list$logcounts))
+(p <- plot_mds_by_cluster(pb_mds_list$counts) +
+    ggplot2::ggtitle("Pseudobulk Counts"))
 ```
 
 ### Pseudobulk differential expression
@@ -412,9 +487,7 @@ head(cluster1)
 
 1DPI-PNR2 vs. 1DPI-MOCK 比较组合中 cluster 1 的差异基因表达结果如上所示。
 
-## Handle DS Results
-
-### Filtering and summary
+### Filtering and summary results
 
 Here we only filter results with P-adjusted value smaller than 0.05:
 
@@ -425,25 +498,14 @@ ds_sig <- ds_res$DESeq2 %>%
 
 ```{r show-diff-results}
 rhapsodykit::diff_state_summary(ds_sig) |>
+  dplyr::relocate(cluster_id, contrast) |>
   dplyr::rename(
     `Cell Type` = cluster_id,
-    `No. DS` = num_of_DS,
-    `Pct. DS` = percent_of_DS,
-    Contrast = contrast)
+    Contrast = contrast,
+    `No. DEGs` = num_of_DS,
+    `Pct. DEGs` = percent_of_DS) |>
+  download_table("ds_deg_summary")
 ```
-
-### Filter by epxression frequency
-
-除了查看基因表达的变化幅度和显著性外，我们还可以看看基因表达的频率，即一个样本或组别中表达给定基因的细胞所占的比例。
-
-```{r gene-expr-freq, eval=FALSE}
-ds_res$DESeq2 %>%
-  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0) %>%
-  rhapsodykit::expr_freq_filter(sce) %>%
-  rhapsodykit::diff_state_summary()
-```
-
-We don't filter DEGs by expression frequency.
 
 ## Visualization of DS Results
 
@@ -503,6 +565,39 @@ p
 
 edgeR 与 DESeq2 发现的基因数量大体趋势是一致的，只不过两种方法计算出的 p_adj.loc 可能有所差别。
 
+```{r}
+df_degs <- rhapsodykit::diff_state_format(ds_sig)
+
+matched <- stringr::str_match(
+  df_degs$contrast, "X(\\dDPI)\\.(MOCK|PNR2|TR4)-X(\\dDPI)\\.(MOCK|PNR2|TR4)")
+
+df_degs$time <- factor(matched[, 2], levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+df_degs$contrast <- paste(matched[, 3], matched[, 5], sep = " vs. ")
+df_degs$regu_type <- factor(ifelse(df_degs$logFC > 0, "UP", "DOWN"), levels = c("UP", "DOWN"))
+
+df_degs <- df_degs |>
+  dplyr::select(time, contrast, cluster_id, regu_type, gene) |>
+  dplyr::filter(contrast != "PNR2 vs. TR4")
+
+df_degs |>
+  dplyr::group_by(time, contrast, regu_type) |>
+  dplyr::summarise(count = length(unique(gene)), .groups = "drop") |>
+  dplyr::add_row(
+    time = "0DPI",
+    contrast = rep(c("PNR2 vs. MOCK", "TR4 vs. MOCK"), each = 2),
+    regu_type = factor(rep(c("UP", "DOWN"), 2), levels = c("UP", "DOWN")),
+    count = 0) |>
+  dplyr::arrange(time) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = time, y = count,
+    color = contrast, linetype = regu_type,
+    group = paste(contrast, regu_type))) +
+  ggplot2::geom_point() +
+  ggplot2::geom_line() +
+  ggplot2::ylab("Number of DS genes") +
+  ggplot2::theme_bw()
+```
+
 ### Volcano plot to show DEGs {.tabset}
 
 ```{r results='asis'}
@@ -528,140 +623,7 @@ for (dp in c("1DPI", "2DPI", "3DPI")) {
 }
 ```
 
-### Intersections between cell types {.tabset}
-
-```{r}
-plot_updown <- function(ds, contrast) {
-  p1 <- ds %>%
-    rhapsodykit::diff_state_pull("X1DPI.PNR2-X1DPI.MOCK", 1:8, "gene") %>%
-    rhapsodykit::from_list_to_upset() %>%
-    rhapsodykit::upset_dataframe() %>%
-    rhapsodykit::upset_plot(n_intersections = 30)
-
-  up_list <- ds %>%
-    rhapsodykit::diff_state_filter(logFC > 0) %>%
-    rhapsodykit::diff_state_pull(contrast, seq_along(ds$data), "gene")
-
-  down_list <- ds %>%
-    rhapsodykit::diff_state_filter(logFC < 0) %>%
-    rhapsodykit::diff_state_pull(contrast, seq_along(ds$data), "gene")
-
-  p2 <- rhapsodykit::upset_updown_regulated(
-    up_list, down_list, n_intersections = 30)
-
-  p1 / p2
-}
-```
-
-```{r results='asis', fig.height=10, fig.width=10}
-for (dp in c("1DPI", "2DPI", "3DPI")) {
-  cat("####", dp, "{.tabset}\n\n")
-  for (tr in list(c("PNR2", "MOCK"),
-                  c("TR4", "MOCK"),
-                  c("PNR2", "TR4"))) {
-
-    cont = sprintf("X%s.%s-X%s.%s", dp, tr[[1]], dp, tr[[2]])
-    title = sprintf("%s-%s vs. %s-%s", dp, tr[[1]], dp, tr[[2]])
-    cat("#####", title, "\n\n")
-
-    p <- plot_updown(ds_sig, cont) &
-      ggplot2::ggtitle(title)
-    print(p)
-
-    cat("\n\n")
-  }
-  cat("\n\n")
-}
-```
-
-### The concordance between treatments
-
-```{r}
-plot_updown_contrast <- function(ds, contrast, clusters = NULL) {
-  p1 <- ds %>%
-    rhapsodykit::diff_state_subset(
-      contrast = contrast,
-      clusters = clusters) %>%
-    upset_contrasts_list() %>%
-    rhapsodykit::from_list_to_upset() %>%
-    rhapsodykit::upset_dataframe() %>%
-    rhapsodykit::upset_plot(
-      order_by = "degree",
-      n_intersections = 100)
-
-  up_list <- ds %>%
-    rhapsodykit::diff_state_subset(
-      contrast = contrast,
-      clusters = clusters) %>%
-    rhapsodykit::diff_state_filter(logFC > 0) %>%
-    upset_contrasts_list()
-
-  down_list <- ds %>%
-    rhapsodykit::diff_state_subset(
-      contrast = contrast,
-      clusters = clusters) %>%
-    rhapsodykit::diff_state_filter(logFC < 0) %>%
-    upset_contrasts_list()
-
-  p2 <- rhapsodykit::upset_updown_regulated(
-    up_list, down_list,
-    order_by = "degree", n_intersections = 100)
-
-  p1 / p2
-}
-```
-
-因为有不同的 contrast ，所以无法显示上调与下调的基因？也对，某个基因可能在一个集合（cellType或者contrast）里面上调，但在另一个集合里面下调，这种基因会被漏掉。这个困局对任何在 UpsetPlot 上显示上下调基因的绘图来说都是存在的。
-
-#### Compare all DEG list
-
-```{r fig.height=20, fig.width=20}
-plot_updown_contrast(
-  ds_sig,
-  contrast = c(
-    "X1DPI.PNR2-X1DPI.MOCK",
-    "X1DPI.TR4-X1DPI.MOCK",
-    "X2DPI.PNR2-X2DPI.MOCK",
-    "X2DPI.TR4-X2DPI.MOCK",
-    "X3DPI.PNR2-X3DPI.MOCK",
-    "X3DPI.TR4-X3DPI.MOCK")
-)
-```
-
-#### Compare by time {.tabset}
-
-```{r fig.height=14, fig.width=18, results='asis'}
-for (dp in c("1DPI", "2DPI", "3DPI")) {
-  cat("#####", dp, "\n\n")
-  contrast <- sprintf(c(
-    "X%s.PNR2-X%s.MOCK",
-    "X%s.TR4-X%s.MOCK"), dp, dp)
-  p <- plot_updown_contrast(
-    ds_sig, contrast = contrast)
-  print(p)
-  cat("\n\n")
-}
-```
-
-#### Compare by cell type {.tabset}
-
-```{r fig.height=14, fig.width=14, results='asis'}
-for (cls in unique(all_tissues)) {
-  cat("#####", cls, "\n\n")
-  p <- plot_updown_contrast(
-    ds_sig,
-    contrast = c(
-      "X1DPI.PNR2-X1DPI.MOCK",
-      "X1DPI.TR4-X1DPI.MOCK",
-      "X2DPI.PNR2-X2DPI.MOCK",
-      "X2DPI.TR4-X2DPI.MOCK",
-      "X3DPI.PNR2-X3DPI.MOCK",
-      "X3DPI.TR4-X3DPI.MOCK"),
-    clusters = cls)
-  print(p)
-  cat("\n\n")
-}
-```
+## Visualization of Fold Change
 
 ### Overview of DEGs
 
@@ -742,7 +704,8 @@ logfc_mtx <- logfc_mtx[, mtx_coldata$colidx]
 ```{r fig.height=7, fig.width=10}
 dend_mtx <- logfc_mtx
 dend_mtx[is.na(dend_mtx)] <- 0
-dend_row_hc <- dendsort::dendsort(fastcluster::hclust(dist(dend_mtx)))
+dend_row_hc <- dendsort::dendsort(
+  fastcluster::hclust(dist(dend_mtx)), isReverse = TRUE)
 ```
 
 ```{r fig.height=7, fig.width=14}
