@@ -736,6 +736,33 @@ enrichDistinct <- function(x) {
   }
 }
 
+enrichRepresent <- function(
+    x, clustMethod = "markov", nameMethod = "pagerank",
+    minClusterSize = 2) {
+
+  enr <- as.data.frame(x)
+
+  params <- aPEAR::validateEnrichment(
+    enr, colorBy = NULL, nodeSize = NULL, verbose = FALSE)
+
+  sim <- aPEAR::pathwaySimilarity(
+    enr, geneCol = params$genesCol,
+    method = "jaccard",
+    pathCol = "ID",
+    compareCluster = params$compareCluster)
+
+  clusters <- aPEAR::findClusters(
+    sim,
+    method = clustMethod,
+    nameMethod = nameMethod,
+    minClusterSize = minClusterSize,
+    verbose = FALSE)
+
+  selected <- unique(clusters)
+
+  dplyr::filter(x, ID %in% selected)
+}
+
 gointeractive <- function(
     x, showCategory = 10, color_by = "p.adjust",
     palette = colorRamps::blue2red,
