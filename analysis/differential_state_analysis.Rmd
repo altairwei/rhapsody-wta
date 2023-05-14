@@ -732,6 +732,7 @@ p <- ComplexHeatmap::Heatmap(
     matrix = logfc_mtx,
     name = "Log2 Fold Change",
     column_split = mtx_coldata$cell_types,
+    col = circlize::colorRamp2(c(-5, 0, 5), c("blue", "white", "red")),
     use_raster = TRUE,
     na_col = "grey",
     cluster_rows = dend_row_hc,

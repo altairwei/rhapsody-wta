@@ -1,6 +1,9 @@
 library(magrittr)
 suppressMessages(library(ggplot2))
 
+randstr <- function(n = 10) {
+  paste(sample(c(letters, LETTERS), n, replace = TRUE), collapse = '')
+}
 
 #' Perform ORA enrichment analysis for DS results
 #'
@@ -257,20 +260,21 @@ printCompareORAByCluster <- function(enr, heading) {
   
   df_list <- dplyr::group_split(df)
   names(df_list) <- dplyr::group_keys(df)$cluster
-  
+
   for (clr in names(df_list)) {
     cat(heading, clr, "\n\n")
+    id <- paste(clr, randstr())
     print(
       htmltools::tagList(
         htmltools::tags$button(
           "Download as CSV",
           onclick = sprintf(
-            "Reactable.downloadDataCSV('%s', '%s')",
-            clr, clr)
+            "Reactable.downloadDataCSV('%s', '%s.csv')",
+            id, id)
         ),
         reactable::reactable(
           df_list[[clr]],
-          elementId = clr,
+          elementId = id,
           searchable = TRUE,
           columns = list(
             "cluster" = reactable::colDef(maxWidth = 80),
@@ -323,7 +327,8 @@ performDACompareORA <- function(da, sets,
 #'
 #' @param gsea GSEA result object
 #' @return Reactable object
-printGSEATable <- function(gsea) {
+printGSEATable <- function(
+    gsea, id = paste0("GSEATable_", randstr())) {
   enrichdf <- gsea@result |>
     tibble::remove_rownames() |>
     dplyr::mutate(
@@ -336,11 +341,11 @@ printGSEATable <- function(gsea) {
   htmltools::tagList(
     htmltools::tags$button(
       "Download as CSV",
-      onclick = "Reactable.downloadDataCSV('GSEATable', 'GSEATable.csv')"
+      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s.csv')", id, id)
     ),
     reactable::reactable(
       enrichdf,
-      elementId = "GSEATable",
+      elementId = id,
       searchable = TRUE,
       columns = list(
         "ID" = reactable::colDef(maxWidth = 120),
@@ -363,7 +368,9 @@ printGSEATable <- function(gsea) {
   )
 }
 
-printORATable <- function(ora) {
+printORATable <- function(
+    ora, id = paste0("ORATable_", randstr())) {
+
   enrichdf <- ora@result |>
     tibble::remove_rownames() |>
     dplyr::mutate(
@@ -374,11 +381,11 @@ printORATable <- function(ora) {
   htmltools::tagList(
     htmltools::tags$button(
       "Download as CSV",
-      onclick = "Reactable.downloadDataCSV('ORATable', 'ORATable.csv')"
+      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s.csv')", id, id)
     ),
     reactable::reactable(
       enrichdf,
-      elementId = "GSEATable",
+      elementId = id,
       searchable = TRUE,
       columns = list(
         "ID" = reactable::colDef(maxWidth = 120),
@@ -399,7 +406,9 @@ printORATable <- function(ora) {
   )
 }
 
-printCompareORATable <- function(ora) {
+printCompareORATable <- function(
+    ora, id = paste0("CompareORATable_", randstr())) {
+
   enrichdf <- ora@compareClusterResult |>
     tibble::remove_rownames() |>
     dplyr::mutate(
@@ -411,11 +420,11 @@ printCompareORATable <- function(ora) {
   htmltools::tagList(
     htmltools::tags$button(
       "Download as CSV",
-      onclick = "Reactable.downloadDataCSV('ORATable', 'ORATable.csv')"
+      onclick = sprintf("Reactable.downloadDataCSV('%s', '%s.csv')", id, id)
     ),
     reactable::reactable(
       enrichdf,
-      elementId = "ORATable",
+      elementId = id,
       searchable = TRUE,
       columns = list(
         "Cluster" = reactable::colDef(maxWidth = 120),
@@ -843,3 +852,4 @@ gointeractive <- function(
     visNetwork::visEdges(arrows = "from") |>
     visNetwork::visIgraphLayout(layout = layout)
 }
+

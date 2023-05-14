@@ -16,6 +16,7 @@ local({
   source("EnrichmentUtilities.R", local = utils_env)
   source("TrajectoryUtilities.R", local = utils_env)
   source("AbundanceUtilities.R", local = utils_env)
+  source("Visualization.R", local = utils_env)
 
   args <- list(what = utils_env, name = "wta:utils")
   do.call(base::attach, args)

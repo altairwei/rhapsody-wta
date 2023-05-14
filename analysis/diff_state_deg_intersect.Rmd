@@ -401,6 +401,7 @@ df_jacmtx |>
       na_col = "white",
       cluster_rows = rowdend,
       cluster_columns = coldend,
+      row_names_side = "left",
       cell_fun = function(j, i, x, y, width, height, fill) {
         value <- jacmtx[i, j]
         if (!is.na(value))

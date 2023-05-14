@@ -181,6 +181,7 @@ ds_go_ora_df <- ds_df |>
   dplyr::filter(!stringr::str_detect(contrast, "X\\dDPI\\.PNR2-X\\dDPI\\.TR4")) |>
   dplyr::select(gene, cluster_id, contrast, logFC) |>
   dplyr::mutate(
+    cluster_id = factor(cluster_id, levels = cell_types),
     time = stringr::str_extract(contrast, "\\dDPI"),
     contrast = stringr::str_replace(contrast,
       "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2"),
@@ -200,6 +201,7 @@ params <- prepGOEnrichData(ds_go_ora_df, "1DPI")
 ora_comp_1dpi <- xfun::cache_rds(
   file = "ds_ora_comp_1dpi.rds",
   dir = "../results/ObjectCache/DifferentialState/",
+  rerun = FALSE,
   expr = lapply(
     X = c(BP = "BP", MF = "MF", CC = "CC"),
     FUN = function(ont)
@@ -260,13 +262,16 @@ reprterms <- ora_comp_1dpi$BP@compareClusterResult |>
 reprterms <- reprterms[
   extractMarkedTerms("../results/DataPlots/ds_ora_comp_1dpi.pptx")]
 
-tibble::enframe(reprterms, "Description", "ID") |>
-  reactable::reactable()
+ora_comp_1dpi$BP |>
+  dplyr::filter(ID %in% reprterms) |>
+  printCompareORATable()
 ```
 
 #### Dotplot with facets {.tabset}
 
 ##### Biological process
+
+GO terms were selected manually:
 
 ```{r fig.height=20, fig.width=14}
 p <- ora_comp_1dpi$BP |>
@@ -275,6 +280,7 @@ p <- ora_comp_1dpi$BP |>
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Biological process - 1DPI") +
   ggplot2::facet_wrap(~ cluster_id, scales = "free_x") +
   rotate_x_labels()
 
@@ -293,6 +299,7 @@ p <- ora_comp_1dpi$MF |>
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Molecular function - 1DPI") +
   ggplot2::facet_wrap(~ cluster_id, scales = "free_x") +
   rotate_x_labels()
 
@@ -303,7 +310,7 @@ p
 
 Representive GO terms were selected by algorithm:
 
-```{r fig.height=7, fig.width=14}
+```{r fig.height=4, fig.width=14}
 p <- ora_comp_1dpi$CC |>
   clusterProfiler::simplify(cutoff = 0.82) |>
   enrichRepresent() |>
@@ -311,13 +318,14 @@ p <- ora_comp_1dpi$CC |>
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Cellular component - 1DPI") +
   ggplot2::facet_wrap(~ cluster_id, scales = "free_x") +
   rotate_x_labels()
 
 p
 ```
 
-#### Enrichment Map
+#### Enrichment Map {.tabset}
 
 ```{r fig.height=16, fig.width=18}
 p <- ora_comp_1dpi$BP |>
@@ -331,26 +339,6 @@ p <- ora_comp_1dpi$BP |>
     layout.params = list(layout = "fr"),
     cluster.params = list(
       cluster = TRUE, label_style = "ggforce"),
-    cex.params = list(category_label = 1.6)) +
-  ggthemes::scale_fill_tableau(
-    palette = "Tableau 20") +
-  ggplot2::guides(fill = ggplot2::guide_legend(title = "cell cluster")) +
-  ggplot2::theme_void(14)
-
-p
-```
-
-```{r fig.height=12, fig.width=14}
-p <- ora_comp_1dpi$BP |>
-  dplyr::filter(ID %in% reprterms) |>
-  enrichplot::pairwise_termsim() |>
-  enrichplot::emapplot(
-    showCategory = length(reprterms),
-    font.size = 14,
-    node_label = "category",
-    pie.params = list(legend_n = 3, pie = "Count"),
-    layout.params = list(layout = "fr"),
-    edge.params = list(min = 0.01),
     cex.params = list(category_label = 1.6)) +
   ggthemes::scale_fill_tableau(
     palette = "Tableau 20") +
@@ -381,6 +369,33 @@ p <- ora_comp_1dpi$BP |>
 p
 ```
 
+```{r fig.height=16, fig.width=18, results='asis'}
+local({
+  for (cls in c("Parenchyma", "Outer sheath", "Phloem")) {
+    cat("#####", cls, "\n\n")
+    p <- ora_comp_1dpi$BP |>
+      dplyr::filter(
+        ID %in% reprterms, cluster_id %in% cls) |>
+      enrichplot::pairwise_termsim(
+        showCategory = NULL) |>
+      enrichplot::emapplot(
+        showCategory = NULL,
+        font.size = 14,
+        node_label = "category",
+        pie.params = list(legend_n = 3, pie = "Count"),
+        layout.params = list(layout = "fr"),
+        edge.params = list(min = 0.01),
+        cex.params = list(category_label = 1.6)) +
+      ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+      ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+      ggplot2::theme_void(14)
+
+    print(p)
+    cat("\n\n")
+  }
+})
+```
+
 ### Analysis of 2 DPI DEGs
 
 #### Perform ORA
@@ -393,6 +408,7 @@ params <- prepGOEnrichData(ds_go_ora_df, "2DPI")
 ora_comp_2dpi <- xfun::cache_rds(
   file = "ds_ora_comp_2dpi.rds",
   dir = "../results/ObjectCache/DifferentialState/",
+  rerun = FALSE,
   expr = lapply(
     X = c(BP = "BP", MF = "MF", CC = "CC"),
     FUN = function(ont)
@@ -450,13 +466,16 @@ reprterms <- ora_comp_2dpi$BP@compareClusterResult |>
 reprterms <- reprterms[
   extractMarkedTerms("../results/DataPlots/ds_ora_comp_2dpi.pptx")]
 
-tibble::enframe(reprterms, "Description", "ID") |>
-  reactable::reactable()
+ora_comp_2dpi$BP |>
+  dplyr::filter(ID %in% reprterms) |>
+  printCompareORATable()
 ```
 
 #### Dotplot with facets {.tabset}
 
 ##### Biological process
+
+GO terms were selected manually:
 
 ```{r fig.height=26, fig.width=14}
 p <- ora_comp_2dpi$BP |>
@@ -465,6 +484,7 @@ p <- ora_comp_2dpi$BP |>
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Biological process - 2DPI") +
   ggplot2::facet_wrap(~ cluster_id, scales = "free_x", nrow = 1) +
   rotate_x_labels()
 
@@ -482,6 +502,7 @@ p <- ora_comp_2dpi$MF |>
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Molecular function - 2DPI") +
   ggplot2::facet_wrap(
     ~ cluster_id, scales = "free_x", nrow = 1) +
   rotate_x_labels()
@@ -495,12 +516,12 @@ Representive GO terms were selected by algorithm:
 
 ```{r fig.height=7, fig.width=14}
 p <- ora_comp_2dpi$CC |>
-  #clusterProfiler::simplify(cutoff = 0.82) |>
   enrichRepresent() |>
   enrichplot::dotplot(
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Cellular component - 2DPI") +
   ggplot2::facet_wrap(
     ~ cluster_id, scales = "free_x", nrow = 1) +
   rotate_x_labels()
@@ -508,24 +529,33 @@ p <- ora_comp_2dpi$CC |>
 p
 ```
 
-#### Enrichment Map
+#### Enrichment Map {.tabset}
 
-```{r fig.height=12, fig.width=14}
-p <- ora_comp_2dpi$BP |>
-  dplyr::filter(ID %in% reprterms) |>
-  enrichplot::pairwise_termsim() |>
-  enrichplot::emapplot(
-    showCategory = length(reprterms),
-    font.size = 14,
-    node_label = "category",
-    pie.params = list(legend_n = 3, pie = "Count"),
-    layout.params = list(layout = "fr"),
-    edge.params = list(min = 0.01),
-    cex.params = list(category_label = 1.6)) +
-  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
-  ggplot2::theme_void(14)
+```{r fig.height=16, fig.width=18, results='asis'}
+local({
+  for (cls in cell_types) {
+    cat("#####", cls, "\n\n")
+    p <- ora_comp_2dpi$BP |>
+      dplyr::filter(
+        ID %in% reprterms, cluster_id %in% cls) |>
+      enrichplot::pairwise_termsim(
+        showCategory = NULL) |>
+      enrichplot::emapplot(
+        showCategory = NULL,
+        font.size = 14,
+        node_label = "category",
+        pie.params = list(legend_n = 3, pie = "Count"),
+        layout.params = list(layout = "fr"),
+        edge.params = list(min = 0.01),
+        cex.params = list(category_label = 1.6)) +
+      ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+      ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+      ggplot2::theme_void(14)
 
-p
+    print(p)
+    cat("\n\n")
+  }
+})
 ```
 
 ### Analysis of 3 DPI DEGs
@@ -540,6 +570,7 @@ params <- prepGOEnrichData(ds_go_ora_df, "3DPI")
 ora_comp_3dpi <- xfun::cache_rds(
   file = "ds_ora_comp_3dpi.rds",
   dir = "../results/ObjectCache/DifferentialState/",
+  rerun = FALSE,
   expr = lapply(
     X = c(BP = "BP", MF = "MF", CC = "CC"),
     FUN = function(ont)
@@ -597,13 +628,16 @@ reprterms <- ora_comp_3dpi$BP@compareClusterResult |>
 reprterms <- reprterms[
   extractMarkedTerms("../results/DataPlots/ds_ora_comp_3dpi.pptx")]
 
-tibble::enframe(reprterms, "Description", "ID") |>
-  reactable::reactable()
+ora_comp_3dpi$BP |>
+  dplyr::filter(ID %in% reprterms) |>
+  printCompareORATable()
 ```
 
 #### Dotplot with facets {.tabset}
 
 ##### Biological process
+
+GO terms were selected manually:
 
 ```{r fig.height=26, fig.width=14}
 p <- ora_comp_3dpi$BP |>
@@ -611,7 +645,8 @@ p <- ora_comp_3dpi$BP |>
   enrichplot::dotplot(
     showCategory = NULL,
     size = "count", label_format = 50) +
-  ggplot2::xlab("cell cluster") +
+  ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Biological process - 3DPI") +
   ggplot2::facet_wrap(~ cluster_id, scales = "free_x", nrow = 1) +
   rotate_x_labels()
 
@@ -629,6 +664,7 @@ p <- ora_comp_3dpi$MF |>
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Molecular function - 3DPI") +
   ggplot2::facet_wrap(
     ~ cluster_id, scales = "free_x", nrow = 1) +
   rotate_x_labels()
@@ -647,6 +683,7 @@ p <- ora_comp_3dpi$CC |>
     showCategory = NULL,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Cellular component - 3DPI") +
   ggplot2::facet_wrap(
     ~ cluster_id, scales = "free_x", nrow = 1) +
   rotate_x_labels()
@@ -654,25 +691,33 @@ p <- ora_comp_3dpi$CC |>
 p
 ```
 
-#### Enrichment Map
+#### Enrichment Map {.tabset}
 
-```{r fig.height=16, fig.width=18}
-p <- ora_comp_3dpi$BP |>
-  dplyr::filter(ID %in% reprterms) |>
-  enrichplot::pairwise_termsim(
-    showCategory = NULL) |>
-  enrichplot::emapplot(
-    showCategory = NULL,
-    font.size = 14,
-    node_label = "category",
-    pie.params = list(legend_n = 3, pie = "Count"),
-    layout.params = list(layout = "fr"),
-    edge.params = list(min = 0.01),
-    cex.params = list(category_label = 1.6)) +
-  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
-  ggplot2::theme_void(14)
+```{r fig.height=16, fig.width=18, results='asis'}
+local({
+  for (cls in cell_types) {
+    cat("#####", cls, "\n\n")
+    p <- ora_comp_3dpi$BP |>
+      dplyr::filter(
+        ID %in% reprterms, cluster_id %in% cls) |>
+      enrichplot::pairwise_termsim(
+        showCategory = NULL) |>
+      enrichplot::emapplot(
+        showCategory = NULL,
+        font.size = 14,
+        node_label = "category",
+        pie.params = list(legend_n = 3, pie = "Count"),
+        layout.params = list(layout = "fr"),
+        edge.params = list(min = 0.01),
+        cex.params = list(category_label = 1.6)) +
+      ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+      ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+      ggplot2::theme_void(14)
 
-p
+    print(p)
+    cat("\n\n")
+  }
+})
 ```
 
 ```{r}
