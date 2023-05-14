@@ -7,9 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-source("../scripts/UtilityFunctions.R")
+source("../scripts/LoadUtils.R", chdir = TRUE)
 ```
-
 
 ## Load Data
 
@@ -26,6 +25,54 @@ cell_types <- c(
   "Phloem",
   "Procambium"
 )
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+
+all_celltypes <- c(
+  "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+names(all_celltype_colors) <- all_celltypes
+```
+
+### Single-Cell Object
+
+```{r}
+obj <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+
+```{r}
+Seurat::Idents(obj) <- forcats::fct_relevel(
+  Seurat::Idents(obj), all_celltypes)
+obj$tissue <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_tissues)))
+Seurat::Idents(obj) <- "tissue"
+```
+
+```{r}
+obj_mock <- subset(obj, subset = treatment == "MOCK")
 ```
 
 ### DEGs of Cell Types
@@ -49,6 +96,24 @@ marker_df <- readRDS(Sys.glob(
     pct.2 < 0.2) |>
   dplyr::group_by(time, cluster) |>
   dplyr::top_n(n = 300, wt = avg_log2FC)
+```
+
+### TFs and Targets
+
+用 clusterProfiler::enricher 来作转录因子富集分析。
+
+```{r}
+TFGene <- readr::read_tsv(
+    "../data/TF-Gene.txt",
+    col_names = c("Gene", "TF"),
+    col_types = list(Gene = "c", TF = "c")) |>
+  dplyr::relocate(TF)
+```
+
+```{r}
+TFGene |>
+  dplyr::group_by(TF) |>
+  dplyr::count()
 ```
 
 ### Functions
@@ -193,7 +258,6 @@ df_deg <- dplyr::bind_rows(df_imm, df_ide)
 str(df_deg)
 ```
 
-
 ### Venn plot of DEG list {.tabset}
 
 ```{r}
@@ -239,7 +303,86 @@ for (ct in cell_types) {
 }
 ```
 
+## Expression of TFs
+
+TFs come from: https://www.nature.com/articles/s41467-022-34290-w
+
+```{r}
+TF189 <- readxl::read_excel(
+  "../data/41467_2022_34290_MOESM4_ESM.xlsx", skip = 1)
+
+str(TF189)
+```
+
+```{r}
+TFs_id <- TF189 |>
+  dplyr::select(TF, `TF family`) |>
+  dplyr::group_by(`TF family`) |>
+  dplyr::summarise(genes = list(TF)) |>
+  tibble::deframe()
+```
+
+### TFs profile of MOCK samples
+
+```{r fig.height=28, fig.width=8}
+Seurat::DotPlot(obj_mock, features = TFs_id) +
+  ggplot2::coord_flip() +
+  ggplot2::facet_grid(
+    facets = feature.groups ~ .,
+    scales = "free_y",
+    space = "free_y") +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    strip.text.y = ggplot2::element_text(angle = 0)
+  )
+```
+
+### TFs profile of all samples
+
+```{r fig.height=28, fig.width=8}
+Seurat::DotPlot(obj, features = TFs_id) +
+  ggplot2::coord_flip() +
+  ggplot2::facet_grid(
+    facets = feature.groups ~ .,
+    scales = "free_y",
+    space = "free_y") +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    strip.text.y = ggplot2::element_text(angle = 0)
+  )
+```
+
 ## Enriched TFs of Marker Genes
+
+### Enrich using clusterProfiler
+
+```{r}
+id_genes <- marker_df |>
+  dplyr::group_by(time, cluster) |>
+  dplyr::summarise(DEGs = list(gene), .groups = "drop") |>
+  dplyr::rowwise() |>
+  dplyr::filter(length(DEGs) > 50) |>
+  dplyr::mutate(g = paste(time, cluster, sep = ".")) |>
+  dplyr::select(g, DEGs) |>
+  tibble::deframe()
+
+str(id_genes)
+```
+
+```{r}
+TFs <- TFGene |>
+  dplyr::group_by(TF) |>
+  dplyr::summarise(Genes = list(Gene)) |>
+  tibble::deframe()
+```
+
+```{r}
+intersect(convertV11ToV10(id_genes[["0DPI.Stomata"]]), TFs[["bZIP-D"]])
+
+cat(id_genes[["0DPI.Stomata"]], sep = "\n")
+```
+
+为什么用 clusterProfiler 富集的结果与 Wheat-RegNet 差别这么大呢？我看了看 wGRN 文章，他们也用的时 clusterProfiler
 
 ### TFs enrich for identity genes
 
@@ -352,6 +495,25 @@ DEGs_list_df <- logfc_df |>
   dplyr::select(-logFC) |>
   dplyr::group_by(time, contrast, cluster_id, regu_type) |>
   dplyr::summarise(DEGs = list(gene), .groups = "drop")
+```
+
+### Enrich using clusterProfiler
+
+```{r}
+ds_deg_list <- DEGs_list_df |>
+  dplyr::rowwise() |>
+  dplyr::filter(length(DEGs) > 50) |>
+  dplyr::mutate(name = paste(time, contrast, cluster_id, regu_type, sep = ".")) |>
+  dplyr::select(name, DEGs) |>
+  tibble::deframe()
+```
+
+```{r}
+clusterProfiler::enricher(
+  gene = convertV11ToV10(ds_deg_list[["2DPI.PNR2-MOCK.Outer sheath.UP"]]),
+  pvalueCutoff = 1,
+  TERM2GENE = TFGene
+)
 ```
 
 ### TFs enrich for DEG lists
