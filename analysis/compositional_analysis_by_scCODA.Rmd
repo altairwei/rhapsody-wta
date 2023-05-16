@@ -7,13 +7,79 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/LoadUtils.R", chdir = TRUE)
 ```
 
-## 数据准备
+## Prepare Data
 
 ```{r}
 obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
+
+### Cell Annotation
+
+```{r}
+all_celltypes <- c(
+  "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+names(all_celltype_colors) <- all_celltypes
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+```
+
+```{r}
+Seurat::Idents(obj) <- forcats::fct_relevel(Seurat::Idents(obj), all_celltypes)
+obj$body_layer <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_body_layers)))
+obj$tissue <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_tissues)))
+```
+
+### Cell Population Size
 
 计算细胞类型大小：
 
@@ -23,145 +89,383 @@ df <- rhapsodykit::calculateClusterSize(
 df$time <- stringr::str_extract(df$sample_id, "\\dDPI")
 df$treatment <- stringr::str_extract(df$sample_id, "MOCK|PNR2|TR4")
 df <- tidyr::pivot_wider(df, names_from = cluster_id, values_from = size)
-df
+
+reactable::reactable(df)
 ```
 
-## 算法探索
+```{r}
+dftis <- rhapsodykit::calculateClusterSize(obj$tissue, obj$sample, obj$group)
+dftis$time <- stringr::str_extract(dftis$sample_id, "\\dDPI")
+dftis$treatment <- stringr::str_extract(dftis$sample_id, "MOCK|PNR2|TR4")
+dftis <- tidyr::pivot_wider(dftis, names_from = cluster_id, values_from = size)
 
-```{python}
-import matplotlib.pyplot as plt
-import sccoda.util.cell_composition_data as dat
-import sccoda.util.data_visualization as viz
-import sccoda.util.comp_ana as mod
-import pandas as pd
-pd.set_option("display.max_rows", None)
+reactable::reactable(dftis)
 ```
 
-```{python}
-data_all = dat.from_pandas(r.df, covariate_columns=[
-  "sample_id", "group_id", "time", "treatment"])
+
+### Functions
+
+```{r}
+runScCODA <- function(df, formula, ref, num_results = 20000L) {
+  dat <- reticulate::import("sccoda.util.cell_composition_data")
+  mod <- reticulate::import("sccoda.util.comp_ana")
+
+  andata <- dat$from_pandas(df, covariate_columns = c(
+    "sample_id", "group_id", "time", "treatment"))
+  model <- mod$CompositionalAnalysis(
+    andata, formula = formula, reference_cell_type = ref)
+  sim <- model$sample_hmc(num_results = num_results)
+
+  sim
+}
+
+summaryScCODA <- function(sim, ...) {
+  summ <- sim$summary_prepare(...)
+
+  list(
+    intercepts = cbind(
+      reticulate::py_to_r(
+        attr(summ[[1]], "pandas.index")$to_frame()),
+      summ[[1]]
+    ),
+    effects = cbind(
+      reticulate::py_to_r(
+        attr(summ[[2]], "pandas.index")$to_frame()),
+      summ[[2]]
+    )
+  )
+}
+
+plotSummary <- function(summ) {
+  ggplot2::ggplot(
+      data = summ$effects,
+      mapping = ggplot2::aes(
+        x = .data[["Expected Sample"]],
+        y = .data[["Final Parameter"]],
+        color = .data[["Cell Type"]],
+        size = abs(.data[["log2-fold change"]]))) +
+    ggplot2::geom_point() +
+    ggrepel::geom_text_repel(ggplot2::aes(label = .data[["Cell Type"]]),
+                             size = 4, color = "black", bg.color = "white") +
+    ggplot2::guides(color = ggplot2::guide_legend(ncol = 2)) +
+    ggplot2::theme_bw()
+}
+
+printIntercepts <- function(intercepts) {
+  reactable::reactable(
+    data = intercepts,
+    rownames = FALSE,
+    columns = list(
+      "Final Parameter" = reactable::colDef(
+        format = reactable::colFormat(digits = 3)),
+      "Expected Sample" = reactable::colDef(
+        format = reactable::colFormat(digits = 1))
+    )
+  )
+}
+
+printEffects <- function(effects) {
+  reactable::reactable(
+    data = effects,
+    rownames = FALSE,
+    columns = list(
+      "Final Parameter" = reactable::colDef(
+        format = reactable::colFormat(digits = 3)),
+      "Inclusion probability" = reactable::colDef(
+        format = reactable::colFormat(digits = 3)),
+      "Expected Sample" = reactable::colDef(
+        format = reactable::colFormat(digits = 1)),
+      "log2-fold change" = reactable::colDef(
+        format = reactable::colFormat(digits = 3))
+    )
+  )
+}
 ```
 
-### Grouped boxplots
-
-```{python fig.height=2, fig.width=8}
-viz.boxplots(data_all, feature_name="group_id", add_dots=True, cmap="tab20")
-plt.show()
+```{r}
+FDR_LIM = 0.05
 ```
 
-原来只是两个点的数据分布。。。
+## Cell Clusters
 
-### Stacked barplot
+### Time as the covariate
 
-```{python}
-viz.stacked_barplot(data_all, feature_name="sample_id")
-plt.show()
-```
+#### MOCK Analysis
 
-### Finding a reference cell type
-
-```{python fig.height=6, fig.width=2}
-viz.rel_abundance_dispersion_plot(
-  data=data_all,
-  abundant_threshold=0.9,
-  figsize = [3, 8]
+```{r}
+sim_mock <- cache_pickle(
+  file = "sccoda_clusters_sim_mock.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = dplyr::filter(df, time == "0DPI" | treatment == "MOCK") |>
+    dplyr::mutate(time = as.integer(substr(time, 1, 1))) |>
+    runScCODA("time", "Gu")
 )
-plt.show()
-```
-
-### Model setup and inference
-
-> Per default, categorical variables are encoded via full-rank treatment coding. Hereby, the value of the first sample in the dataset is used as the default (control) category. We can select the default level by changing the model formula to `"C(<CovariateName>, Treatment('<ReferenceLevelName>'))"`. 参考： https://patsy.readthedocs.io/en/latest/categorical-coding.html
-
-```{python}
-model = mod.CompositionalAnalysis(data_all, formula="time + treatment", reference_cell_type="Gu")
-```
-
-如果 linux 的 cuda, cudnn 以及 python 的 jax 包没有安装好的话，下面代码会报错：
-
-```{python results='hide'}
-sim_results = model.sample_hmc()
-```
-
-### Result interpretation
-
-> **Model properties**
->
-> The model has two types of parameters that are relevant for analysis - intercepts and effects. These can be interpreted like in a standard regression model: Intercepts show how the cell types are distributed without any active covariates, effects show ho the covariates influence the cell types.
->
-> **Intercepts**
->
-> The first column of the intercept summary shows the parameters determined by the MCMC inference.
->
-> The "Expected sample" column gives some context to the numerical values. If we had a new sample (with no active covariates) with a total number of cells equal to the mean sampling depth of the dataset, then this distribution over the cell types would be most likely.
->
-> **Effects**
->
-> For the effect summary, the first column again shows the inferred parameters for all combinations of covariates and cell types. Most important is the distinctions between zero and non-zero entries. **A value of zero means that no statistically credible effect was detected. For a value other than zero, a credible change was detected. A positive sign indicates an increase, a negative sign a decrease in abundance.**
->
-> Since the numerical values of the "Final Parameter" column are not straightforward to interpret, the "Expected sample" and "log2-fold change" columns give us an idea on the magnitude of the change. The expected sample is calculated for each covariate separately (covariate value = 1, all other covariates = 0), with the same method as for the intercepts. The log-fold change is then calculated between this expected sample and the expected sample with no active covariates from the intercept section. Since the data is compositional, cell types for which no credible change was detected, can still change in abundance as well, as soon as a credible effect is detected on another cell type due to the sum-to-one constraint. If there are no credible effects for a covariate, its expected sample will be identical to the intercept sample, therefore the log2-fold change is 0.
-
-```{python}
-sim_results.summary()
-```
-
-```{python}
-sim_results.credible_effects()
-```
-
-## 1DPI 分析
-
-```{python}
-def runScCODA(df):
-  data = dat.from_pandas(df, covariate_columns=[
-    "sample_id", "group_id", "time", "treatment"])
-  model = mod.CompositionalAnalysis(data, formula="treatment", reference_cell_type="Gu")
-  sim = model.sample_hmc()
-  return sim
 ```
 
 ```{r}
-df_1dpi <- dplyr::filter(df, time == "1DPI")
-df_1dpi
+summ_mock <- summaryScCODA(sim_mock, est_fdr = FDR_LIM)
 ```
-
-```{python results='hide'}
-sim_1dpi = runScCODA(r.df_1dpi)
-```
-
-```{python}
-sim_1dpi.summary()
-```
-
-## 2DPI 分析
 
 ```{r}
-df_2dpi <- dplyr::filter(df, time == "2DPI")
-df_2dpi
+summ_mock$intercepts |>
+  printIntercepts()
 ```
-
-```{python results='hide'}
-sim_2dpi = runScCODA(r.df_2dpi)
-```
-
-```{python}
-sim_2dpi.summary()
-```
-
-## 3DPI 分析
 
 ```{r}
-df_3dpi <- dplyr::filter(df, time == "3DPI")
-df_3dpi
+summ_mock$effects |>
+  printEffects()
 ```
 
-```{python results='hide'}
-sim_3dpi = runScCODA(r.df_3dpi)
-```
-
-```{python}
-sim_3dpi.summary()
+```{r}
+plotSummary(summ_mock) +
+  ggthemes::scale_color_tableau("Tableau 20")
 ```
 
 
+#### PNR2 Analysis
 
+```{r}
+sim_pnr2 <- cache_pickle(
+  file = "sccoda_clusters_sim_pnr2.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = dplyr::filter(df, time == "0DPI" | treatment == "PNR2") |>
+      dplyr::mutate(time = as.integer(substr(time, 1, 1))) |>
+      runScCODA("time", "Gu")
+)
+```
+
+```{r}
+summ_pnr2 <- summaryScCODA(sim_pnr2, est_fdr = FDR_LIM)
+```
+
+```{r}
+summ_pnr2$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_pnr2$effects |>
+  printEffects()
+```
+
+```{r}
+plotSummary(summ_pnr2) +
+  ggthemes::scale_color_tableau("Tableau 20")
+```
+
+#### TR4 Analysis
+
+```{r}
+sim_tr4 <- cache_pickle(
+  file = "sccoda_clusters_sim_tr4.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = dplyr::filter(df, time == "0DPI" | treatment == "TR4") |>
+      dplyr::mutate(time = as.integer(substr(time, 1, 1))) |>
+      runScCODA("time", "Gu")
+)
+```
+
+```{r}
+summ_tr4 <- summaryScCODA(sim_tr4, est_fdr = FDR_LIM)
+```
+
+```{r}
+summ_tr4$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_tr4$effects |>
+  printEffects()
+```
+
+```{r}
+plotSummary(summ_tr4) +
+  ggthemes::scale_color_tableau("Tableau 20")
+```
+
+### Treatment as the covariate
+
+#### 1DPI Analysis
+
+```{r}
+sim_1dpi <- cache_pickle(
+  file = "sccoda_clusters_sim_1dpi.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = runScCODA(
+    dplyr::filter(df, time == "1DPI"), "treatment", "Gu")
+)
+```
+
+```{r}
+summ_1dpi <- summaryScCODA(sim_1dpi)
+```
+
+```{r}
+summ_1dpi$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_1dpi$effects |>
+  printEffects()
+```
+
+#### 2DPI Analysis
+
+```{r}
+sim_2dpi <- cache_pickle(
+  file = "sccoda_clusters_sim_2dpi.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = runScCODA(
+    dplyr::filter(df, time == "2DPI"), "treatment", "Gu")
+)
+```
+
+```{r}
+summ_2dpi <- summaryScCODA(sim_2dpi)
+```
+
+```{r}
+summ_2dpi$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_2dpi$effects |>
+  printEffects()
+```
+
+#### 3DPI Analysis
+
+```{r}
+sim_3dpi <- cache_pickle(
+  file = "sccoda_clusters_sim_3dpi.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = runScCODA(
+    dplyr::filter(df, time == "3DPI"), "treatment", "Gu")
+)
+```
+
+```{r}
+summ_3dpi <- summaryScCODA(sim_3dpi)
+```
+
+```{r}
+summ_3dpi$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_3dpi$effects |>
+  printEffects()
+```
+
+## Cell Types
+
+### Time as the covariate
+
+#### MOCK Analysis
+
+```{r}
+tis_mock <- cache_pickle(
+  file = "sccoda_celltypes_sim_mock.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = dplyr::filter(dftis, time == "0DPI" | treatment == "MOCK") |>
+    dplyr::mutate(time = as.integer(substr(time, 1, 1))) |>
+    runScCODA("time", "Stomata")
+)
+```
+
+```{r}
+summ_tis_mock <- summaryScCODA(tis_mock, est_fdr = FDR_LIM)
+```
+
+```{r}
+summ_tis_mock$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_tis_mock$effects |>
+  printEffects()
+```
+
+```{r}
+summ_tis_mock$effects <- dplyr::mutate(
+  summ_tis_mock$effects,
+  `Cell Type` = factor(`Cell Type`, levels = unique(all_tissues)))
+
+plotSummary(summ_tis_mock) +
+  ggthemes::scale_color_tableau("Tableau 10")
+```
+
+#### PNR2 Analysis
+
+```{r}
+tis_pnr2 <- cache_pickle(
+  file = "sccoda_celltypes_sim_pnr2.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = dplyr::filter(dftis, time == "0DPI" | treatment == "PNR2") |>
+    dplyr::mutate(time = as.integer(substr(time, 1, 1))) |>
+    runScCODA("time", "Stomata")
+)
+```
+
+```{r}
+summ_tis_pnr2 <- summaryScCODA(tis_pnr2, est_fdr = FDR_LIM)
+```
+
+```{r}
+summ_tis_pnr2$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_tis_pnr2$effects |>
+  printEffects()
+```
+
+```{r}
+summ_tis_pnr2$effects <- dplyr::mutate(
+  summ_tis_pnr2$effects,
+  `Cell Type` = factor(`Cell Type`, levels = unique(all_tissues)))
+
+plotSummary(summ_tis_pnr2) +
+  ggthemes::scale_color_tableau("Tableau 10")
+```
+
+#### TR4 Analysis
+
+```{r}
+tis_tr4 <- cache_pickle(
+  file = "sccoda_celltypes_sim_tr4.pickle",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = dplyr::filter(dftis, time == "0DPI" | treatment == "TR4") |>
+    dplyr::mutate(time = as.integer(substr(time, 1, 1))) |>
+    runScCODA("time", "Stomata")
+)
+```
+
+```{r}
+summ_tis_tr4 <- summaryScCODA(tis_tr4, est_fdr = FDR_LIM)
+```
+
+```{r}
+summ_tis_tr4$intercepts |>
+  printIntercepts()
+```
+
+```{r}
+summ_tis_tr4$effects |>
+  printEffects()
+```
+
+```{r}
+summ_tis_tr4$effects <- dplyr::mutate(
+  summ_tis_tr4$effects,
+  `Cell Type` = factor(`Cell Type`, levels = unique(all_tissues)))
+
+plotSummary(summ_tis_tr4) +
+  ggthemes::scale_color_tableau("Tableau 10")
+```
