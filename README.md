@@ -77,8 +77,20 @@ pip install numpy==1.21.6 Cython==0.29.30
 
 Restore R packages:
 
-Why `R.utils` not recorded in renv.lock?
-
 ```R
 renv::restore()
 ```
+
+If you have problems compiling packages such as `Cairo` from sources, you can install `r-cairo` from conda with the same version to `renv.lock` records.
+
+```shell
+conda install -n renv -c conda-forge r-cairo=1.6_0
+```
+
+And copy the cache from conda using `hydrate()`:
+
+```R
+renv::hydrate(sources="~/miniconda3/envs/renv/lib/R/library")
+```
+
+Then continue to `renv::restore()`.
