@@ -1,0 +1,22 @@
+
+## set up parameters
+######################################################################
+############     Bootstrap related parameters        #################
+######################################################################
+
+input_objects:
+  - results/ObjectCache/QualityControl/obj_strained_0DPI-MOCK-1_*.rds
+  - results/ObjectCache/QualityControl/obj_strained_0DPI-MOCK-2_*.rds
+  - results/ObjectCache/QualityControl/obj_strained_1DPI-MOCK-1_*.rds
+  - results/ObjectCache/QualityControl/obj_strained_1DPI-MOCK-2_*.rds
+  - results/ObjectCache/QualityControl/obj_strained_2DPI-MOCK-1_*.rds
+  - results/ObjectCache/QualityControl/obj_strained_2DPI-MOCK-2_*.rds
+  - results/ObjectCache/QualityControl/obj_strained_3DPI-MOCK-1_*.rds
+  - results/ObjectCache/QualityControl/obj_strained_3DPI-MOCK-2_*.rds
+
+subsample_rate: 0.8
+num_of_subsample: 20
+
+subsample_ks: "8 10 15 20 30 50 80 100"
+subsample_resolutions: "0.2 0.4 0.6 0.8 1.0 1.2 1.4"
+subsample_pcs: "10 15 20 30 35"

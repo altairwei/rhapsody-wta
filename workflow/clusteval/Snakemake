@@ -1,0 +1,76 @@
+# Modified from https://github.com/crazyhottommy/pyflow_seuratv3_parameter
+
+import glob
+
+shell.prefix("set -eo pipefail; echo BEGIN at $(date); ")
+shell.suffix("; exitstat=$?; echo END at $(date); echo exit status was $exitstat; exit $exitstat")
+
+configfile: "config/scclusteval.yml"
+
+INPUT_OBJECTS = [glob.glob(v) for v in config["input_objects"]]
+CONDA_ENV_NAME = config["conda_env"]
+
+NUM_OF_SUBSAMPLE = config["num_of_subsample"]
+ks = config["subsample_ks"].strip().split()
+resolutions = config["subsample_resolutions"].strip().split()
+pcs = config["subsample_pcs"].strip().split()
+
+rule merge_seurat_objects:
+    conda: CONDA_ENV_NAME
+    input: INPUT_OBJECTS
+    output: "results/ClustEval/merged_seurat_obj.rds"
+    resources: mem=17179869184
+    log: config["Log_Dir"] + "/merge_seurat_objects.log"
+    message: "merging seurat objects"
+    script: "scripts/merge_objects.R"
+
+## the full data set, preprocessing using a set of k, resolution and PC
+rule fullsample_cluster:
+    conda: CONDA_ENV_NAME
+    input: "results/ClustEval/merged_seurat_obj.rds"
+    output: obj = "results/ClustEval/fullsample/full_sample_k_{k}_resolution_{resolution}_PC_{pc}.rds",
+            df  = "results/ClustEval/fullsample/full_dataframe_k_{k}_resolution_{resolution}_PC_{pc}.rds"
+    resources: mem=17179869184
+    log: config["Log_Dir"] + "/full_sample_k_{k}_resolution_{resolution}_PC_{pc}.log"
+    message: "preprocessing original full seurat object using k of {wildcards.k} "
+             "resolution of {wildcards.resolution}, {wildcards.pc} PCs with {threads} threads"
+    script: "scripts/preprocess.R"
+
+rule gather_fullsample:
+    conda: CONDA_ENV_NAME
+    input: rds = expand("results/ClustEval/fullsample/full_dataframe_k_{k}_resolution_{resolution}_PC_{pc}.rds", \
+        k = ks, resolution = resolutions, pc = pcs)
+    output: "results/ClustEval/gather_full_sample.rds"
+    log: config["Log_Dir"] + "/full_sample_gather_idents.log"
+    message: "gathering full sample idents"
+    script: "scripts/gather_dataframe.R"
+
+
+## subsample e.g. 80% of the cells and re-do the clustering for n times
+rule subsample_cluster:
+    conda: CONDA_ENV_NAME
+    input: "results/ClustEval/fullsample/full_sample_k_{k}_resolution_{resolution}_PC_{pc}.rds"
+    output: "results/ClustEval/subsample/subsample_k_{k}_resolution_{resolution}_PC_{pc}_round_{run_id}.rds"
+    resources: mem=17179869184
+    log: config["Log_Dir"] + "/subsample_k_{k}_resolution_{resolution}_PC_{pc}_round_{run_id}.log"
+    params: rate = config["subsample_rate"]
+    message: "subsampling {params.rate} from the full data set, recluster using"
+             " k of {wildcards.k} resolution of {wildcards.resolution}, {wildcards.pc} "
+             "PCs for round {wildcards.run_id} using {threads} threads"
+    script: "scripts/subsample.R"
+
+## gather the subsampled and reclustered cell idents
+rule gather_subsample:
+    conda: CONDA_ENV_NAME
+    input: rds = expand("results/ClustEval/subsample/subsample_k_{k}_resolution_{resolution}_PC_{pc}_round_{run_id}.rds", \
+        k = ks, resolution = resolutions, pc = pcs, run_id = range(NUM_OF_SUBSAMPLE))
+    output: "results/ClustEval/gather_subsample.rds"
+    log: config["Log_Dir"] + "/gather_subsample.log"
+    message: "gathering idents for subsamples"
+    script: "scripts/gather_dataframe.R"
+
+localrules: all
+
+rule all:
+    input: "results/ClustEval/gather_subsample.rds",
+           "results/ClustEval/gather_full_sample.rds"

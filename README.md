@@ -55,15 +55,15 @@ conda config --add channels conda-forge
 conda config --set channel_priority strict
 
 # Create environments
-conda create -n renv python=3.8
-conda activate renv
-conda install -n renv -c conda-forge r-base=4.2
+conda create -n rdev python=3.8
+conda activate rdev
+conda install -n rdev -c conda-forge r-base=4.2
 ```
 
 The following dependencies are required for building R packages from sources, you can also install them using system package manager if you have root privilege.
 
 ```shell
-conda install -n renv -c conda-forge pkg-config gmp libgit2 fftw pandoc
+conda install -n rdev -c conda-forge pkg-config gmp libgit2 fftw pandoc hdf5
 ```
 
 ### Setup renv
@@ -81,16 +81,16 @@ Restore R packages:
 renv::restore()
 ```
 
-If you have problems compiling packages such as `Cairo` from sources, you can install `r-cairo` from conda with the same version to `renv.lock` records.
+**Note**: If you have problems compiling packages such as `Cairo` from sources, you can install `r-cairo` from conda with the same version to the record in `renv.lock`. Some of the following packages may require hydration: `XML (r-xml)`, `clock (r-clock)` and `Cairo (r-cairo)`.
 
 ```shell
-conda install -n renv -c conda-forge r-cairo=1.6_0
+conda install -n rdev -c conda-forge r-cairo=1.6_0
 ```
 
-And copy the cache from conda using `hydrate()`:
+Copy the cache from conda using `hydrate()`:
 
 ```R
-renv::hydrate(sources="~/miniconda3/envs/renv/lib/R/library")
+renv::hydrate(packages = "Cairo", sources="~/miniconda3/envs/rdev/lib/R/library")
 ```
 
 Then continue to `renv::restore()`.
