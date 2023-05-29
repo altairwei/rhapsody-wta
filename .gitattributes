@@ -2,3 +2,4 @@
 # https://github.com/github/linguist#overrides
 *.[Rr]md linguist-language=R
 docker/** linguist-vendored=true
+workflow/rhapsody_wta_** linguist-vendored=true
