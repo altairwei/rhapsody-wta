@@ -12,14 +12,12 @@ mkdir -p ${LOG_DIR}
 snakemake \
     --use-conda \
     --config Log_Dir=${LOG_DIR} conda_env=rdev \
-    --cluster "workflow/profile/pbs-torque/pbs-submit.py -e ${LOG_DIR} -o ${LOG_DIR}" \
+    --cluster "workflow/profile/pbs-torque/pbs-submit.py -q batch -e ${LOG_DIR} -o ${LOG_DIR}" \
     --cluster-status "workflow/profile/pbs-torque/pbs-status.py" \
     --cluster-cancel "qdel" \
     --jobscript "workflow/profile/pbs-torque/pbs-jobscript.sh" \
     --jobname "{name}.{jobid}" \
     --jobs 100 \
     --retries 10 \
-    --latency-wait 10 \
-    --notemp \
     --snakefile workflow/clusteval/Snakemake \
     "$@"
