@@ -1,0 +1,682 @@
+---
+title: "Evaluating Cluster Stability of MOCK Samples"
+author: "Altair Wei"
+date: "2023-05-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/LoadUtils.R", chdir = TRUE)
+library(ggtree, include.only = "%<+%")
+```
+
+## Load Data
+
+### Seurat Object
+
+npcs = 20, k = 20, resolution = 0.6
+
+```{r}
+obj_mock <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+```
+
+### Pipeline Outputs
+
+```{r}
+subsample_idents <- readRDS("../results/ClustEval/gather_subsample.rds")
+fullsample_idents <- readRDS("../results/ClustEval/gather_fullsample.rds")
+```
+
+```{r}
+subsample_2nd <- readRDS("../results/ClustEval-2nd/gather_subsample.rds")
+fullsample_2nd <- readRDS("../results/ClustEval-2nd/gather_fullsample.rds")
+```
+
+### Functions
+
+```{r}
+selectParamSet <- function(fullsample, ...) {
+  fullsample |>
+    dplyr::filter(...) |>
+    dplyr::pull(original_ident_full) |>
+    purrr::pluck(1)
+}
+
+selectParamSetRow <- function(fullsample, pc, k, res) {
+  list(
+    ident1 = fullsample |>
+      dplyr::filter(
+        pc == !!pc,
+        k_param == k,
+        resolution == res) |>
+      dplyr::pull(original_ident_full) |>
+      purrr::pluck(1),
+    row_title = sprintf("cluster id w/ pc=%s k=%s res=%s", pc, k, res),
+    row_title_side = "right"
+  )
+}
+
+selectParamSetColumn <- function(fullsample, pc, k, res) {
+  list(
+    ident2 = fullsample |>
+      dplyr::filter(
+        pc == !!pc,
+        k_param == k,
+        resolution == res) |>
+      dplyr::pull(original_ident_full) |>
+      purrr::pluck(1),
+    title = sprintf("cluster id w/ pc=%s k=%s res=%s", pc, k, res),
+    column_title_side = "bottom"
+  )
+}
+
+calcClusteringDistance <- function(ident_list) {
+  n <- length(ident_list)
+  w <- matrix(0, nrow = n, ncol = n)
+  colnames(w) <- rownames(w) <- names(ident_list)
+  for (i in seq_len(n - 1)) {
+    for (j in (i + 1):n) {
+      w[i, j] <- mcclust::vi.dist(
+        ident_list[[i]], ident_list[[j]])
+    }
+  }
+
+  w2 <- w + t(w)
+  for (i in seq_len(nrow(w2)))
+      w2[i, i] <- 1
+
+  as.dist(w2)
+}
+
+calcClusteringDistance2 <- function(
+    ident_list, BPPARAM = BiocParallel::SerialParam()) {
+
+  n <- length(ident_list)
+  w <- matrix(0, nrow = n, ncol = n)
+  colnames(w) <- rownames(w) <- names(ident_list)
+  arrIndList <- which(upper.tri(w), arr.ind = TRUE, useNames = TRUE) |>
+    apply(1, \(x) x, simplify = FALSE)
+
+  distList <- BiocParallel::bplapply(
+    X = arrIndList,
+    FUN = function(ind) mcclust::vi.dist(
+        ident_list[[ind["row"]]], ident_list[[ind["col"]]]),
+    BPPARAM = BPPARAM
+  )
+
+  for (i in seq_along(arrIndList))
+    w[arrIndList[[i]][["row"]],
+      arrIndList[[i]][["col"]]] <- distList[[i]]
+
+  w2 <- w + t(w)
+  for (i in seq_len(nrow(w2)))
+      w2[i, i] <- 1
+
+  as.dist(w2)
+}
+```
+
+## Visualization of First Run
+
+We want to maximize the number of clusters but also want the majority of the cells to be in stable clusters.
+
+### Scatter for All Parameter Sets
+
+TODO: 使用 clustree::clustree 来探索某个参数的增加对细胞分群的影响。
+
+使用 0.8 作为阈值有点太高了，试试 0.6 吧。
+
+> As a rule of thumb, clusters with a mean/median stability score less than 0.6 should be considered unstable. scores between 0.6 and 0.75 indicate that the cluster is measuring a pattern in the data. clusters with stability score greater than 0.85 are highly stable (Zumel and Mount 2014).
+>
+> We observed for some datasets, the jaccard index follows a bimodal distribution, so the mean or median may not be representative. As an alternative, we also calculate the percentage of subsampling with a jaccard greater than a cutoff (e.g. 0.85), which can be used to check stability assessments.
+
+```{r}
+subsample_idents_list <- subsample_idents |>
+  dplyr::group_by(pc, resolution, k_param) |> 
+  tidyr::nest()
+```
+
+```{r}
+stable_clusters <- xfun::cache_rds(
+  file = "df_mock_stable_clusters.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = subsample_idents_list |>
+    dplyr::mutate(
+      stable_cluster = purrr::map(
+        data,
+        ~ scclusteval::AssignStableCluster(
+          .x$original_ident,
+          .x$recluster_ident,
+          jaccard_cutoff = 0.6,
+          method = "jaccard_percent", 
+          percent_cutoff = 0.8)
+      )
+    )
+)
+```
+
+#### Number of clusters {.tabset}
+
+##### x-axis = resolution
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_idents,
+    x_var = "resolution",
+    y_var = "number",
+    facet_rows = "pc",
+    facet_cols = "k_param") +
+  ggplot2::ggtitle("Number of stable/total clusters")
+
+p
+```
+
+##### x-axis = k param
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_idents,
+    x_var = "k_param",
+    y_var = "number",
+    facet_rows = "pc",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Number of stable/total clusters")
+
+p
+```
+
+##### x-axis = PCs
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_idents,
+    x_var = "pc",
+    y_var = "number",
+    facet_rows = "k_param",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Number of stable/total clusters")
+
+p
+```
+
+#### Percentage of cells {.tabset}
+
+##### x-axis = resolution
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_idents,
+    x_var = "resolution",
+    y_var = "percentage",
+    facet_rows = "pc",
+    facet_cols = "k_param") +
+  ggplot2::ggtitle("Percentage of cells in stable clusters")
+
+p
+```
+
+##### x-axis = k param
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_idents,
+    x_var = "k_param",
+    y_var = "percentage",
+    facet_rows = "pc",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Percentage of cells in stable clusters")
+
+p
+```
+
+##### x-axis = PCs
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_idents,
+    x_var = "pc",
+    y_var = "percentage",
+    facet_rows = "k_param",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Percentage of cells in stable clusters")
+
+p
+```
+
+#### Overview Scatter
+
+```{r}
+df_perf <- dplyr::left_join(stable_clusters, fullsample_idents) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(total = purrr::map_dbl(stable_cluster, ~ length(.x$stable_cluster))) %>%
+  dplyr::mutate(stable = purrr::map_dbl(stable_cluster, ~ .x$number_of_stable_cluster)) %>%
+  dplyr::mutate(percentage = purrr::map2_dbl(
+    original_ident_full, stable_cluster,
+    function(x, y) scclusteval::CalculatePercentCellInStable(x, y$stable_cluster))) %>%
+  dplyr::select(-data, -stable_cluster, -original_ident_full) %>%
+  dplyr::mutate_if(is.character, function(x) as.factor(as.numeric(x))) %>%
+  tidyr::gather(total:stable , key = "category", value = "number")
+```
+
+```{r fig.height=7, fig.width=14}
+p <- df_perf |>
+  dplyr::filter(category == "total") |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = number, y = percentage,
+    color = resolution, size = k_param)) +
+  ggplot2::geom_point(alpha = 0.3) +
+  ggplot2::facet_grid(~ pc) +
+  ggplot2::xlab("Total number of clusters") +
+  ggplot2::ylab("Percentage of cells in stable clusters")
+
+p
+```
+
+```{r ig.height=7, fig.width=9}
+plotly::ggplotly(p)
+```
+
+### Similarity of Clusterings
+
+#### Cladogram
+
+```{r}
+clust_dist <- xfun::cache_rds(
+  file = "dist_mock_fullsample_paramsets.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = fullsample_idents |>
+    dplyr::mutate(label = sprintf(
+      "pc=%s, k=%s, res=%s", pc, k_param, resolution)) |>
+    dplyr::select(label, original_ident_full) |>
+    tibble::deframe() |>
+    calcClusteringDistance2(BPPARAM = BiocParallel::MulticoreParam(8))
+)
+```
+
+```{r}
+df_anno <- df_perf |>
+  tidyr::pivot_wider(names_from = "category", values_from = "number") |>
+  dplyr::mutate(label = sprintf(
+      "pc=%s, k=%s, res=%s", pc, k_param, resolution)) |>
+  tibble::column_to_rownames("label")
+```
+
+```{r fig.height=12, fig.width=14}
+fit <- hclust(clust_dist, method = "complete")
+clus <- cutree(fit, 7)
+g <- split(names(clus), clus)
+
+p <- ggtree::ggtree(fit, show.legend = FALSE, layout = "circular")
+clades <- sapply(g, \(n) ggtree::MRCA(p, n))
+p <- ggtree::groupClade(p, clades, group_name = "subtree") +
+  ggplot2::aes(color = subtree) +
+  ggnewscale::new_scale_color()
+
+pdata <- tibble::rownames_to_column(
+  df_anno[names(clus),], "label")
+
+p <- p %<+% pdata +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(size = total, color = percentage)) +
+  ggplot2::scale_color_distiller(palette = "BuGn", direction = 1) +
+  ggnewscale::new_scale_color() +
+  ggtree::geom_tiplab(
+    mapping = ggplot2::aes(color = percentage > 0.8),
+    size = 3, hjust = -0.1) +
+  ggplot2::scale_color_manual(values = c("black", "red")) +
+  NULL
+
+
+p
+```
+
+#### Check tree
+
+Two distinct clades:
+
+```{r}
+rlang::inject(
+  scclusteval::PairWiseJaccardSetsHeatmap(
+    !!!selectParamSetRow(fullsample_idents,
+      pc = 35, k = 100, res = 1),
+    !!!selectParamSetColumn(fullsample_idents,
+      pc = 35, k = 8, res = 0.2),
+    show_row_dend = F, show_column_dend = F,
+    cluster_row = F, cluster_column = F)
+)
+```
+
+Two closed clades:
+
+```{r}
+rlang::inject(
+  scclusteval::PairWiseJaccardSetsHeatmap(
+    !!!selectParamSetRow(fullsample_idents,
+      pc = 35, k = 100, res = 1),
+    !!!selectParamSetColumn(fullsample_idents,
+      pc = 30, k = 80, res = 0.8),
+    show_row_dend = F, show_column_dend = F,
+    cluster_row = F, cluster_column = F)
+)
+```
+
+Two nearly identical results:
+
+```{r}
+rlang::inject(
+  scclusteval::PairWiseJaccardSetsHeatmap(
+    !!!selectParamSetRow(fullsample_idents,
+      pc = 20, k = 50, res = 0.4),
+    !!!selectParamSetColumn(fullsample_idents,
+      pc = 20, k = 30, res = 0.4),
+    show_row_dend = F, show_column_dend = F,
+    cluster_row = F, cluster_column = F)
+)
+```
+
+#### Existed param sets
+
+```{r}
+rlang::inject(
+  scclusteval::PairWiseJaccardSetsHeatmap(
+    !!!selectParamSetRow(fullsample_idents,
+      pc = 20, k = 50, res = 0.4),
+    !!!selectParamSetColumn(fullsample_idents,
+      pc = 20, k = 20, res = 0.6),
+    show_row_dend = F, show_column_dend = F,
+    cluster_row = F, cluster_column = F)
+)
+```
+
+```{r}
+suppressWarnings(rlang::inject(
+  scclusteval::PairWiseJaccardSetsHeatmap(
+    !!!selectParamSetRow(
+      fullsample_idents, pc = 20, k = 30, res = 0.4),
+    Seurat::Idents(obj_mock),
+    title = "cluster id w/ pc=20 k=20 res=0.6",
+    column_title_side = "bottom",
+    show_row_dend = F, show_column_dend = F,
+    cluster_row = F, cluster_column = F)
+))
+```
+
+### Jaccard Raincloud for Subsamples
+
+How to interpret?
+
+> With resolution of 0.05, Seurat finds 5 clusters which is optimal given that 5 cancer cell lines were mixed together. The jaccard indices are close to 1 for all clusters after subsampling and reclustering suggesting all 5 clusters are quite stable.
+>
+> From the Jaccard raincloud plot, cluster 0,5 (res = 0.1) have dropped jaccard similarity index. cluster 4,6 (res = 0.1) also have dropped jaccard similarity index, suggesting that the orginal cluster 0 and cluster 4 (res - 0.05) should not be further splitted.
+>
+> Increasing resolution will always give more clusters and whenever we observe a bimodal distribution of jaccard in a cluster when increasing the resolution, it indicates this cluster can be merged with a different cluster in the resampling and reclustering procedure
+
+```{r}
+subsample_idents_list2 <- subsample_idents_list |>
+  dplyr::rowwise() |>
+  dplyr::mutate(
+    plot = list(
+      scclusteval::JaccardRainCloudPlot(
+        data$original_ident, data$recluster_ident) +
+      ggplot2::geom_hline(yintercept = c(0.6, 0.75), linetype = 2) +
+      ggplot2::ggtitle(sprintf(
+        "cluster id w/ pc=%s k=%s res=%s", pc, k_param, resolution))
+    )
+  )
+```
+
+#### Two param sets under pc=10
+
+```{r fig.height=14, fig.width=10}
+subsample_idents_list2 |>
+  dplyr::filter(pc == 10, (k_param == 80 & resolution == 0.4) | (k_param == 8 & resolution == 0.2)) |>
+  dplyr::pull(plot) |>
+  patchwork::wrap_plots(ncol = 1)
+```
+
+```{r}
+scclusteval::PairWiseJaccardSetsHeatmap(
+  selectParamSet(fullsample_idents,
+    pc == 15, k_param == 50, resolution == 0.4),
+  selectParamSet(fullsample_idents,
+    pc == 15, k_param == 80, resolution == 0.4),
+  show_row_dend = F, show_column_dend = F,
+  cluster_row = F, cluster_column =F)
+```
+
+```{r}
+scclusteval::ClusterIdentityChordPlot(
+  selectParamSet(fullsample_idents,
+    pc == 10, k_param == 80, resolution == 0.4),
+  selectParamSet(fullsample_idents,
+    pc == 20, k_param == 100, resolution == 0.4)
+)
+```
+
+```{r include=FALSE}
+rm(subsample_idents, fullsample_idents)
+gc()
+```
+
+## Visualization of Second Run
+
+### Calculating
+
+```{r}
+clust_dist_2nd <- xfun::cache_rds(
+  file = "dist_mock_fullsample_paramsets_2nd.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = fullsample_2nd |>
+    dplyr::mutate(label = sprintf(
+      "pc=%s, k=%s, res=%s", pc, k_param, resolution)) |>
+    dplyr::select(label, original_ident_full) |>
+    tibble::deframe() |>
+    calcClusteringDistance2(BPPARAM = BiocParallel::MulticoreParam(8))
+)
+```
+
+```{r}
+subsample_idents_list <- subsample_2nd |>
+  dplyr::group_by(pc, resolution, k_param) |> 
+  tidyr::nest()
+```
+
+```{r}
+stable_clusters <- xfun::cache_rds(
+  file = "df_mock_stable_clusters_2nd.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = subsample_idents_list |>
+    dplyr::mutate(
+      stable_cluster = purrr::map(
+        data,
+        ~ scclusteval::AssignStableCluster(
+          .x$original_ident,
+          .x$recluster_ident,
+          jaccard_cutoff = 0.6,
+          method = "jaccard_percent", 
+          percent_cutoff = 0.8)
+      )
+    )
+)
+
+gc()
+```
+
+```{r}
+df_perf <- dplyr::left_join(stable_clusters, fullsample_2nd) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(total = purrr::map_dbl(stable_cluster, ~ length(.x$stable_cluster))) %>%
+  dplyr::mutate(stable = purrr::map_dbl(stable_cluster, ~ .x$number_of_stable_cluster)) %>%
+  dplyr::mutate(percentage = purrr::map2_dbl(
+    original_ident_full, stable_cluster,
+    function(x, y) scclusteval::CalculatePercentCellInStable(x, y$stable_cluster))) %>%
+  dplyr::select(-data, -stable_cluster, -original_ident_full) %>%
+  dplyr::mutate_if(is.character, function(x) as.factor(as.numeric(x))) %>%
+  tidyr::gather(total:stable , key = "category", value = "number")
+```
+
+```{r}
+df_anno <- df_perf |>
+  tidyr::pivot_wider(names_from = "category", values_from = "number") |>
+  dplyr::mutate(label = sprintf(
+      "pc=%s, k=%s, res=%s", pc, k_param, resolution)) |>
+  tibble::column_to_rownames("label")
+```
+
+### Scatter for All Parameter Sets
+
+#### Number of clusters {.tabset}
+
+##### x-axis = resolution
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_2nd,
+    x_var = "resolution",
+    y_var = "number",
+    facet_rows = "pc",
+    facet_cols = "k_param") +
+  ggplot2::ggtitle("Number of stable/total clusters")
+
+p
+```
+
+##### x-axis = k param
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_2nd,
+    x_var = "k_param",
+    y_var = "number",
+    facet_rows = "pc",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Number of stable/total clusters")
+
+p
+```
+
+##### x-axis = PCs
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_2nd,
+    x_var = "pc",
+    y_var = "number",
+    facet_rows = "k_param",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Number of stable/total clusters")
+
+p
+```
+
+#### Percentage of cells {.tabset}
+
+##### x-axis = resolution
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_2nd,
+    x_var = "resolution",
+    y_var = "percentage",
+    facet_rows = "pc",
+    facet_cols = "k_param") +
+  ggplot2::ggtitle("Percentage of cells in stable clusters")
+
+p
+```
+
+##### x-axis = k param
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_2nd,
+    x_var = "k_param",
+    y_var = "percentage",
+    facet_rows = "pc",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Percentage of cells in stable clusters")
+
+p
+```
+
+##### x-axis = PCs
+
+```{r fig.height=14, fig.width=14}
+p <- scclusteval::ParameterSetScatterPlot(
+    stable_clusters = stable_clusters,
+    fullsample_idents = fullsample_2nd,
+    x_var = "pc",
+    y_var = "percentage",
+    facet_rows = "k_param",
+    facet_cols = "resolution") +
+  ggplot2::ggtitle("Percentage of cells in stable clusters")
+
+p
+```
+
+#### Overview Scatter
+
+```{r fig.height=7, fig.width=14}
+p <- df_perf |>
+  dplyr::filter(category == "total") |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = number, y = percentage,
+    color = resolution, size = k_param)) +
+  ggplot2::geom_point(alpha = 0.3) +
+  ggplot2::facet_grid(~ pc) +
+  ggplot2::xlab("Total number of clusters") +
+  ggplot2::ylab("Percentage of cells in stable clusters")
+
+p
+```
+
+```{r ig.height=7, fig.width=9}
+plotly::ggplotly(p)
+```
+
+### Similarity of Clusterings
+
+#### Cladogram
+
+```{r fig.height=12, fig.width=14}
+fit <- hclust(clust_dist_2nd, method = "complete")
+clus <- cutree(fit, 7)
+g <- split(names(clus), clus)
+
+p <- ggtree::ggtree(fit, show.legend = FALSE, layout = "circular")
+clades <- sapply(g, \(n) ggtree::MRCA(p, n))
+p <- ggtree::groupClade(p, clades, group_name = "subtree") +
+  ggplot2::aes(color = subtree) +
+  ggnewscale::new_scale_color()
+
+pdata <- tibble::rownames_to_column(
+  df_anno[names(clus),], "label")
+
+p <- p %<+% pdata +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(size = total, color = percentage)) +
+  ggplot2::scale_color_distiller(palette = "BuGn", direction = 1) +
+  ggnewscale::new_scale_color() +
+  ggtree::geom_tiplab(
+    mapping = ggplot2::aes(color = percentage > 0.8),
+    size = 3, hjust = -0.1) +
+  ggplot2::scale_color_manual(values = c("black", "red")) +
+  NULL
+
+p
+```
+
+
