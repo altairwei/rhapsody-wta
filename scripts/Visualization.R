@@ -16,7 +16,10 @@ pltpreview <- function(
 }
 
 #' Save Plots Within Powerpoint Slides
-ggpowerpoint <- function(ggobj, template, file = NULL, ...) {
+plotpowerpoint <- function(ggobj, template, file = NULL,
+    margins = c(top = 0.5, right = 0.5,bottom = 0.5, left = 0.5), ...) {
+  stopifnot(!missing(template))
+
   target.file <- file
   if (is.null(file))
     target.file <- paste0(tempfile(), ".pptx")
@@ -26,7 +29,6 @@ ggpowerpoint <- function(ggobj, template, file = NULL, ...) {
   
   # TODO: allow create pptx with given size using internal function sof {officer}.
   # Refer to: https://learn.microsoft.com/en-us/office/open-xml/open-xml-sdk
-  margins = c(top = 0.5, right = 0.5,bottom = 0.5, left = 0.5)
   doc <- officer::read_pptx(path = target.file)
   doc = officer::add_slide(doc, layout = "Blank", master = "Office Theme")
   pagesize = export:::get.slide.size(doc)
@@ -35,7 +37,7 @@ ggpowerpoint <- function(ggobj, template, file = NULL, ...) {
   
   doc = officer::ph_with(
     x = doc,
-    value = rvg::dml(ggobj = ggobj, ...),
+    value = rvg::dml(code = print(ggobj), ...),
     location = officer::ph_location(
       left = margins["left"], top = margins["top"],
       width = pagesize["width"], height = pagesize["height"]))
@@ -47,10 +49,14 @@ ggpowerpoint <- function(ggobj, template, file = NULL, ...) {
 }
 
 # Preview Grid Plots, such ComlexHeatmap
-plotpreview <- function(x, width = 7, height = 7, res = 300, ...) {
-  temp.file <- paste0(tempfile(), ".png")
-  png(filename = temp.file, units = "in",
-      width = width, height = height, res = res, ...)
+plotpreview <- function(x, width = 7, height = 7, res = 300, ext = ".png", ...) {
+  temp.file <- paste0(tempfile(), ext)
+  switch (ext,
+    .svg = svg(filename = temp.file, width = width, height = height, ...),
+    .pdf = pdf(file = temp.file, width = width, height = height, ...),
+    .png = png(filename = temp.file, units = "in",
+               width = width, height = height, res = res, ...)
+  )
   print(x)
   dev.off()
   utils::browseURL(temp.file)
@@ -215,7 +221,8 @@ plotLineFacetGSVA <- function(gsva, pathws) {
 
 plotDEGsHeatmap <- function(
     mtx, genes, colAnno,
-    max = 5, asterisk = TRUE,
+    max = 5, clustering_method = "complete",
+    asterisk = TRUE,
     show_row_names = TRUE, draw = TRUE, ...) {
   
   detected <- intersect(rownames(mtx), genes)
@@ -236,15 +243,17 @@ plotDEGsHeatmap <- function(
   
   p <- ComplexHeatmap::Heatmap(
     matrix = mtx,
-    name = "Log2 Fold Change",
-    col = circlize::colorRamp2(c(-max, 0, max), c("blue", "white", "red")),
+    col = circlize::colorRamp2(
+      c(-max, 0, max), c("blue", "white", "red")),
     use_raster = TRUE,
     na_col = "grey",
     cluster_rows = function(x) {
       dend_mtx <- x
       dend_mtx[is.na(dend_mtx)] <- 0
       dendsort::dendsort(
-        fastcluster::hclust(dist(dend_mtx)),
+        fastcluster::hclust(
+          d = dist(dend_mtx),
+          method = clustering_method),
         isReverse = TRUE)
     },
     cluster_columns = FALSE,
@@ -252,8 +261,10 @@ plotDEGsHeatmap <- function(
     show_row_names = show_row_names,
     top_annotation = colAnno,
     heatmap_legend_param = list(
+      legend_direction = "vertical",
+      title = "Log2 Fold Change",
       title_position = "leftcenter-rot",
-      legend_height  = grid::unit(4, "cm")
+      legend_height = grid::unit(4, "cm")
     ),
     cell_fun = function(j, i, x, y, width, height, fill) {
       val <- abs(mtx[i, j])
@@ -263,6 +274,127 @@ plotDEGsHeatmap <- function(
     },
     ...)
 
+  if (draw)
+    ComplexHeatmap::draw(p, merge_legend = TRUE)
+  else
+    p
+}
+
+plotExpressionHeatmap <- function(
+    se,
+    assay_use = "scaled",
+    col_split_by = "cell_types",
+    col_anno_by = NULL,
+    row_split_by = "Category",
+    row_title_side = "right",
+    row_anno_by = NULL,
+    clustering_method = "complete",
+    asterisk = FALSE,
+    show_row_names = FALSE,
+    draw = TRUE,
+    fontsize = 10,
+    fontfamily = NULL,
+    simple_anno_size = NULL,
+    border = TRUE,
+    legend_grid_size = grid::unit(4, "mm"),
+    ...) {
+  
+  mtx <- SummarizedExperiment::assay(se, assay_use)
+  
+  if (!is.null(col_anno_by)) {
+    mtx_coldata <- colData(se)
+    colHA <- ComplexHeatmap::HeatmapAnnotation(
+      which = "column",
+      df = mtx_coldata[, col_anno_by, drop = FALSE],
+      col = list(
+        cellType = structure(
+          ggthemes::tableau_color_pal()(
+            length(levels(mtx_coldata$cellType))),
+          names = levels(mtx_coldata$cellType)
+        ),
+        treatment = structure(
+          c("darkgreen", "#E41A1C", "#377EB8"),
+          names = levels(mtx_coldata$treatment)
+        ),
+        time = structure(
+          RColorBrewer::brewer.pal(4, "YlGn"),
+          names = levels(mtx_coldata$time)
+        )
+      ),
+      simple_anno_size = simple_anno_size,
+      annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                      fontfamily = fontfamily),
+      annotation_legend_param = list(
+        title_gp = grid::gpar(fontsize = fontsize, fontface = "bold",
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = legend_grid_size,
+        grid_width = legend_grid_size
+      )
+    )
+  }
+  
+  if (!is.null(row_anno_by)) {
+    mtx_rowdata <- rowData(se)
+    rowHA <- ComplexHeatmap::HeatmapAnnotation(
+      which = "row",
+      df = mtx_rowdata[, row_anno_by, drop = FALSE],
+      show_annotation_name = FALSE,
+      col = list(
+        Pathway = structure(
+          scales::hue_pal()(length(levels(mtx_rowdata$Pathway))),
+          names = levels(mtx_rowdata$Pathway)
+        )
+      ),
+      simple_anno_size = simple_anno_size,
+      annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                      fontfamily = fontfamily),
+      annotation_legend_param = list(
+        title_gp = grid::gpar(fontsize = fontsize, fontface = "bold",
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = legend_grid_size,
+        grid_width = legend_grid_size
+      )
+    )
+  }
+  
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = circlize::colorRamp2(
+      c(-1, 0, 1), c("blue", "white", "red")),
+    use_raster = TRUE,
+    border = border,
+    na_col = "grey",
+    row_split = rowData(se)[[row_split_by]],
+    cluster_row_slices = FALSE,
+    row_title_rot = 0,
+    row_title_side = row_title_side,
+    column_split = colData(se)[[col_split_by]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = show_row_names,
+    top_annotation = if (!is.null(col_anno_by)) colHA else NULL,
+    right_annotation = if (!is.null(row_anno_by)) rowHA else NULL,
+    # Avoid disabling use_raster
+    cell_fun = if (asterisk)
+      function(j, i, x, y, width, height, fill) {
+        val <- abs(mtx[i, j])
+        if (!is.na(val) && val > max)
+          grid::grid.text("★", x, y, gp = grid::gpar(
+            fontsize = 8, col = "white", fontface = "bold"))
+      } else NULL,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    heatmap_legend_param = list(
+      title = "Z-score",
+      title_gp = grid::gpar(fontsize = fontsize, fontface = "bold",
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      grid_height = legend_grid_size,
+      grid_width = legend_grid_size),
+    ...)
+  
   if (draw)
     ComplexHeatmap::draw(p, merge_legend = TRUE)
   else

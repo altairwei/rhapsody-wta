@@ -183,6 +183,32 @@ pseudobulk_expr <- readRDS(Sys.glob("../results/ObjectCache/Pseudobulk/pseudobul
 pseudobulk_df$cellType <- forcats::fct_relevel(pseudobulk_df$cellType, all_celltypes)
 ```
 
+### DS Results
+
+```{r}
+logfc_data <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_deg_logfc_data_*.rds"))
+```
+
+### Gene List
+
+```{r}
+filelist <- Sys.glob("../data/pathways/*.txt")
+names(filelist) <- basename(filelist) |> stringr::str_remove(stringr::fixed(".txt"))
+
+pathways <- lapply(filelist, function(filename) {
+  genes <- stringr::str_trim(readLines(filename))
+  genes[genes != ""]
+})
+```
+
+### GSVA
+
+```{r}
+gsva_df <- readRDS(Sys.glob(
+  "../results/ObjectCache/Pseudobulk/pseudobulk_8celltypes_gsva_df_*.rds"))
+```
+
 ## Quality Control and Integration
 
 ```{r fig.height=13, fig.width=14}
@@ -787,13 +813,28 @@ p2 <- scater::plotReducedDim(
 
 #### Me_ε marker
 
-```{r}
+```{r fig.height=6, fig.width=14}
 p1 <- Seurat::FeaturePlot(obj_mock, features = "TraesCS1B02G406200",
                     reduction = "umap", order = TRUE) +
   ggplot2::coord_fixed() +
   theme_dimred()
 
 p2 <- Seurat::VlnPlot(obj_mock, features = "TraesCS1B02G406200") +
+  ggplot2::xlab("Cell Populations") +
+  remove_legend()
+
+(p <- patchwork::wrap_plots(p1, p2, nrow = 1))
+```
+
+#### Va_β marker
+
+```{r fig.height=6, fig.width=14}
+p1 <- Seurat::FeaturePlot(obj_mock, features = "TraesCS6A02G041700",
+                    reduction = "umap", order = TRUE) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+
+p2 <- Seurat::VlnPlot(obj_mock, features = "TraesCS6A02G041700") +
   ggplot2::xlab("Cell Populations") +
   remove_legend()
 
@@ -931,6 +972,167 @@ p <- (p1 + p3) / p4 / p7 +
 
 p
 ```
+
+### Known Pathways
+
+#### Photosynthesis
+
+```{r fig.height=7, fig.width=14}
+photos <- pathways[c("PhotosynAnt", "PhotosynCfix", "PhotosynPSEA")] |>
+  tibble::enframe(name = "Pathway", "Gene") |>
+  tidyr::unnest(cols = Gene)
+
+p <- plotDEGsHeatmap(
+  logfc_data$mtx,
+  photos$Gene,
+  logfc_data$heatanno,
+  column_split = logfc_data$coldata$cell_types,
+  show_row_names = FALSE,
+  asterisk = FALSE,
+  row_split = with(photos,
+    Pathway[match(intersect(rownames(logfc_data$mtx), Gene), Gene)]
+  ))
+
+#plotpreview(p, width = 14, height = 7)
+```
+
+#### Lignin biogenesis
+
+```{r fig.height=7, fig.width=14}
+lignin <- pathways[c(
+    "Aromatic amino acid",
+    "General phenylpropanoid",
+    "Lignin biosynthesis",
+    "Myb")] |>
+  tibble::enframe(name = "Pathway", "Gene") |>
+  tidyr::unnest(cols = Gene)
+
+p1 <- plotLineFacetGSVA(gsva_df, unique(lignin$Pathway)) +
+  ggplot2::facet_grid(Pathway ~ cellType)
+```
+
+```{r fig.height=10, fig.width=14}
+p2 <- plotDEGsHeatmap(
+  logfc_data$mtx,
+  lignin$Gene,
+  logfc_data$heatanno,
+  column_split = logfc_data$coldata$cell_types,
+  show_row_names = FALSE,
+  asterisk = FALSE,
+  row_split = with(lignin,
+    Pathway[match(intersect(rownames(logfc_data$mtx), Gene), Gene)]
+  ),
+  row_title_gp = grid::gpar(fontsize = 8))
+```
+
+```{r}
+ggpreview(p1, height = 7, width = 14)
+plotpreview(p2, width = 14, height = 10)
+```
+
+#### PTI related
+
+```{r fig.height=5, fig.width=14}
+p1 <- plotLineFacetGSVA(gsva_df, "RLK")
+```
+
+```{r fig.height=5, fig.width=14}
+p2 <- plotDEGsHeatmap(
+  logfc_data$mtx,
+  pathways[["RLK"]],
+  logfc_data$heatanno,
+  column_split = logfc_data$coldata$cell_types,
+  show_row_names = FALSE,
+  asterisk = FALSE)
+```
+
+```{r include=FALSE, eval=FALSE}
+ggpreview(p1, height = 3, width = 14)
+plotpreview(p2, height = 6, width = 14)
+```
+
+#### ETI related
+
+```{r fig.height=5, fig.width=14}
+p1 <- plotLineFacetGSVA(gsva_df, "NBLRR")
+```
+
+```{r fig.height=5, fig.width=14}
+p2 <- plotDEGsHeatmap(
+  logfc_data$mtx,
+  pathways[["NBLRR"]],
+  logfc_data$heatanno,
+  column_split = logfc_data$coldata$cell_types,
+  show_row_names = FALSE,
+  asterisk = FALSE)
+```
+
+```{r include=FALSE, eval=FALSE}
+ggpreview(p1, height = 3, width = 14)
+plotpreview(p2, height = 6, width = 14)
+```
+
+#### ROS produce and reduce
+
+```{r fig.height=5, fig.width=14}
+ROS <- pathways[c("RBOH", "TaGST")] |>
+  tibble::enframe(name = "Pathway", "Gene") |>
+  tidyr::unnest(cols = Gene)
+
+p1 <- plotLineFacetGSVA(gsva_df, unique(ROS$Pathway)) +
+  ggplot2::facet_grid(Pathway ~ cellType)
+```
+
+```{r fig.height=10, fig.width=14}
+p2 <- plotDEGsHeatmap(
+  logfc_data$mtx,
+  ROS$Gene,
+  logfc_data$heatanno,
+  column_split = logfc_data$coldata$cell_types,
+  show_row_names = FALSE,
+  asterisk = FALSE,
+  row_split = with(ROS,
+    Pathway[match(intersect(rownames(logfc_data$mtx), Gene), Gene)]
+  ))
+```
+
+```{r include=FALSE, eval=FALSE}
+ggpreview(p1, height = 5, width = 14)
+plotpreview(p2, height = 6, width = 14)
+```
+
+#### Outer sheath immunity responses
+
+```{r fig.height=5, fig.width=14}
+Os_immune <- pathways[
+    c("RLK", "NBLRR", "RBOH", "Aromatic amino acid",
+      "General phenylpropanoid", "TaGST", "Polyamine")] |>
+  tibble::enframe(name = "Pathway", "Gene") |>
+  tidyr::unnest(cols = Gene)
+
+p1 <- plotLineFacetGSVA(gsva_df, unique(Os_immune$Pathway)) +
+  ggplot2::facet_grid(Pathway ~ cellType)
+```
+
+```{r fig.height=10, fig.width=14}
+p2 <- plotDEGsHeatmap(
+  logfc_data$mtx,
+  Os_immune$Gene,
+  logfc_data$heatanno,
+  column_split = logfc_data$coldata$cell_types,
+  show_row_names = FALSE,
+  asterisk = FALSE,
+  row_title_gp = grid::gpar(fontsize = 6),
+  row_split = with(Os_immune,
+    Pathway[match(intersect(rownames(logfc_data$mtx), Gene), Gene)]
+  ))
+```
+
+```{r include=FALSE, eval=FALSE}
+plotpreview(p2, height = 8, width = 14)
+```
+
+## Cell Dynamics of L2 Body Layer
 
 ### Co-varing neighborhood analysis
 

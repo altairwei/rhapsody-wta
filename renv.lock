@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.2.1",
+    "Version": "4.2.3",
     "Repositories": [
       {
         "Name": "BioCsoft",
@@ -3417,10 +3417,10 @@
     },
     "ggplot2": {
       "Package": "ggplot2",
-      "Version": "3.4.0",
+      "Version": "3.4.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "fd2aab12f54400c6bca43687231e246b",
+      "Hash": "3a147ee02e85a8941aad9909f1b43b7b",
       "Requirements": [
         "MASS",
         "cli",
@@ -3596,14 +3596,16 @@
     },
     "ggtree": {
       "Package": "ggtree",
-      "Version": "3.6.2",
-      "Source": "Bioconductor",
+      "Version": "3.9.0",
+      "Source": "GitHub",
       "Remotes": "GuangchuangYu/treeio",
-      "git_url": "https://git.bioconductor.org/packages/ggtree",
-      "git_branch": "RELEASE_3_16",
-      "git_last_commit": "431ec37",
-      "git_last_commit_date": "2022-11-09",
-      "Hash": "87f158a81a3fe875f084692ce5544be6",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "ggtree",
+      "RemoteUsername": "YuLab-SMU",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "9615606d8432cd090dc7528b183c67adeca5a182",
+      "Hash": "c51585bf221862c324bab94355dd508c",
       "Requirements": [
         "ape",
         "aplot",
@@ -4363,6 +4365,14 @@
         "lattice"
       ]
     },
+    "lpSolve": {
+      "Package": "lpSolve",
+      "Version": "5.6.18",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "12c7a918599d5700e4265dd8a21f684f",
+      "Requirements": []
+    },
     "lsa": {
       "Package": "lsa",
       "Version": "0.73.3",
@@ -4415,6 +4425,16 @@
       "Repository": "CRAN",
       "Hash": "57af0c3da1f1a50680b186591c3359af",
       "Requirements": []
+    },
+    "mcclust": {
+      "Package": "mcclust",
+      "Version": "1.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "574ea9fbfa0112feb4f6a843ec462676",
+      "Requirements": [
+        "lpSolve"
+      ]
     },
     "mclust": {
       "Package": "mclust",
@@ -5677,10 +5697,10 @@
     },
     "rlang": {
       "Package": "rlang",
-      "Version": "1.1.0",
+      "Version": "1.1.1",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "dc079ccd156cde8647360f473c1fa718",
+      "Hash": "a85c767b55f0bf9b7ad16c6d7baee5bb",
       "Requirements": []
     },
     "rmarkdown": {
@@ -6013,6 +6033,30 @@
       "Repository": "CRAN",
       "Hash": "fcdda5020cea741880b22d974a7e4d86",
       "Requirements": []
+    },
+    "scclusteval": {
+      "Package": "scclusteval",
+      "Version": "0.0.0.9000",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "scclusteval",
+      "RemoteUsername": "altairwei",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "000129199652dff28b11b4e4b25153cca8145fb3",
+      "Hash": "24bad138ab396356d41f0778f7dec03b",
+      "Requirements": [
+        "BiocParallel",
+        "ComplexHeatmap",
+        "Seurat",
+        "cluster",
+        "dplyr",
+        "future.apply",
+        "ggplot2",
+        "magrittr",
+        "purrr",
+        "tidyr"
+      ]
     },
     "sceasy": {
       "Package": "sceasy",

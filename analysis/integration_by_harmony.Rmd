@@ -15,9 +15,9 @@ library(reactable)
 reactable::reactable(iris)
 ```
 
-# MOCK 样本的整合与注释
+# Integration and Annotation of MOCK Samples
 
-## 1 加载数据
+## 1 Load Data
 
 ```{r}
 samples <- c(
@@ -50,7 +50,6 @@ samples <- c(
 names(samples) <- samples
 ```
 
-
 ```{r}
 obj_list <- lapply(samples, function(sample) readRDS(
   Sys.glob(paste0(
@@ -62,9 +61,9 @@ obj_list <- lapply(samples, function(sample) readRDS(
 obj_mock <- obj_list[stringr::str_which(samples, "MOCK")]
 ```
 
-## 2 数据整合
+## 2 Data Integration
 
-我们选择 Seurat RPCA 方法来整合样本，因为 0~3DPI 的 MOCK 反应着胚芽鞘的生长发育，样本细胞之间不需要太 “对齐” 。参数 `k.anchor=5` 也选择默认值。
+### Merge objects
 
 ```{r message=FALSE, warning=FALSE}
 obj_mock_combined <- merge(
@@ -86,7 +85,7 @@ p2 <- Seurat::VlnPlot(object = obj_mock_combined, features = "PC_1", group.by = 
 p1 + p2
 ```
 
-### 运行 Harmony
+### Run Harmony
 
 ```{r fig.height=2.5, fig.width=6}
 obj_mock_combined <- obj_mock_combined %>% 
@@ -104,7 +103,7 @@ p2 <- Seurat::VlnPlot(object = obj_mock_combined, features = "harmony_1", group.
 p1 + p2
 ```
 
-## 3 降维聚类
+## 3 Dim Reduction and Clustering
 
 ```{r}
 obj_mock_combined <- obj_mock_combined %>%
@@ -114,7 +113,7 @@ obj_mock_combined <- obj_mock_combined %>%
     Seurat::FindClusters(resolution = 0.6, verbose = FALSE, random.seed = 8964)
 ```
 
-### 调整分辨率
+### Adjust clustering resolution
 
 ```{r}
 library(clustree)
@@ -136,7 +135,7 @@ obj_mock_combined <- xfun::cache_rds(
 clustree::clustree(obj_mock_combined, prefix = "RNA_snn_res.")
 ```
 
-### 聚类树叠加 {.tabset}
+### Visualize clustering tree {.tabset}
 
 #### t-SNE
 
@@ -167,7 +166,7 @@ clustree::clustree_overlay(
 ```
 
 
-### 降维图 {.tabset}
+### Visualize dim reduction {.tabset}
 
 ```{r}
 ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_mock_combined))), palette = NULL)
@@ -220,15 +219,14 @@ Seurat::DimPlot(
   ggplot2::coord_fixed()
 ```
 
-## 4 标志基因矩阵
+## 4 Expression of Markers
 
 ```{r fig.width=15, fig.height=7}
 Seurat::DefaultAssay(obj_mock_combined) <- "RNA"
 plot_markers(obj_mock_combined, cluster.idents = TRUE)
 ```
 
-
-## 5 细胞种群的标志基因
+## 5 Identify New Markers
 
 ```{r}
 marker_cosg <- COSG::cosg(
@@ -247,7 +245,7 @@ markers_df <- Seurat::FindAllMarkers(
     logfc.threshold = 0.25, verbose = FALSE)
 ```
 
-## 6 激光显微切割反卷积
+## 6 Deconvolution of LCM-seq Samples
 
 ```{r}
 LCM_design <- c(
@@ -285,9 +283,9 @@ deconvScatter(CIBER, LCM_design)
 deconvHeatmap(CIBER)
 ```
 
-## 7 细胞类型注释
+## 7 Cell Type Annotation
 
-### 注释
+### Annotation
 
 ```{r}
 obj_mock_annotated <- xfun::cache_rds(
@@ -328,14 +326,14 @@ obj_mock_annotated <- xfun::cache_rds(
 )
 ```
 
-### 标志基因
+### Expression of markers
 
 ```{r fig.width=15, fig.height=7}
 Seurat::DefaultAssay(obj_mock_annotated) <- "RNA"
 plot_markers(obj_mock_annotated, cluster.idents = TRUE)
 ```
 
-### 降维图 {.tabset}
+### Dim reduction {.tabset}
 
 #### UMAP
 
@@ -365,7 +363,7 @@ p2 <- Seurat::DimPlot(obj_mock_annotated, reduction = "tsne", group.by = "sample
 p1 + p2
 ```
 
-### 3D 降维图 {.tabset}
+### 3D reduction {.tabset}
 
 ```{r message=FALSE, eval=TRUE}
 obj_mock_annotated <- Seurat::RunTSNE(
@@ -410,9 +408,9 @@ Dim3DPlot(obj_mock_annotated, "tSNE3D_", cols = ident_cols)
 ```
 
 
-## 8 检验注释结果
+## 8 Check Annotation
 
-### 重新计算标志基因
+### Identify new markers
 
 ```{r}
 marker_cosg <- COSG::cosg(
@@ -458,7 +456,7 @@ htmltools::tagList(
 )
 ```
 
-### LCM 注释图
+### Deconvolution of LCM-seq
 
 ```{r}
 CIBER <- deconvLCM(
@@ -474,7 +472,7 @@ CIBER <- deconvLCM(
 deconvScatter(CIBER, LCM_design)
 ```
 
-### 细胞聚类树
+### Clustering tree
 
 ```{r}
 obj_mock_annotated$RNA_snn_res.0.6 <- Seurat::Idents(obj_mock_annotated)
@@ -484,7 +482,7 @@ obj_mock_annotated$RNA_snn_res.0.6 <- Seurat::Idents(obj_mock_annotated)
 clustree::clustree(obj_mock_annotated, prefix = "RNA_snn_res.")
 ```
 
-## 9 细胞类型比例
+## 9 Proportion of Cell Populations
 
 ```{r}
 rhapsodykit::barplot_cluster_abundance(obj_mock_annotated) +
@@ -498,11 +496,9 @@ rhapsodykit::barplot_cluster_abundance(obj_mock_annotated, position = "dodge") +
   )
 ```
 
-## 10 新标志基因选定
+## 10 Select New Markers {.tabset}
 
-### 挑选标志基因 {.tabset}
-
-#### Va_β
+### Va_β
 
 ```{r}
 Va_β_genes <- marker_cosg$names$Va_β[1:9]
@@ -521,7 +517,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Va_β_genes) +
     )
 ```
 
-#### Me_γ
+### Me_γ
 
 ```{r}
 Me_γ_genes <- marker_cosg$names$Me_γ[1:9]
@@ -540,7 +536,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Me_γ_genes) +
     )
 ```
 
-#### Me_ε
+### Me_ε
 
 ```{r}
 Me_ε_genes <- marker_cosg$names$Me_ε[1:9]
@@ -560,7 +556,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Me_ε_genes) +
     )
 ```
 
-#### Me_β
+### Me_β
 
 ```{r}
 Me_β_genes <- marker_cosg$names$Me_β[1:9]
@@ -579,7 +575,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Me_β_genes) +
     )
 ```
 
-#### Me_α
+### Me_α
 
 ```{r}
 Me_α_genes <- marker_cosg$names$Me_α[1:9]
@@ -598,7 +594,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Me_α_genes) +
     )
 ```
 
-#### MPV
+### MPV
 
 ```{r}
 MPV_genes <- marker_cosg$names$MPV[1:9]
@@ -617,7 +613,7 @@ Seurat::DotPlot(obj_mock_annotated, features = MPV_genes) +
     )
 ```
 
-#### Va_δ
+### Va_δ
 
 ```{r}
 Va_δ_genes <- marker_cosg$names$Va_δ[1:9]
@@ -636,7 +632,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Va_δ_genes) +
     )
 ```
 
-#### CC
+### CC
 
 ```{r}
 CC_genes <- marker_cosg$names$CC[1:9]
@@ -655,7 +651,7 @@ Seurat::DotPlot(obj_mock_annotated, features = CC_genes) +
     )
 ```
 
-#### Ep_α
+### Ep_α
 
 ```{r}
 Ep_α_genes <- marker_cosg$names$Ep_α[1:9]
@@ -674,7 +670,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Ep_α_genes) +
     )
 ```
 
-#### Ep_β
+### Ep_β
 
 ```{r}
 Ep_β_genes <- marker_cosg$names$Ep_β[1:9]
@@ -693,7 +689,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Ep_β_genes) +
     )
 ```
 
-#### BS
+### BS
 
 ```{r}
 BS_genes <- marker_cosg$names$BS[1:9]
@@ -712,7 +708,7 @@ Seurat::DotPlot(obj_mock_annotated, features = BS_genes) +
     )
 ```
 
-#### Va_α
+### Va_α
 
 ```{r}
 Va_α_genes <- marker_cosg$names$Va_α[1:9]
@@ -731,7 +727,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Va_α_genes) +
     )
 ```
 
-#### Va_γ
+### Va_γ
 
 ```{r}
 Va_γ_genes <- marker_cosg$names$Va_γ[1:9]
@@ -750,7 +746,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Va_γ_genes) +
     )
 ```
 
-#### Me_δ
+### Me_δ
 
 ```{r}
 Me_δ_genes <- marker_cosg$names$Me_δ[1:9]
@@ -769,7 +765,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Me_δ_genes) +
     )
 ```
 
-#### Gu
+### Gu
 
 ```{r}
 Gu_genes <- marker_cosg$names$Gu[1:9]
@@ -788,7 +784,7 @@ Seurat::DotPlot(obj_mock_annotated, features = Gu_genes) +
     )
 ```
 
-## 11 特征基因的功能法分析
+## 11 Functional Analysis of Markers
 
 ```{r message=FALSE, warning=FALSE, results="hide"}
 library(org.Taestivum.iwgsc.db)
@@ -800,13 +796,13 @@ background <- rownames(Seurat::GetAssayData(obj_mock_annotated, assay = "RNA", s
 markerlist <- marker_cosg$names
 ```
 
-### 维管束
+### Vascular cells
 
 ```{r}
 vascular_clusters <- c(paste0("Va_", c("α", "β", "γ", "δ")), "MPV", "BS", "CC")
 ```
 
-#### 富集分析
+#### Enrichment
 
 ```{r}
 enr <- performMarkerCompareORA(
@@ -830,20 +826,20 @@ p <- enr %>%
 p
 ```
 
-#### 标志基因表格 {.tabset}
+#### Results {.tabset}
 
 ```{r results='asis'}
 printCompareORAByCluster(enr, "#####")
 ```
 
 
-### 叶肉细胞
+### Mesophyll cells
 
 ```{r}
 mesophyll_clusters <- paste0("Me_", c("α", "β", "γ", "δ", "ε"))
 ```
 
-#### 富集分析
+#### Enrichment
 
 ```{r}
 enr <- performMarkerCompareORA(
@@ -867,19 +863,19 @@ p <- enr %>%
 p
 ```
 
-#### 标志基因表格 {.tabset}
+#### Results {.tabset}
 
 ```{r results='asis'}
 printCompareORAByCluster(enr, "#####")
 ```
 
-### 其他细胞
+### Other cells
 
 ```{r}
 other_clusters <- c("Ep_α", "Ep_β", "Gu")
 ```
 
-#### 富集分析
+#### Enrichment
 
 ```{r}
 enr <- performMarkerCompareORA(
@@ -903,7 +899,7 @@ p <- enr %>%
 p
 ```
 
-#### 标志基因表格 {.tabset}
+#### Results {.tabset}
 
 ```{r results='asis'}
 printCompareORAByCluster(enr, "#####")

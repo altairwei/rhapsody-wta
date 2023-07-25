@@ -15,7 +15,8 @@ editor_options:
 - Integration
   - [Testing of several data integration methods](integration_testing_report.html)
   - [Integration and Annotation of MOCK Samples by Harmony](integration_by_harmony.html)
-  - [Integration adn Annotation of All Samples](integration_of_all_samples.html)
+  - [Evaluating Cluster Stability of MOCK Samples](eval_cluster_stability_mock.html)
+  - [Integration and Annotation of All Samples](integration_of_all_samples.html)
   - [Sample Correlation Analysis](sample_correlation_analysis.html)
 - Cell Type Annotation
   - [Developmental Process of MOCK Samples](developmental_process_of_mock_samples.html)
@@ -31,13 +32,12 @@ editor_options:
   - [Analysis of Intersecting DEG Sets](diff_state_deg_intersect.html)
   - [Known Pathways in DEGs of Each Cell Types](diff_state_known_pathways.html)
   - [Geneset Enrichment for DEGs of Differential States](diff_state_geneset_analysis.html)
+  - []()
   - [Find Identity DEGs from MOCK Samples](diff_state_identity_genes.html)
   - [Transcription Factor Regulation Network of DEGs](diff_state_tf_network.html)
 - Trajectory Inference
   - [RNA Velocity Estimation of All Samples](rna_velocity_estimation.html)
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - [Differential Expression along Pseudotime](differential_expression_along_pseudotime.html)
-  - TODO: GRN of trajectory
-- Presentation Documents
-  - [Midterm Report for PhD Program](midterm_report.html)
-  - [Slides for PhD Defense](slides_for_phd_defense.html)
+- Slides for Presentation
+  - [Slides for 2023 SSPP](slides_for_2023sspp.html)

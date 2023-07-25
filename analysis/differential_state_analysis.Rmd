@@ -290,14 +290,14 @@ pb_mds_list <- xfun::cache_rds(
 
 然后我们展示该分布：
 
-```{r mds-plot-by-time, fig.height=7, fig.width=16}
+```{r mds-plot-by-time, fig.height=10, fig.width=16}
 plist <- lapply(pb_mds_list, function(pb_mds) {
   pb_mds %>%
     ggplot2::ggplot(ggplot2::aes_string(
       x = "MDS1", y = "MDS2",
       color = "cluster_id", shape = "treatment")) +
     ggplot2::geom_point(size = 2, alpha = 1) +
-    ggplot2::facet_wrap(~time) +
+    ggplot2::facet_wrap(~time, nrow = 1) +
     ggthemes::scale_fill_tableau() +
     ggthemes::scale_color_tableau() +
     ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
@@ -315,11 +315,11 @@ plist <- lapply(pb_mds_list, function(pb_mds) {
 plist$counts <- plist$counts + ggplot2::ggtitle("Pseudobulk Counts")
 plist$logcounts <- plist$logcounts + ggplot2::ggtitle("Pseudobulk Logcounts")
 
-(p <- patchwork::wrap_plots(plist) &
+(p <- patchwork::wrap_plots(plist, ncol = 1, guides = "collect") &
     center_plot_title())
 ```
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=10, fig.width=16}
 plist <- lapply(pb_mds_list, function(pb_mds) {
   pb_mds %>%
     ggplot2::ggplot(ggplot2::aes_string(
@@ -329,7 +329,7 @@ plist <- lapply(pb_mds_list, function(pb_mds) {
       ggplot2::aes(group = cluster_id, fill = cluster_id),
       linetype = 2, alpha = 0.05, expand = grid::unit(2, "mm")) +
     ggplot2::geom_point(size = 2, alpha = 1) +
-    ggplot2::facet_wrap(~time) +
+    ggplot2::facet_wrap(~time, nrow = 1) +
     ggthemes::scale_fill_tableau() +
     ggthemes::scale_color_tableau() +
     ggplot2::scale_shape_manual(values = c("MOCK" = 15, "PNR2" = 8, "TR4" = 10)) +
@@ -348,7 +348,7 @@ plist <- lapply(pb_mds_list, function(pb_mds) {
 plist$counts <- plist$counts + ggplot2::ggtitle("Pseudobulk Counts")
 plist$logcounts <- plist$logcounts + ggplot2::ggtitle("Pseudobulk Logcounts")
 
-(p <- patchwork::wrap_plots(plist) &
+(p <- patchwork::wrap_plots(plist, ncol = 1, guides = "collect") &
     center_plot_title())
 ```
 

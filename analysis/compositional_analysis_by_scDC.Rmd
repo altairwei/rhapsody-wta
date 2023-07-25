@@ -221,7 +221,7 @@ plot_cell_population_by_time <- function(res, clusters = NULL, ncol = 3) {
 }
 
 plot_cell_population_by_time(ca_res_nonclust) +
-  ggplot2::scale_fill_manual(values = treat_colors)
+  ggplot2::scale_fill_brewer(type = "qual", palette = "Dark2")
 ```
 
 参考 (Cao, Y. et al., BMC Bioinformatics, 2019) 文章中的 Fig. 5 ，绘制 Cell Proportion Bootstrap Distribution 以及 Average Cell Proportion Across Subjects 。尤其是后者，它让我们可以用折线图来表示 Treatment 模式的变化。
@@ -230,7 +230,8 @@ Cell Proportion Bootstrap Distribution
 
 ```{r fig.height=8, fig.width=13, dev="svg"}
 p <- plot_bootstrap_distribution(ca_res_nonclust) +
-  ggplot2::scale_color_manual(values = treat_colors) +
+  ggplot2::facet_wrap(~cellTypes, scales = "free") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
   ggplot2::theme(
     strip.text.x = ggplot2::element_text(size = 16)
   )
@@ -287,7 +288,6 @@ barplotCI <- function(res, clusters = NULL, samples = NULL){
     ggplot2::geom_errorbar(
       ggplot2::aes(ymin = conf_low, ymax = conf_high, color = method),
       width=.3, lwd = 1, position = ggplot2::position_dodge(width = 0.5)) +
-    #ggplot2::scale_fill_brewer(palette = "Set2") +
     ggplot2::ylab("Proportion") +
     ggplot2::coord_flip()+
     ggplot2::facet_wrap(

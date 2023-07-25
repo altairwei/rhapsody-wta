@@ -12,6 +12,7 @@ local({
   }
 
   # Scripts must be placed within the same directory as LoadUtils.R
+  source("Constants.R", local = utils_env)
   source("UtilityFunctions.R", local = utils_env)
   source("EnrichmentUtilities.R", local = utils_env)
   source("TrajectoryUtilities.R", local = utils_env)
