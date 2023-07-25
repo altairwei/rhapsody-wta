@@ -12,6 +12,12 @@ source("../scripts/LoadUtils.R", chdir = TRUE)
 
 ## Load Data
 
+### Seurat Object
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+```
+
 ### Metadata
 
 ```{r}
@@ -126,12 +132,53 @@ logfc_data <- xfun::cache_rds(
 )
 ```
 
-### Calculate GSVA
+### Pseudobulk CPM
 
 ```{r}
 pseudobulk_cpm_mean <- readRDS(Sys.glob(
   "../results/ObjectCache/Pseudobulk/pseudobulk_cpm_mean_*.rds"))
 ```
+
+```{r}
+cpm_se <- local({
+  cpm_df <- as.data.frame(pseudobulk_cpm_mean) |>
+      tibble::rownames_to_column("Gene") |>
+      tidyr::pivot_longer(-Gene, names_to = "bulk", values_to = "cpm") |>
+      tidyr::separate(bulk, sep = "\\.", into = c("treatment", "time", "cellType"))
+  
+  cpm_df_0 <- dplyr::filter(cpm_df, time == "0DPI")
+  
+  cpm_df <- cpm_df |>
+    dplyr::add_row(dplyr::mutate(cpm_df_0, treatment = "PNR2")) |>
+    dplyr::add_row(dplyr::mutate(cpm_df_0, treatment = "TR4"))
+  
+  cpm_df$cellType <- factor(cpm_df$cellType, levels = TISSUE_TYPES)
+  cpm_df$treatment <- factor(cpm_df$treatment, levels = c("MOCK", "PNR2", "TR4"))
+  cpm_df$time <- factor(cpm_df$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+  
+  cpm_df <- cpm_df |>
+    dplyr::select(cellType, treatment, time, Gene, cpm) |>
+    dplyr::arrange(cellType, treatment, time)
+  
+  cpm_coldata <- cpm_df |>
+    dplyr::group_by(cellType, treatment, time) |>
+    dplyr::summarise(.groups = "drop")
+  
+  cpm_mtx <- cpm_df |>
+    tidyr::pivot_wider(names_from = c(cellType, treatment, time),
+                       values_from = cpm, names_sep = "#") |>
+    tibble::column_to_rownames("Gene") |>
+    as.matrix()
+  
+  SummarizedExperiment(
+    assays = list(
+      raw = cpm_mtx,
+      scaled = t(scale(t(cpm_mtx)))),
+    colData = cpm_coldata)
+})
+```
+
+### Calculate GSVA
 
 ```{r}
 gsva_df <- xfun::cache_rds(
@@ -169,10 +216,21 @@ printDEGNum <- function(mtx, coldata, genes) {
 }
 ```
 
-
 ## Analysis Based on Known Pathways
 
 ### Phytosynthesis related {.tabset}
+
+```{r}
+with(pathways, {
+  eulerr::venn(list(
+    GOCC_Chloroplast = GOCC_Chloroplast,
+    PhotosynAnt = PhotosynAnt,
+    PhotosynCfix = PhotosynCfix,
+    PhotosynPSEA = PhotosynPSEA)) |>
+  plot()
+})
+```
+
 
 #### PhotosynAnt
 
@@ -235,6 +293,28 @@ printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["PhotosynPSEA"]]) |>
 plotDEGsHeatmap(
   logfc_data$mtx, pathways[["PhotosynPSEA"]],
   logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### GOCC_Chloroplast
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "GOCC_Chloroplast")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "GOCC_Chloroplast")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["GOCC_Chloroplast"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["GOCC_Chloroplast"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types,
+  show_row_names = FALSE, asterisk = FALSE)
 ```
 
 ### Cell wall related {.tabset}
@@ -864,6 +944,247 @@ plotDEGsHeatmap(
   logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
 ```
 
+#### bZIP
+
+> Liang, Y., Xia, J., Jiang, Y., Bao, Y., Chen, H., Wang, D., Zhang, D., Yu, J., & Cang, J. (2022). Genome-Wide Identification and Analysis of bZIP Gene Family and Resistance of TaABI5 (TabZIP96) under Freezing Stress in Wheat (Triticum aestivum). International Journal of Molecular Sciences, 23(4), 2351. https://doi.org/10.3390/ijms23042351
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "bZIP")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "bZIP")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["bZIP"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["bZIP"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+### Response to Phytohormones {.tabset}
+
+From Gene Ontology
+
+#### JA
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "JA-resp")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "JA-resp")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["JA-resp"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["JA-resp"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### SA
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "SA-resp")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "SA-resp")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["SA-resp"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["SA-resp"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### Auxin
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "Auxin-resp")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "Auxin-resp")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["Auxin-resp"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=12, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["Auxin-resp"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### ABA
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "ABA-resp")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "ABA-resp")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["ABA-resp"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=12, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["ABA-resp"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### ET
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "ET-resp")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "ET-resp")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["ET-resp"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=12, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["ET-resp"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+### Phytohormones Biosynthesis {.tabset}
+
+From Gene Ontology
+
+#### JA
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "JA-syn")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "JA-syn")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["JA-syn"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["JA-syn"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### SA
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "SA-syn")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "SA-syn")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["SA-syn"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["SA-syn"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### Auxin
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "Auxin-syn")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "Auxin-syn")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["Auxin-syn"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["Auxin-syn"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### ABA
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "ABA-syn")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "ABA-syn")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["ABA-syn"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["ABA-syn"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+#### ET
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(gsva_df, "ET-syn")
+```
+
+```{r fig.height=4, fig.width=14}
+plotLineFacetGSVA(gsva_df, "ET-syn")
+```
+
+```{r}
+printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["ET-syn"]]) |>
+  reactable::reactable(searchable = TRUE)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, pathways[["ET-syn"]],
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
 ## Analysis of Target Genes
 
 ### FHB related genes
@@ -872,6 +1193,483 @@ plotDEGsHeatmap(
 plotDEGsHeatmap(
   logfc_data$mtx, pathways[["FHBGenes"]],
   logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+### Mesophyll development
+
+> Loudya, N., Mishra, P., Takahagi, K., Uehara-Yamaguchi, Y., Inoue, K., Bogre, L., Mochida, K., & López-Juez, E. (2021). Cellular and transcriptomic analyses reveal two-staged chloroplast biogenesis underpinning photosynthesis build-up in the wheat leaf. Genome Biology, 22(1), 151. https://doi.org/10.1186/s13059-021-02366-3
+
+#### Chloroplast division
+
+```{r}
+chloroplast_division <- c(
+  "TraesCS3D02G157200",
+  "TraesCS2D02G257600",
+  "TraesCS2A02G266200",
+  "TraesCS2B02G275900",
+  "TraesCS2A02G488400",
+  "TraesCS2B02G516000",
+  "TraesCS2D02G488700",
+  "TraesCS1A02G276500",
+  "TraesCS1B02G285700",
+  "TraesCS1D02G276000",
+  "TraesCS2A02G294500",
+  "TraesCS2B02G310900",
+  "TraesCS2D02G292200",
+  "TraesCS4A02G315500",
+  "TraesCS5B02G563900",
+  "TraesCS5D02G550700",
+  "TraesCS5B02G120600",
+  "TraesCS5D02G124800",
+  "TraesCS5A02G114600",
+  "TraesCS6A02G066200",
+  "TraesCS6B02G089500",
+  "TraesCSU02G117700",
+  "TraesCS1A02G243700",
+  "TraesCS1B02G255100",
+  "TraesCS1D02G243700"
+)
+```
+
+```{r fig.height=7, fig.width=14}
+plotExpressionHeatmap(
+  cpm_se[rownames(cpm_se) %in% chloroplast_division,],
+  col_split_by = "cellType",
+  col_anno_by = c("treatment", "time"),
+  show_row_names = TRUE
+)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, chloroplast_division,
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+```{r fig.height=10, fig.width=7}
+Seurat::VlnPlot(obj,
+  features = c(
+    "TraesCS4A02G315500",
+    "TraesCS5B02G563900",
+    "TraesCS5D02G550700"),
+  ncol = 1
+)
+```
+
+```{r}
+Seurat::VlnPlot(obj,
+  features = c(
+    "TraesCS3D02G157200"),
+  ncol = 1
+) + Seurat::NoLegend()
+```
+
+#### Protein import
+
+```{r}
+protein_import <- c(
+  "TraesCS4A02G095300",
+  "TraesCS4B02G209200",
+  "TraesCS4D02G209900",
+  "TraesCS4A02G072800",
+  "TraesCS4B02G228900",
+  "TraesCS4D02G230000",
+  "TraesCS1A02G208000",
+  "TraesCS1B02G222000",
+  "TraesCS1D02G211300",
+  "TraesCS1A02G093900",
+  "TraesCS1B02G122000",
+  "TraesCS1D02G102500",
+  "TraesCS5B02G514000",
+  "TraesCS5D02G514500",
+  "TraesCS4A02G358400",
+  "TraesCS2A02G138100",
+  "TraesCS2B02G162000",
+  "TraesCS2D02G141100",
+  "TraesCS6A02G158800",
+  "TraesCS6D02G153700",
+  "TraesCS6B02G192500",
+  "TraesCS2D02G306800",
+  "TraesCS2A02G308600",
+  "TraesCS2B02G325100",
+  "TraesCS2A02G199800",
+  "TraesCS2B02G227100",
+  "TraesCS2D02G207600",
+  "TraesCS6A02G229400",
+  "TraesCS6B02G252100",
+  "TraesCS6D02G205400",
+  "TraesCS1A02G165800",
+  "TraesCS1B02G182500",
+  "TraesCS1D02G174900",
+  "TraesCS1A02G165700",
+  "TraesCS1B02G182400",
+  "TraesCS1D02G175000",
+  "TraesCS5A02G206800",
+  "TraesCS5B02G205200",
+  "TraesCS5D02G213000",
+  "TraesCS5A02G206900",
+  "TraesCS5A02G257700",
+  "TraesCS5B02G205300",
+  "TraesCS5B02G257000",
+  "TraesCS5D02G213100",
+  "TraesCS1A02G133100",
+  "TraesCS1B02G151300",
+  "TraesCS1D02G131800",
+  "TraesCS5A02G106200",
+  "TraesCS5B02G111200",
+  "TraesCS5D02G117600"
+)
+```
+
+```{r fig.height=7, fig.width=14}
+plotExpressionHeatmap(
+  cpm_se[rownames(cpm_se) %in% protein_import,],
+  col_split_by = "cellType",
+  col_anno_by = c("treatment", "time"),
+  show_row_names = TRUE
+)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, protein_import,
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
+```
+
+### Benzoxazinoid
+
+> Batyrshina, Z. S., Shavit, R., Yaakov, B., Bocobza, S., & Tzin, V. (2022). The transcription factor TaMYB31 regulates the benzoxazinoid biosynthetic pathway in wheat. Journal of Experimental Botany, 73(16), 5634–5649. https://doi.org/10.1093/jxb/erac204
+
+```{r}
+BXDs <- list(
+  TaMYB31 = c(
+    "TraesCS5A02G227400",
+    "TraesCS5B02G226100",
+    "TraesCS5D02G234800"
+  ),
+  IGPS1 = c(
+    "TraesCS5A02G169500",
+    "TraesCS5B02G166300",
+    "TraesCS5D02G173900"
+  ),
+  IGPS2 = c(
+    "TraesCS2A02G335200",
+    "TraesCS2B02G348500",
+    "TraesCS2D02G329500"
+  ),
+  IGPS3 = c(
+    "TraesCS7A02G512300",
+    "TraesCS7B02G423900",
+    "TraesCS7D02G501700"
+  ),
+  Bx1 = c(
+    "TraesCS1A02G428400",
+    "TraesCS1B02G463100",
+    "TraesCS1D02G437700",
+    "TraesCS3A02G041800",
+    "TraesCS3B02G041900",
+    "TraesCS3D02G038500",
+    "TraesCS4A02G097400",
+    "TraesCS4B02G207100",
+    "TraesCS4D02G207900",
+    "TraesCS5A02G440700",
+    "TraesCS5B02G444300",
+    "TraesCS7A02G392800",
+    "TraesCS7B02G294800",
+    "TraesCS7D02G388400",
+    "TraesCS7A02G308600",
+    "TraesCS7B02G208700",
+    "TraesCS7D02G305300"
+  ),
+  Bx2 = c(
+    "TraesCS4A02G097500",
+    "TraesCS4B02G207000",
+    "TraesCS4D02G207800",
+    "TraesCSU02G048600"
+  ),
+  Bx3 = c(
+    "TraesCS2A02G045600",
+    "TraesCS2B02G057800",
+    "TraesCS5A02G008900",
+    "TraesCS5B02G007200",
+    "TraesCS5D02G014300"
+  ),
+  Bx4 = c(
+    "TraesCS2B02G030500",
+    "TraesCS2A02G045900",
+    "TraesCS2B02G058000",
+    "TraesCS2D02G044600",
+    "TraesCS5A02G008800",
+    "TraesCS5B02G007100",
+    "TraesCS5D02G014200",
+    "TraesCS5A02G318100",
+    "TraesCS5B02G318600",
+    "TraesCS5D02G014300",
+    "TraesCS5A02G472300",
+    "TraesCS5B02G485200",
+    "TraesCS5D02G484900"
+  ),
+  Bx5 = c(
+    "TraesCS5A02G008700",
+    "TraesCS5B02G030000",
+    "TraesCS5B02G029900",
+    "TraesCS5B02G007000",
+    "TraesCS5D02G014100"
+  ),
+  Bx6 = c(
+    "TraesCS2A02G051700",
+    "TraesCS2B02G066000",
+    "TraesCSU02G024200",
+    "TraesCSU02G156500"
+  ),
+  "Bx8/9" = c(
+    "TraesCS6A02G059300",
+    "TraesCS6B02G079600",
+    "TraesCS6A02G059700",
+    "TraesCS6B02G080100",
+    "TraesCSU02G093300",
+    "TraesCSU02G095600",
+    "TraesCS7B02G016800",
+    "TraesCS7D02G116700"
+  ),
+  Bx10 = c(
+    "TraesCS2A02G472400",
+    "TraesCS2B02G495100",
+    "TraesCS1B02G481300",
+    "TraesCS1B02G481400",
+    "TraesCS1B02G481500",
+    "TraesCS4A02G463400",
+    "TraesCS2B02G110700",
+    "TraesCS2D02G093900"
+  )
+)
+
+BXDs <- tibble::enframe(BXDs, name = "Name", value = "ID") |>
+  tidyr::unnest(cols = ID)
+```
+
+```{r fig.height=10, fig.width=14}
+plotExpressionHeatmap(
+  cpm_se[rownames(cpm_se) %in% BXDs$ID,],
+  col_split_by = "cellType",
+  col_anno_by = c("treatment", "time"),
+  show_row_names = TRUE,
+  row_labels = with(BXDs, {
+    Name[match(rownames(cpm_se)[rownames(cpm_se) %in% ID], ID)]
+  })
+)
+```
+
+```{r fig.height=7, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, BXDs$ID,
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types,
+  row_labels = with(BXDs,
+    Name[match(intersect(rownames(logfc_data$mtx), ID), ID)]
+  )
+)
+```
+
+### Programmed Cell Death
+
+```{r}
+PCD <- list(
+  TaATG1 = c(
+    "TraesCS4A02G093800",
+    "TraesCS4D02G211300"
+  ),
+  TaATG2 = c(
+    "TraesCS6A02G169400",
+    "TraesCS6B02G197400",
+    "TraesCS7A02G208300",
+    "TraesCS7D02G210700"
+  ),
+  TaATG3 = c(
+    "TraesCS1A02G220200",
+    "TraesCS1B02G233500",
+    "TraesCS1D02G221700"
+  ),
+  TaATG4 = c(
+    "TraesCSU02G021900",
+    "TraesCS2D02G601400", 
+    "TraesCS2A02G584900",
+    "TraesCS6B02G190600"
+  ),
+  TaATG5 = c(
+    "TraesCS6A02G050200",
+    "TraesCS6A02G050300",
+    "TraesCS6B02G066400",
+    "TraesCS6B02G066500",
+    "TraesCSU02G109200"
+  ),
+  TaATG6 = c(
+    "TraesCS3A02G266600",
+    "TraesCS3D02G266800",
+    "TraesCS3B02G300100"
+  ),
+  TaATG7 = c(
+    "TraesCS2D02G300300",
+    "TraesCS3A02G220600",
+    "TraesCS3B02G250900",
+    "TraesCS3D02G231900"
+  ),
+  TaATG8a = c(
+    "TraesCS2B02G491200"
+  ),
+  TaATG8c = c(
+    "TraesCS2A02G468300"
+  ),
+  TaATG8g = c(
+    "TraesCS2A02G224000",
+    "TraesCS2B02G274200",
+    "TraesCS2D02G229900"
+  ),
+  TaATG8h = c(
+    "TraesCS5B02G155700",
+    "TraesCS5D02G163400",
+    "TraesCS5A02G158000"
+  ),
+  TaATG9 = c(
+    "TraesCS4A02G079800",
+    "TraesCS4B02G224200",
+    "TraesCS4D02G224800"
+  ),
+  TaATG10 = c(
+  "TraesCS2A02G352700",
+  "TraesCS2B02G371600"
+  ),
+  TaATG11 = c(
+    "TraesCS6A02G149000",
+    "TraesCS6B02G177000",
+    "TraesCS6D02G138400"
+  ),
+  TaATG12 = c(
+    "TraesCS6A02G335800",
+    "TraesCS6B02G366600",
+    "TraesCS6D02G315600",
+    "TraesCS7B02G070300"
+  ),
+  TaATG13 = c(
+    "TraesCS2A02G387200",
+    "TraesCS2B02G404900",
+    "TraesCS2D02G384600",
+    "TraesCS4A02G209500",
+    "TraesCS4B02G112800",
+    "TraesCS4D02G110500",
+    "TraesCS6A02G238900",
+    "TraesCS6B02G285600",
+    "TraesCS6D02G221200"
+  ),
+  TaATG14 = c(
+    "TraesCS1A02G308000",
+    "TraesCS1B02G318700",
+    "TraesCS1D02G307400",
+    "TraesCS2A02G160200",
+    "TraesCS2B02G186500",
+    "TraesCS2D02G167600",
+    "TraesCS5A02G141000",
+    "TraesCS5B02G139300",
+    "TraesCS5D02G151400"
+  ),
+  TaATG16 = "TraesCS5D02G394200",
+  TaATG18 = c(
+    "TraesCS1D02G253700",
+    "TraesCS3B02G490900",
+    "TraesCS3B02G110900",
+    "TraesCS6B02G386200"
+  ),
+  TaATG22 = c(
+    "TraesCS3A02G169200",
+    "TraesCS3B02G197100",
+    "TraesCS3B02G197300",
+    "TraesCS3D02G172300",
+    "TraesCS3D02G172600"
+  ),
+  TaATG27 = c(
+    "TraesCS4A02G113700",
+    "TraesCS4B02G190400",
+    "TraesCS4D02G191800"
+  ),
+  TaATG101 = c(
+    "TraesCS2A02G518700",
+    "TraesCS2D02G520100"
+  ),
+  TaMCA1 = c(
+    "TraesCS1D02G218100",
+    "TraesCS1A02G215600",
+    "TraesCS1B02G229100"
+  ),
+  TaMCA4 = c(
+    "TraesCS3D02G322600",
+    "TraesCS3A02G328800",
+    "TraesCS3B02G359200"
+  ),
+  `TaMCA-Id` = "TraesCS4D02G358100",
+  TaLls1 = c(
+    "TraesCS4D02G309000",
+    "TraesCS4B02G311100",
+    "TraesCS4A02G411000"
+  ),
+  `HO-1` = "TraesCS7D02G371900",
+  TaDAD2 = "TraesCS7D02G029800",
+  TaLSD1 = c(
+    "TraesCS1A02G279500",
+    "TraesCS1B02G288600",
+    "TraesCS1D02G278800"
+  ),
+  TaTrxh1 = "TraesCS2A02G243200"
+)
+
+PCD <- tibble::enframe(PCD, name = "Name", value = "ID") |>
+  tidyr::unnest(cols = ID)
+```
+
+```{r fig.height=12, fig.width=14}
+plotExpressionHeatmap(
+  cpm_se[rownames(cpm_se) %in% PCD$ID,],
+  col_split_by = "cellType",
+  col_anno_by = c("treatment", "time"),
+  show_row_names = TRUE,
+  row_labels = with(PCD, {
+    Name[match(rownames(cpm_se)[rownames(cpm_se) %in% ID], ID)]
+  })
+)
+```
+
+```{r fig.height=4, fig.width=14}
+plotDEGsHeatmap(
+  logfc_data$mtx, PCD$ID,
+  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types,
+  row_labels = with(PCD,
+    Name[match(intersect(rownames(logfc_data$mtx), ID), ID)]
+  )
+)
+```
+
+TaLls1:
+
+```{r fig.height=7, fig.width=14}
+Seurat::VlnPlot(obj,
+  features = c(
+    "TraesCS4D02G309000",
+    "TraesCS4B02G311100",
+    "TraesCS4A02G411000"
+  ),
+  ncol = 1
+) + Seurat::NoLegend()
+```
+
+TaMCA4:
+
+```{r fig.height=7, fig.width=14}
+Seurat::VlnPlot(obj,
+  features = c(
+    "TraesCS3D02G322600",
+    "TraesCS3A02G328800",
+    "TraesCS3B02G359200"
+  ),
+  ncol = 1
+) + Seurat::NoLegend()
 ```
 
 ## Analysis of Other RNA-seq results
@@ -938,26 +1736,5 @@ printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["FAFB-3hUp"]]) |>
 ```{r fig.height=6, fig.width=14}
 plotDEGsHeatmap(
   logfc_data$mtx, pathways[["FAFB-3hUp"]],
-  logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
-```
-
-### TIRH2Y
-
-```{r fig.height=4, fig.width=14}
-plotRadarGSVA(gsva_df, "TIRH2Y")
-```
-
-```{r fig.height=4, fig.width=14}
-plotLineFacetGSVA(gsva_df, "TIRH2Y")
-```
-
-```{r}
-printDEGNum(logfc_data$mtx, logfc_data$coldata, pathways[["TIRH2Y"]]) |>
-  reactable::reactable(searchable = TRUE)
-```
-
-```{r fig.height=4, fig.width=14}
-plotDEGsHeatmap(
-  logfc_data$mtx, pathways[["TIRH2Y"]],
   logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
 ```
