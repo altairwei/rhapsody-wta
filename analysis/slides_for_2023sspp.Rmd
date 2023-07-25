@@ -1,0 +1,1170 @@
+---
+title: "Slides for 2023SSPP Presentation"
+author: "Altair Wei"
+date: "2023-05-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggtree, include.only = "%<+%")
+source("../scripts/LoadUtils.R", chdir = TRUE)
+```
+
+## Load Data
+
+### MOCK samples
+
+```{r}
+obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
+sce_mock <- muscat::prepSCE(sce_mock,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+mock_celltypes <- c(
+  "Gu", "Ep_α", "Ep_β",
+  "Me_α", "Me_β", "Me_γ", "Me_δ", "Me_ε",
+  "BS", "CC", "Va_α", "Va_β", "Va_γ", "Va_δ", "MPV")
+
+mock_celltype_names <- c(
+  "Guard cell", "Epidermal α", "Epidermal β",
+  
+  "Mesophyll α", "Mesophyll β", "Mesophyll γ",
+  "Mesophyll δ", "Mesophyll ε",
+  
+  "Vascular bundle sheath", "Phloem companion cell",
+  "Vascular α", "Vascular β", "Vascular γ",
+  "Vascular δ", "Midvein provascular cell"
+)
+
+mock_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(mock_celltypes))
+#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
+names(mock_celltype_colors) <- mock_celltypes
+```
+
+```{r}
+mock_body_layers <- c(
+  "Gu"   = "L1",
+  "Ep_α" = "L1",
+  "Ep_β" = "L1",
+  "Me_α" = "L2",
+  "Me_β" = "L2",
+  "Me_γ" = "L2",
+  "Me_δ" = "L2",
+  "Me_ε" = "L2",
+  "BS"   = "L3",
+  "CC"   = "L3",
+  "Va_α" = "L3",
+  "Va_β" = "L3",
+  "Va_γ" = "L3",
+  "Va_δ" = "L3",
+  "MPV"  = "L3"
+)
+```
+
+```{r}
+sce_mock$cluster_id <- forcats::fct_relevel(sce_mock$cluster_id, mock_celltypes)
+sce_mock$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce_mock$cluster_id), as.list(mock_body_layers)))
+Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_celltypes)
+```
+
+### All samples
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+sce <- muscat::prepSCE(sce,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+all_celltypes <- c(
+  "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+names(all_celltype_colors) <- all_celltypes
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+```
+
+```{r}
+tissue_types <- c(
+  "Stomata",
+  "Epidermis",
+  "Chlorenchyma",
+  "Parenchyma",
+  "Outer sheath",
+  "Inner sheath",
+  "Phloem",
+  "Procambium"
+)
+
+all_tissue_colors <- ggthemes::tableau_color_pal("Tableau 10")(length(tissue_types))
+names(all_tissue_colors) <- tissue_types
+```
+
+```{r}
+sce$cluster_id <- forcats::fct_relevel(sce$cluster_id, all_celltypes)
+Seurat::Idents(obj) <- forcats::fct_relevel(Seurat::Idents(obj), all_celltypes)
+sce$body_layer <- dplyr::recode(sce$cluster_id, !!!all_body_layers)
+sce$tissue <- factor(dplyr::recode(sce$cluster_id, !!!all_tissues), levels = tissue_types)
+```
+
+### Gene List
+
+```{r}
+filelist <- Sys.glob("../data/pathways/*.txt")
+names(filelist) <- basename(filelist) |> stringr::str_remove(stringr::fixed(".txt"))
+
+pathways <- lapply(filelist, function(filename) {
+  genes <- stringr::str_trim(readLines(filename))
+  genes[genes != ""]
+})
+```
+
+### DS Results
+
+```{r}
+logfc_data <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_deg_logfc_data_*.rds"))
+```
+
+```{r}
+ds_res <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/ds_res_*.rds"))
+```
+
+```{r}
+ds_sig <- ds_res$DESeq2 |>
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0)
+```
+
+```{r}
+df_degs <- rhapsodykit::diff_state_format(ds_sig)
+
+matched <- stringr::str_match(
+  df_degs$contrast, "X(\\dDPI)\\.(MOCK|PNR2|TR4)-X(\\dDPI)\\.(MOCK|PNR2|TR4)")
+
+df_degs$time <- factor(matched[, 2], levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+df_degs$contrast <- paste(matched[, 3], matched[, 5], sep = " vs. ")
+df_degs$regu_type <- factor(ifelse(df_degs$logFC > 0, "UP", "DOWN"), levels = c("UP", "DOWN"))
+
+df_degs <- df_degs |>
+  dplyr::select(time, contrast, cluster_id, regu_type, gene) |>
+  dplyr::filter(contrast != "PNR2 vs. TR4")
+```
+
+## Cell Type Annotation
+
+### Cell Sample Groups
+
+```{r}
+Seurat::DimPlot(obj, reduction = "umap", group.by = "group", shuffle = TRUE) +
+  ggplot2::coord_fixed() +
+  theme_dimred() +
+  ggplot2::theme(plot.title = ggplot2::element_blank()) +
+  ggplot2::labs(color = "Sample Group")
+```
+
+### Known Marker Genes
+
+```{r fig.height=12, fig.width=8}
+p <- Seurat::DotPlot(obj_mock, features = KNOWN_MARKERS) +
+  ggplot2::coord_flip() +
+  ggplot2::facet_grid(
+    facets = feature.groups ~ .,
+    scales = "free_y",
+    space = "free_y",
+    switch = "y") +
+  ggplot2::theme(
+    axis.text.y = ggplot2::element_blank(),
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    strip.text.y.left = ggplot2::element_text(angle = 0),
+    strip.placement = "outside"
+  )
+
+p
+```
+
+### Cell Allocation in LCM-seq
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj_mock,
+ groups = "all",
+ assay = "RNA",
+ slot = "data",
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+```{r}
+LCM_design <- c(
+  "VC_1" = "vb.",
+  "VC_2" = "vb.",
+  "VC_3" = "vb.",
+  "CC_1" = "bp.",
+  "CC_2" = "bp.",
+  "CC_3" = "bp.",
+  "MC3_1" = "dp.",
+  "MC3_2" = "dp.",
+  "MC3_3" = "dp.",
+  "MC_1" = "me.",
+  "MC_2" = "me.",
+  "MC_3" = "me.",
+  "EC_1" = "ep.",
+  "EC_2" = "ep.",
+  "EC_3" = "ep."
+)
+
+CIBER <- deconvLCM(
+  seurat = obj_mock,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
+  design = LCM_design,
+  mc.cores = 4
+)
+```
+
+```{r fig.height=7, fig.width=5}
+p <- deconvScatter(CIBER, LCM_design, ncol = 3, theme_size = 14) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5, vjust = 0.5),
+    axis.text.y = ggplot2::element_blank(),
+    axis.ticks.y = ggplot2::element_blank())
+
+p
+```
+
+## Fungal Invasion
+
+### Visualize Number of DEGs
+
+```{r}
+genecount_df <- rhapsodykit::diff_state_format(ds_sig)
+
+genecount_df$cluster_id <- factor(genecount_df$cluster_id, unique(all_tissues))
+genecount_df$time <- stringr::str_extract(genecount_df$contrast, "\\dDPI")
+genecount_df$contrast <- factor(genecount_df$contrast, levels = CONTRAST_NAMES)
+genecount_df$regu_type <- ifelse(genecount_df$logFC > 0, "Up-regulated", "Down-regulated")
+
+df_to_plot <- genecount_df |>
+  dplyr::group_by(time, contrast, cluster_id, regu_type) |>
+  dplyr::count() |>
+  dplyr::mutate(n = ifelse(regu_type == "Up-regulated", n, -1 * n)) |>
+  tidyr::pivot_wider(names_from = "cluster_id", values_from = "n", values_fill = NA) |>
+  tidyr::pivot_longer(cols = -c(time, contrast, regu_type), names_to = "cluster_id", values_to = "n") |>
+  dplyr::mutate(contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2 vs. \\4"))
+
+df_to_plot$cluster_id <- factor(df_to_plot$cluster_id, unique(all_tissues))
+df_to_plot$contrast <- factor(df_to_plot$contrast, c("PNR2 vs. MOCK", "TR4 vs. MOCK", "PNR2 vs. TR4"))
+
+p1 <- ggplot2::ggplot(
+    data = df_to_plot,
+    mapping = ggplot2::aes(x = cluster_id, y = n, fill = contrast)) +
+  ggplot2::geom_bar(
+    data = subset(df_to_plot, regu_type == "Up-regulated"),
+    stat = "identity",
+    position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+  ggplot2::geom_bar(
+    data = subset(df_to_plot, regu_type == "Down-regulated"),
+    stat = "identity", alpha = 0.5,
+    position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+  ggplot2::scale_fill_brewer(palette = "Set1") +
+  ggplot2::ylab("Number of DEGs") +
+  ggplot2::xlab("Cell Types") +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "Contrast")) +
+  ggplot2::theme_bw(base_size = 16) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    legend.position = "right",
+    strip.background.x = ggplot2::element_blank(),
+    strip.text.x = ggplot2::element_blank()) +
+  ggplot2::facet_grid(time ~ cluster_id, scales = "free_x") +
+  NULL
+```
+
+```{r}
+df_degs <- rhapsodykit::diff_state_format(ds_sig)
+
+matched <- stringr::str_match(
+  df_degs$contrast, "X(\\dDPI)\\.(MOCK|PNR2|TR4)-X(\\dDPI)\\.(MOCK|PNR2|TR4)")
+
+df_degs$time <- factor(matched[, 2], levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+df_degs$contrast <- paste(matched[, 3], matched[, 5], sep = " vs. ")
+df_degs$regu_type <- factor(ifelse(df_degs$logFC > 0, "UP", "DOWN"), levels = c("UP", "DOWN"))
+
+df_degs <- df_degs |>
+  dplyr::select(time, contrast, cluster_id, regu_type, gene) |>
+  dplyr::filter(contrast != "PNR2 vs. TR4")
+
+p2 <- df_degs |>
+  dplyr::group_by(time, contrast, regu_type) |>
+  dplyr::summarise(count = length(unique(gene)), .groups = "drop") |>
+  dplyr::add_row(
+    time = "0DPI",
+    contrast = rep(c("PNR2 vs. MOCK", "TR4 vs. MOCK"), each = 2),
+    regu_type = factor(rep(c("UP", "DOWN"), 2), levels = c("UP", "DOWN")),
+    count = 0) |>
+  dplyr::arrange(time) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = time, y = count,
+    color = contrast, linetype = regu_type,
+    group = paste(contrast, regu_type))) +
+  ggplot2::geom_point() +
+  ggplot2::geom_line() +
+  ggplot2::scale_color_brewer(palette = "Set1", name = "Contrast") +
+  ggplot2::ylab("Number of DEGs") +
+  ggplot2::xlab("Time") +
+  ggplot2::guides(linetype = ggplot2::guide_legend(title = "Regu Type")) +
+  ggplot2::theme_bw(base_size = 16)
+```
+
+```{r fig.height=6, fig.width=14}
+(p <- p2 + ggplot2::theme(legend.position = c(0.22, 0.75),
+                          panel.grid = ggplot2::element_blank()) +
+      p1 + ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 25)))
+```
+
+### Immunity DEGs Heatmap
+
+#### Define Pathways
+
+```{r}
+immunity_genes <- list(
+  PTI = pathways[c("RLK", "MAPK", "RBOH")],
+  ETI = pathways[c("NBLRR", "PR")],
+  SAR = pathways[c("TaNPR", "NHP", "GOSAR")],
+  Photosynthesis = pathways[c("PhotosynPSEA", "PhotosynAnt", "PhotosynCfix")],
+  Metabolism = pathways[c(
+    "Aromatic amino acid", "General phenylpropanoid", "Lignin biosynthesis",
+    "TaGST", "Polyamine")],
+  TFs = pathways[c("WRKY", "NAC", "Myb", "bZIP")]
+)
+```
+
+```{r}
+immunity_df <- immunity_genes |>
+  tibble::enframe(name = "Category", value = "Data") |>
+  dplyr::rowwise() |>
+  dplyr::mutate(Data = list(tibble::enframe(
+    Data, name = "Pathway", value = "Gene"))) |>
+  tidyr::unnest(cols = Data) |>
+  tidyr::unnest(cols = Gene) |>
+  dplyr::mutate(
+    Pathway = dplyr::recode(Pathway,
+      RLK = "RLKs", MAPK = "MAPKs", RBOH = "RBOHs",
+      NBLRR = "NBLRRs", PR = "PRs", TaNPR = "NPRs",
+      NHP = "NHPs", "Aromatic amino acid" = "Aromatic",
+      "General phenylpropanoid" = "Phenylpropanoid",
+      TaGST = "GSTs", WRKY = "WRKYs", NAC = "NACs",
+      Myb = "MYBs", bZIP = "bZIPs"))
+```
+
+#### Heatmap for Cell Types {.tabset}
+
+```{r}
+se <- SummarizedExperiment(
+  assays = list(logFC = logfc_data$mtx),
+  colData = logfc_data$coldata[-1])
+se <- se[intersect(rownames(se), immunity_df$Gene), ]
+
+# Duplicated genes existed
+rowData(se) <- with(immunity_df, local({
+  idx <- match(rownames(se), Gene)
+  DataFrame(
+    Pathway = factor(Pathway[idx], unique(Pathway)),
+    Category = factor(Category[idx], unique(Category))
+  )
+}))
+```
+
+```{r}
+plotImmunityHeatmap <- function(
+  se,
+  col_split_by = "cell_types",
+  col_anno_by = NULL,
+  row_split_by = "Category",
+  row_title_side = "right",
+  row_anno_by = NULL,
+  max = 5,
+  clustering_method = "complete",
+  asterisk = FALSE,
+  show_row_names = FALSE,
+  draw = TRUE,
+  fontsize = 10,
+  fontfamily = NULL,
+  simple_anno_size = NULL,
+  border = TRUE,
+  legend_grid_size = grid::unit(4, "mm"),
+  ...) {
+
+  mtx <- assay(se, "logFC")
+
+  outliers_idx <- which(abs(mtx) > max, arr.ind = TRUE)
+  if (length(outliers_idx) != 0)
+    warning(sprintf(paste0("%i value%s with abs(logFC) greater than %i were shown",
+                           " in maximum color and marked with white asterisk.\n"),
+                    nrow(outliers_idx),
+                    if (nrow(outliers_idx) > 1) "s" else "",
+                    max))
+
+  if (!is.null(col_anno_by)) {
+    mtx_coldata <- colData(se)
+    colHA <- ComplexHeatmap::HeatmapAnnotation(
+      which = "column",
+      df = mtx_coldata[, col_anno_by, drop = FALSE],
+      col = list(
+        cell_types = structure(
+          ggthemes::tableau_color_pal()(
+            length(levels(mtx_coldata$cell_types))),
+          names = levels(mtx_coldata$cell_types)
+        ),
+        contrast = structure(
+          c("#E41A1C", "#377EB8"),
+          names = levels(mtx_coldata$contrast)
+        ),
+        times = structure(
+          RColorBrewer::brewer.pal(3, "YlGn"),
+          names = levels(mtx_coldata$times)
+        )
+      ),
+      simple_anno_size = simple_anno_size,
+      annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                      fontfamily = fontfamily),
+      annotation_legend_param = list(
+        title_gp = grid::gpar(fontsize = fontsize, fontface = "bold",
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = legend_grid_size,
+        grid_width = legend_grid_size
+      )
+    )
+  }
+
+  if (!is.null(row_anno_by)) {
+    mtx_rowdata <- rowData(se)
+    rowHA <- ComplexHeatmap::HeatmapAnnotation(
+      which = "row",
+      df = mtx_rowdata[, row_anno_by, drop = FALSE],
+      show_annotation_name = FALSE,
+      col = list(
+        Pathway = structure(
+          scales::hue_pal()(length(levels(mtx_rowdata$Pathway))),
+          names = levels(mtx_rowdata$Pathway)
+        )
+      ),
+      simple_anno_size = simple_anno_size,
+      annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                      fontfamily = fontfamily),
+      annotation_legend_param = list(
+        title_gp = grid::gpar(fontsize = fontsize, fontface = "bold",
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = legend_grid_size,
+        grid_width = legend_grid_size
+      )
+    )
+  }
+
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = circlize::colorRamp2(
+      c(-max, 0, max), c("blue", "white", "red")),
+    use_raster = TRUE,
+    border = border,
+    na_col = "grey",
+    row_split = rowData(se)[[row_split_by]],
+    cluster_row_slices = FALSE,
+    row_title_rot = 0,
+    row_title_side = row_title_side,
+    cluster_rows = function(x) {
+      dend_mtx <- x
+      dend_mtx[is.na(dend_mtx)] <- 0
+      dendsort::dendsort(
+        fastcluster::hclust(
+          d = dist(dend_mtx),
+          method = clustering_method),
+        isReverse = TRUE)
+    },
+    column_split = colData(se)[[col_split_by]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = show_row_names,
+    top_annotation = if (!is.null(col_anno_by)) colHA else NULL,
+    right_annotation = if (!is.null(row_anno_by)) rowHA else NULL,
+    # Avoid disabling use_raster
+    cell_fun = if (asterisk)
+      function(j, i, x, y, width, height, fill) {
+        val <- abs(mtx[i, j])
+        if (!is.na(val) && val > max)
+          grid::grid.text("★", x, y, gp = grid::gpar(
+            fontsize = 8, col = "white", fontface = "bold"))
+      } else NULL,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    heatmap_legend_param = list(
+      title = "Log2 FC",
+      title_gp = grid::gpar(fontsize = fontsize, fontface = "bold",
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      grid_height = legend_grid_size,
+      grid_width = legend_grid_size),
+    ...)
+
+  if (draw)
+    ComplexHeatmap::draw(p, merge_legend = TRUE)
+  else
+    p
+}
+```
+
+##### All cell types
+
+```{r fig.height=10, fig.width=20}
+plotImmunityHeatmap(
+  se,
+  row_split_by = "Category",
+  row_anno_by = "Pathway",
+  col_split_by = "cell_types",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2",
+  row_dend_width = grid::unit(40, "mm")
+)
+```
+
+```{r fig.height=7, fig.width=14, eval=FALSE, include=FALSE}
+p <- plotImmunityHeatmap(
+  se[rowData(se)$Category != "TFs", ],
+  row_split_by = "Pathway",
+  show_row_dend = FALSE,
+  row_title_side = "left",
+  col_split_by = "cell_types",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2",
+  fontsize = 6,
+  fontfamily = "Arial",
+  simple_anno_size = grid::unit(2, "mm"),
+  border = TRUE,
+  border_gp = grid::gpar(lwd = 0.5),
+  gap = grid::unit(0.5, "mm"),
+  legend_grid_size = grid::unit(3, "mm")
+)
+
+p <- plotImmunityHeatmap(
+  se[rowData(se)$Category == "TFs", ],
+  row_split_by = "Pathway",
+  show_row_dend = FALSE,
+  row_title_side = "left",
+  col_split_by = "cell_types",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2",
+  fontsize = 6,
+  fontfamily = "Arial",
+  simple_anno_size = grid::unit(2, "mm"),
+  border = TRUE,
+  border_gp = grid::gpar(lwd = 0.5),
+  legend_grid_size = grid::unit(3, "mm")
+)
+
+plotpowerpoint(p, "../data/thesis.pptx", margins = c(top = 1.3, right = 1.3, bottom = 4, left = 1.3))
+```
+
+##### Chlorenchyma
+
+```{r fig.height=12, fig.width=7}
+plotImmunityHeatmap(
+  se[, se$cell_types == "Chlorenchyma"],
+  row_split_by = "Pathway",
+  row_anno_by = "Pathway",
+  col_split_by = "contrast",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2")
+```
+
+##### Outer sheath
+
+```{r fig.height=12, fig.width=7}
+plotImmunityHeatmap(
+  se[, se$cell_types == "Outer sheath"],
+  row_split_by = "Pathway",
+  row_anno_by = "Pathway",
+  col_split_by = "contrast",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2")
+```
+
+##### Parenchyma
+
+```{r fig.height=12, fig.width=7}
+plotImmunityHeatmap(
+  se[, se$cell_types == "Parenchyma"],
+  row_split_by = "Pathway",
+  row_anno_by = "Pathway",
+  col_split_by = "contrast",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2")
+```
+
+##### Phloem
+
+```{r fig.height=12, fig.width=7}
+plotImmunityHeatmap(
+  se[, se$cell_types == "Phloem"],
+  row_split_by = "Pathway",
+  row_anno_by = "Pathway",
+  col_split_by = "contrast",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2")
+```
+
+### Similarity of DEG Sets
+
+#### Split by time {.tabset}
+
+```{r}
+df_jacmtx <- df_degs |>
+  dplyr::select(-regu_type) |>
+  dplyr::mutate(
+    time = forcats::fct_drop(time),
+    cluster_id = factor(cluster_id, levels = TISSUE_TYPES),
+    contrast = factor(contrast, levels = c("PNR2 vs. MOCK", "TR4 vs. MOCK"))) |>
+  dplyr::group_by(time) |>
+  tidyr::nest() |>
+  dplyr::mutate(
+    jacmtx = lapply(data, function(x) {
+      dplyr::group_by(x, contrast, cluster_id) |>
+        dplyr::summarise(genes = list(gene), .groups = "drop") |>
+        dplyr::rename(contrast.1 = contrast, cluster_id.1 = cluster_id) |>
+        dplyr::mutate(data = lapply(
+          X = seq_along(genes),
+          FUN = function(idx) {
+            data.frame(
+              contrast.2 = contrast.1,
+              cluster_id.2 = cluster_id.1,
+              jaccard = vapply(
+                X = genes,
+                FUN = function(gs)
+                  bayesbio::jaccardSets(genes[[idx]], gs),
+                FUN.VALUE = numeric(1))
+            )
+          })) |>
+        dplyr::select(contrast.1, cluster_id.1, data) |>
+        tidyr::unnest(cols = data)
+    }),
+    anno = lapply(data, function(x) {
+      dplyr::group_by(x, contrast, cluster_id) |>
+        dplyr::summarise(genes = list(gene),
+                         size = length(gene),
+                         .groups = "drop") |>
+        dplyr::mutate(
+          label = paste(contrast, cluster_id, sep = " - "),
+          .before = 1)
+    })) |>
+  dplyr::select(time, jacmtx, anno)
+```
+
+```{r results='asis'}
+df_jacmtx |>
+  purrr::pwalk(function(time, jacmtx, anno) {
+    cat("#####", as.character(time), "\n\n")
+
+    mtx <- jacmtx |>
+      dplyr::mutate(
+        set.1 = paste(contrast.1, cluster_id.1, sep = " - "),
+        set.2 = paste(contrast.2, cluster_id.2, sep = " - ")) |>
+      dplyr::select(set.1, set.2, jaccard) |>
+      tidyr::pivot_wider(names_from = set.2, values_from = jaccard) |>
+      tibble::column_to_rownames("set.1") |>
+      as.matrix()
+
+    jacdist <- as.dist(1 - mtx)
+
+    p <- ggtree::ggtree(hclust(jacdist, method = "average")) %<+% anno +
+      ggtree::geom_tippoint(ggplot2::aes(
+        color = cluster_id, shape = contrast, size = size)) +
+      ggtree::geom_tiplab(ggplot2::aes(
+          label = cluster_id, color = cluster_id),
+        offset = 0.01, show.legend = FALSE) +
+      ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.25))) +
+      ggthemes::scale_color_tableau("Tableau 10")
+
+    print(p)
+
+    cat("\n\n")
+  })
+```
+
+#### All in One Plot {.tabset}
+
+```{r}
+plist <- df_jacmtx |>
+  purrr::pmap(function(time, jacmtx, anno) {
+    mtx <- jacmtx |>
+      dplyr::mutate(
+        set.1 = paste(time, contrast.1, cluster_id.1, sep = " - "),
+        set.2 = paste(time, contrast.2, cluster_id.2, sep = " - ")) |>
+      dplyr::select(set.1, set.2, jaccard) |>
+      tidyr::pivot_wider(names_from = set.2, values_from = jaccard) |>
+      tibble::column_to_rownames("set.1") |>
+      as.matrix()
+
+    anno <- dplyr::mutate(anno, label = paste(time, label, sep = " - "))
+    
+    jacdist <- as.dist(1 - mtx)
+
+    p <- ggtree::ggtree(hclust(jacdist, method = "average")) %<+% anno
+    p$data
+  })
+```
+
+```{r}
+plist[[2]]$x <- plist[[2]]$x + max(plist[[1]]$x) + 1.2
+plist[[3]]$x <- plist[[3]]$x + max(plist[[2]]$x) + 1.2
+dd <- dplyr::bind_rows(plist) |>
+  dplyr::filter(!is.na(label))
+```
+
+##### Raw
+
+```{r fig.height=7, fig.width=14}
+p1 <- ggtree::ggtree(tr = plist[[1]]) +
+  ggtree::geom_tree(data = plist[[2]]) +
+  ggtree::geom_tree(data = plist[[3]]) +
+  ggtree::geom_point(
+    data = dd,
+    mapping = ggplot2::aes(
+      x, y, color = cluster_id,
+      shape = contrast, size = size)) +
+  ggplot2::scale_shape_discrete(name = "Contrast") +
+  ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.05))) +
+  ggplot2::scale_size_continuous(range = c(2, 8), breaks = c(10, 100, 1000)) +
+  ggthemes::scale_color_tableau("Tableau 10") +
+  legend_override("color", list(linetype = 0, size = 3), order = 2, title = "Cell Types") +
+  legend_override("shape", list(size = 3), order = 1, title = "Contrast") +
+  ggplot2::labs(size = "DEG Size") +
+  ggplot2::theme(legend.title = ggplot2::element_text(size = 16),
+                 legend.text = ggplot2::element_text(size = 14)) +
+  NULL
+
+p1
+```
+
+##### With lines
+
+```{r fig.height=7, fig.width=14}
+p3 <- ggtree::ggtree(tr = plist[[1]]) +
+  ggtree::geom_tree(data = plist[[2]]) +
+  ggtree::geom_tree(data = plist[[3]]) +
+  ggplot2::geom_line(
+    data = dd,
+    mapping = ggplot2::aes(
+        x, y, color = contrast,
+        group = paste(contrast, cluster_id)),
+      alpha = 0.5, linetype = "dashed") +
+  ggplot2::scale_color_brewer(palette = "Set1") +
+  legend_override("color", list(alpha = 1), order = 2, title = "Contrast") +
+  ggnewscale::new_scale_color() +  
+  ggtree::geom_point(
+    data = dd,
+    mapping = ggplot2::aes(
+      x, y, color = cluster_id,
+      shape = contrast, size = size)) +
+  ggplot2::scale_shape_discrete(name = "Contrast") +
+  ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.05))) +
+  ggplot2::scale_size_continuous(range = c(2, 8), breaks = c(10, 100, 1000)) +
+  ggthemes::scale_color_tableau("Tableau 10") +
+  legend_override("color", list(linetype = 0, size = 3), order = 2, title = "Cell Types") +
+  legend_override("shape", list(size = 3), order = 1, title = "Contrast") +
+  ggplot2::labs(size = "DEG Size") +
+  ggplot2::theme(legend.title = ggplot2::element_text(size = 16),
+                 legend.text = ggplot2::element_text(size = 14)) +
+  legend_override("color", list(size = 3), order = 3, title = "Cell Types") +
+  NULL
+
+p3
+```
+
+#### Cluster all sets {.tabset}
+
+```{r}
+df_anno <- df_degs |>
+  dplyr::select(-regu_type) |>
+  dplyr::mutate(
+    time = forcats::fct_drop(time),
+    cluster_id = factor(cluster_id, levels = TISSUE_TYPES),
+    contrast = factor(contrast, levels = c("PNR2 vs. MOCK", "TR4 vs. MOCK"))) |>
+  dplyr::group_by(time, contrast, cluster_id) |>
+  dplyr::summarise(genes = list(gene), size = length(gene), .groups = "drop")# |>
+  #dplyr::filter(size > 20)
+
+df_jaxmtx <- df_anno |>
+  dplyr::rename(
+    time.1 = time,
+    contrast.1 = contrast,
+    cluster_id.1 = cluster_id) |>
+  dplyr::mutate(data = lapply(
+    X = seq_along(genes),
+    FUN = function(idx) {
+      data.frame(
+        time.2 = time.1,
+        contrast.2 = contrast.1,
+        cluster_id.2 = cluster_id.1,
+        jaccard = vapply(
+          X = genes,
+          FUN = function(gs)
+            bayesbio::jaccardSets(genes[[idx]], gs),
+          FUN.VALUE = numeric(1))
+      )
+    })) |>
+  dplyr::select(time.1, contrast.1, cluster_id.1, data) |>
+  tidyr::unnest(cols = data) |>
+  dplyr::mutate(
+    set.1 = paste(time.1, contrast.1, cluster_id.1, sep = " - "),
+    set.2 = paste(time.2, contrast.2, cluster_id.2, sep = " - ")) |>
+  dplyr::select(set.1, set.2, jaccard) |>
+  tidyr::pivot_wider(names_from = set.2, values_from = jaccard) |>
+  tibble::column_to_rownames("set.1")
+
+df_anno <- dplyr::mutate(
+  df_anno,
+  label = paste(time, contrast, cluster_id, sep = " - "),
+  .before = 1)
+
+jacdist <- as.dist(1 - as.matrix(df_jaxmtx))
+```
+
+##### Network
+
+```{r fig.height=6, fig.width=9}
+fit <- hclust(jacdist, method = "average")
+clus <- cutree(fit, 5)
+grp <- split(names(clus), clus)
+
+p2 <- ggtree::ggtree(
+    fit,
+    layout = igraph::layout_with_kk,
+    color = "#bed0d1") %<+% df_anno
+
+clades <- sapply(grp, \(n) ggtree::MRCA(p2, n))
+p2 <- ggtree::groupClade(p2, clades, group_name = "subtree") +
+  ggplot2::aes(color = subtree)
+
+p2 <- p2 +
+  ggnewscale::new_scale_color() +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(
+      x, y, color = cluster_id,
+      shape = contrast, size = size)) +
+  ggtree::geom_rootedge() +
+  ggtree::geom_rootpoint() +
+  ggtree::geom_text2(
+    mapping = ggplot2::aes(subset = isTip, label = substr(time, 1, 1)),
+    size = 5) +
+  ggplot2::scale_size_continuous(range = c(2, 8), breaks = c(10, 100, 1000)) +
+  ggthemes::scale_color_tableau("Tableau 10") +
+  legend_override("color", list(size = 3), order = 2, title = "Cell Types") +
+  legend_override("shape", list(size = 3), order = 1, title = "Contrast") +
+  ggplot2::labs(size = "DEG Size") +
+  NULL
+
+p2
+```
+
+##### Dendrogram
+
+```{r fig.height=10, fig.width=7}
+p <- ggtree::ggtree(
+    hclust(jacdist, method = "average")) %<+% df_anno +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(
+      x, y, color = cluster_id,
+      shape = contrast, size = size)) +
+  ggtree::geom_text2(
+    mapping = ggplot2::aes(subset = isTip, label = substr(time, 1, 1)),
+    size = 3) +
+  ggplot2::scale_size_continuous(range = c(2, 8), breaks = c(10, 100, 1000)) +
+  ggthemes::scale_color_tableau("Tableau 10") +
+  legend_override("color", list(size = 3), order = 2, title = "Cell Types") +
+  legend_override("shape", list(size = 3), order = 1, title = "Contrast") +
+  ggplot2::labs(size = "DEG Size") +
+  NULL
+
+p
+```
+
+#### Make figure
+
+```{r fig.height=6, fig.width=14}
+(p <- p2 + ggplot2::theme(legend.position = "none") +
+      p3 + patchwork::plot_layout(guides = "collect"))
+```
+
+
+### Chlorenchyma DE 1DPI
+
+#### Me_1 subpopulation
+
+##### Identify DEGs
+
+```{r}
+Me_1_pnr2_degs <- Seurat::FindMarkers(
+  obj, ident.1 = "1DPI-PNR2", ident.2 = "1DPI-MOCK",
+  group.by = "group", subset.ident = "Me_1")
+
+Me_1_tr4_degs <- Seurat::FindMarkers(
+  obj, ident.1 = "1DPI-TR4", ident.2 = "1DPI-MOCK",
+  group.by = 'group', subset.ident = "Me_1")
+```
+
+```{r}
+p1 <- ggplot2::ggplot(Me_1_pnr2_degs,
+    ggplot2::aes(x = avg_log2FC, y = -log(p_val_adj),
+                 color = pct.1 - pct.2)) +
+  ggplot2::geom_point() +
+  ggplot2::ggtitle("PNR2 vs. MOCK - 1DPI in Me_1") +
+  ggplot2::theme_bw()
+
+p2 <- ggplot2::ggplot(Me_1_tr4_degs,
+    ggplot2::aes(x = avg_log2FC, y = -log(p_val_adj),
+                 color = pct.1 - pct.2)) +
+  ggplot2::geom_point() +
+  ggplot2::ggtitle("TR4 vs. MOCK - 1DPI in Me_1") +
+  ggplot2::theme_bw()
+
+p1 + p2 &
+  center_plot_title() &
+  ggplot2::scale_color_gradient2(
+    low = "blue", mid = "grey", high = "red") &
+  ggplot2::theme(legend.title.align = 0.5,
+                 legend.title = ggplot2::element_text(angle = 90)) &
+  ggplot2::guides(colour = ggplot2::guide_colorbar(title.position = "left"))
+```
+
+##### Enrichment
+
+```{r}
+df <- list(PNR2 = tibble::rownames_to_column(Me_1_pnr2_degs, "Gene"),
+     TR4 = tibble::rownames_to_column(Me_1_tr4_degs, "Gene")) |>
+  tibble::enframe("Contrast", "df") |>
+  tidyr::unnest(cols = df) |>
+  dplyr::filter(p_val_adj < 0.05) |>
+  dplyr::mutate(Regu = ifelse(avg_log2FC > 0, "UP", "DOWN")) |>
+  dplyr::select(Contrast, Regu, Gene)
+
+enrslim <- clusterProfiler::compareCluster(
+    Gene ~ Contrast + Regu,
+    data = df,
+    fun = "enrichGO",
+    OrgDb = "org.Taestivum.iwgsc.db",
+    keyType = "GID", ont = "BP",
+    universe = rownames(obj)) |>
+  clusterProfiler::simplify(0.9) |>
+  enrichRepresent()
+
+enrslim |>
+  enrichplot::dotplot(
+    showCategory = NULL,
+    size = "count", label_format = 50) +
+  ggplot2::facet_wrap(~ Regu, scales = "free_x") +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 15, vjust = 1, hjust = 1))
+```
+
+#### Me_2 subpopulation
+
+##### Identify DEGs
+
+```{r}
+Me_2_pnr2_degs <- Seurat::FindMarkers(
+  obj, ident.1 = "1DPI-PNR2", ident.2 = "1DPI-MOCK",
+  group.by = 'group', subset.ident = "Me_2")
+
+Me_2_tr4_degs <- Seurat::FindMarkers(
+  obj, ident.1 = "1DPI-TR4", ident.2 = "1DPI-MOCK",
+  group.by = 'group', subset.ident = "Me_2")
+```
+
+```{r}
+p1 <- ggplot2::ggplot(Me_2_pnr2_degs,
+    ggplot2::aes(x = avg_log2FC, y = -log(p_val_adj),
+                 color = pct.1 - pct.2)) +
+  ggplot2::geom_point() +
+  ggplot2::ggtitle("PNR2 vs. MOCK - 1DPI in Me_2") +
+  ggplot2::theme_bw()
+
+p2 <- ggplot2::ggplot(Me_2_tr4_degs,
+    ggplot2::aes(x = avg_log2FC, y = -log(p_val_adj),
+                 color = pct.1 - pct.2)) +
+  ggplot2::geom_point() +
+  ggplot2::ggtitle("TR4 vs. MOCK - 1DPI in Me_2") +
+  ggplot2::theme_bw()
+
+p1 + p2 &
+  center_plot_title() &
+  ggplot2::scale_color_gradient2(
+    low = "blue", mid = "grey", high = "red") &
+  ggplot2::theme(legend.title.align = 0.5,
+                 legend.title = ggplot2::element_text(angle = 90)) &
+  ggplot2::guides(colour = ggplot2::guide_colorbar(title.position = "left"))
+```
+
+##### Enrichment
+
+```{r}
+df <- list(
+    PNR2 = tibble::rownames_to_column(Me_2_pnr2_degs, "Gene"),
+    TR4 = tibble::rownames_to_column(Me_2_tr4_degs, "Gene")) |>
+  tibble::enframe("Contrast", "df") |>
+  tidyr::unnest(cols = df) |>
+  dplyr::filter(p_val_adj < 0.05) |>
+  dplyr::mutate(Regu = ifelse(avg_log2FC > 0, "UP", "DOWN")) |>
+  dplyr::select(Contrast, Regu, Gene)
+
+enrslim <- clusterProfiler::compareCluster(
+    Gene ~ Contrast + Regu,
+    data = df,
+    fun = "enrichGO",
+    OrgDb = "org.Taestivum.iwgsc.db",
+    keyType = "GID", ont = "BP",
+    universe = rownames(obj)) |>
+  #clusterProfiler::simplify(0.9) |>
+  enrichRepresent()
+
+enrslim |>
+  enrichplot::dotplot(
+    showCategory = NULL,
+    size = "count", label_format = 50) +
+  ggplot2::facet_wrap(~ Regu, scales = "free_x") +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 15, vjust = 1, hjust = 1))
+```
+
+
+### RNA Velocity
+
+```{r}
+scv <- reticulate::import("scvelo")
+plt <- reticulate::import("matplotlib.pyplot")
+```
+
+```{r}
+adata_all_mock <- readPickle(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/unitvelo_adata_mock_*.pickle"))
+adata_all_pnr2 <- readPickle(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/unitvelo_adata_pnr2_*.pickle"))
+adata_all_tr4 <- readPickle(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/unitvelo_adata_tr4_*.pickle"))
+```
+
+```{r}
+sce_sub_list <- lapply(
+  X = list(
+    MOCK = adata_all_mock,
+    PNR2 = adata_all_pnr2,
+    TR4  = adata_all_tr4),
+  FUN = function(adata) {
+    sce_sub <- sce[, adata$obs_names$to_list()]
+    adata$obsm$update(list(X_umap = reducedDim(sce_sub, "UMAP")))
+    scv$tl$velocity_embedding(adata, basis = "umap")
+    reducedDim(sce_sub, "velocity_umap") <- adata$obsm["velocity_umap"]
+    sce_sub
+  })
+```
+
+```{r fig.height=8, fig.width=14}
+plist <- purrr::imap(sce_sub_list, function(sce_sub, name) {
+  colnames(reducedDim(sce_sub, "UMAP")) <- NULL
+  vector_df <- velociraptor::gridVectors(
+      reducedDim(sce_sub, "UMAP"),
+      reducedDim(sce_sub, "velocity_umap"),
+      resolution = 30)
+  scater::plotReducedDim(
+      sce_sub,
+      colour_by = "tissue",
+      dimred = "UMAP",
+      point_size = 0.8,
+      point_alpha = 1,
+      theme_size = 14) +
+    ggplot2::scale_color_manual(values = all_tissue_colors) +
+    ggplot2::geom_segment(
+      data = vector_df,
+      mapping = ggplot2::aes_string(
+        x = "start.1",
+        y = "start.2", 
+        xend = "end.1",
+        yend = "end.2"),
+      arrow = grid::arrow(
+        length = grid::unit(0.06, "inches"),
+        angle = 25,
+        type = "open"),
+      size = 0.5) +
+    ggplot2::coord_fixed() +
+    ggplot2::ggtitle(name) +
+    center_plot_title(face = "plain") +
+    theme_dimred()
+})
+
+(p <- patchwork::wrap_plots(plist) +
+    patchwork::plot_layout(guides = "collect") &
+    ggplot2::theme(legend.position = "bottom") &
+    ggplot2::guides(color = ggplot2::guide_legend(
+      override.aes = list(size = 4, alpha = 1),
+      title = "Cell Types", nrow = 1, byrow = TRUE))
+  )
+```
+
+
