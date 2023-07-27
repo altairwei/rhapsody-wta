@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 reactable::reactable(iris)
-source("../scripts/UtilityFunctions.R")
+source("../scripts/LoadUtils.R", chdir = TRUE)
 ```
 
 ## Load Datasets
@@ -20,7 +20,7 @@ obj <- readRDS(Sys.glob(
 
 ## Marker Genes of Cell Populations
 
-### Identify Marker Genes
+### Identify Global Marker Genes
 
 ```{r}
 marker_cosg <- COSG::cosg(
@@ -55,8 +55,8 @@ anno <- brookite::pull_annotation(
   ))
 
 markers_list <- dplyr::left_join(markers, anno, by = c("names" = "ensembl_gene_id")) |>
-  dplyr::select(names, scores, clusters, Description, GO_Name)
-markers_list <- split(markers_list, markers_list$clusters)
+  dplyr::select(names, scores, cluster, Description, GO_Name)
+markers_list <- split(markers_list, markers_list$cluster)
 ```
 
 ```{r results='asis'}
@@ -87,13 +87,13 @@ for (cls in names(markers_list)) {
 
 ```{r fig.height=6, fig.width=9, results='asis'}
 for (cls in names(markers_list)) {
-  df <- markers_list[[cls]] |> dplyr::select(genes, scores)
+  df <- markers_list[[cls]] |> dplyr::select(names, scores)
   df_id <- paste0("markers_anno_table_", cls)
   cat("####", cls, "\n\n")
   tops <- suppressMessages(
     dplyr::arrange(df, dplyr::desc(scores)) |>
     dplyr::top_n(6) |>
-    dplyr::pull(genes))
+    dplyr::pull(names))
   p <- Seurat::FeaturePlot(obj, features = tops, order = TRUE,
                            reduction = "umap", ncol = 3) &
     ggplot2::coord_fixed()
@@ -102,20 +102,11 @@ for (cls in names(markers_list)) {
 }
 ```
 
-
-### TODO: 从 COSG 方法的角度探究 Va_2/3/4 的功能。
-
-取 Top 500? 还是研究一下 cosg score 的分布。
-
-## 细胞集群的功能刻画
-
-
-
-## 特定细胞类型的局部标志基因
+## Local Markers of Related Subpopulations
 
 ### Characteristic of mesophylls
 
-#### Differential expression
+#### Expression distribution
 
 ```{r}
 avg_expr_df <- Seurat::AverageExpression(obj, slot = "data")$RNA |>
@@ -179,136 +170,106 @@ p <- ggplot2::ggplot(avg_expr_df, ggplot2::aes(x = Me_2, y = Me_1, label = gene)
 p
 ```
 
-```{r}
-de_me1 <- Seurat::FindMarkers(obj, ident.1 = "Me_1", ident.2 = "Me_2", min.pct = 0.25)
-```
+#### Differential expression
 
 ```{r}
-anno <- brookite::pull_annotation(
-  rownames(unique(de_me1)),
-  mart_info = list(
-    mart = "plants_mart",
-    dataset = "taestivum_eg_gene",
-    host = "https://plants.ensembl.org"
-  ),
-  dest_attrs = c(
-    Description = "description",
-    GO_ID = "go_id",
-    GO_Name = "name_1006",
-    GO_Level = "namespace_1003",
-    Interpro_ID = "interpro",
-    Interpro_Short_Description = "interpro_short_description"
-  ))
-
-de_me1 |>
-  tibble::rownames_to_column("Gene") |>
-  dplyr::left_join(anno, by = c("Gene" = "ensembl_gene_id")) |>
-  download_table()
-```
-
-```{r}
-ggplot2::ggplot(de_me1, ggplot2::aes(x = avg_log2FC, y = -log10(p_val_adj))) +
-  ggplot2::geom_point() +
-  ggplot2::theme_minimal()
-```
-
-```{r}
-ggplot2::ggplot(de_me1, ggplot2::aes(x = pct.1 - pct.2, y = avg_log2FC)) +
-  ggplot2::geom_point() +
-  ggplot2::theme_minimal()
-```
-
-```{r}
-geneList <- structure(de_me1$avg_log2FC, names = rownames(de_me1))
-me_marker_list <- list(
-  Me_1 = names(geneList[geneList > 0]),
-  Me_2 = names(geneList[geneList < 0])
+de_chl <- xfun::cache_rds(
+  file = "de_marker_chlorenchyma.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = local({
+    chlorenchyma <- c("Me_1", "Me_2", "Me_3", "Va_1")
+    names(chlorenchyma) <- chlorenchyma
+    lapply(chlorenchyma, function(cls) Seurat::FindMarkers(
+        obj, ident.1 = cls, ident.2 = chlorenchyma[chlorenchyma != cls],
+        min.pct = 0.25, only.pos = TRUE)
+    )
+  })
 )
+```
 
-ego_me <- clusterProfiler::compareCluster(
-  me_marker_list, OrgDb = orgdb,
-  fun = "enrichGO", universe = rownames(obj),
-  ont = "BP", keyType = "GID")
+#### Enrichment of local markers {.tabset}
+
+```{r}
+me_marker_list <- lapply(de_chl,
+  function(df) rownames(df[df$p_val_adj < 0.01,]))
+
+ora_me_marker <- lapply(
+  X = c(BP = "BP", MF = "MF", CC = "CC"),
+  FUN = function(ont)
+    clusterProfiler::compareCluster(
+      me_marker_list,
+      fun = "enrichGO",
+      OrgDb = "org.Taestivum.iwgsc.db",
+      keyType = "GID",
+      ont = ont,
+      universe = rownames(obj)
+    )
+)
+```
+
+##### Biological process
+
+```{r eval = FALSE}
+p <- ora_me_marker$BP |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::treeplot(
+    showCategory = NULL,
+    size = "count",
+    clusterPanel.params = list(
+      clusterPanel = "dotplot"),
+    cluster.params = list(
+      n = 12, label_words_n = 0, label_format = 5),
+    offset.params = list(bar_tree = 60, tiplab = 32),
+    hilight.params = list()) +
+  ggplot2::scale_y_continuous(
+    expand = ggplot2::expansion(mult = c(0, 0), add = c(15, 0))) +
+  NULL
+
+plotpowerpoint(
+  ggobj = p,
+  file = "../results/DataPlots/local_marker_ora_me_marker.pptx",
+  template = "../data/60x120.pptx")
 ```
 
 ```{r}
-printCompareORATable(ego_me)
+reprterms <- ora_me_marker$BP@compareClusterResult |>
+  dplyr::select(Description, ID) |>
+  dplyr::distinct() |>
+  tibble::deframe()
+
+reprterms <- reprterms[
+  extractMarkedTerms("../results/DataPlots/ds_ora_comp_1dpi.pptx")]
 ```
+
+```{r fig.height=10, fig.width=10}
+ora_me_marker$BP |>
+  dplyr::filter(ID %in% reprterms) |>
+  enrichplot::dotplot(
+    showCategory = NULL,
+    size = "count", label_format = 50)
+```
+
+##### Molecular function
 
 ```{r fig.height=12, fig.width=10}
-ego_me |>
-  enrichplot::pairwise_termsim() |>
-  enrichplot::treeplot(
-    showCategory = nrow(ego_me), nCluster = 12,
-    offset = 40, offset_tiplab = 20,
-    label_format_cladelab = 5, size = "count",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(4, 0))) +
-  NULL
-```
-
-```{r}
-selected_me_go_terms <- c(
-  "GO:0006754",
-  "GO:0009751",
-  "GO:0009695",
-  "GO:0009753",
-  "GO:0009642",
-  "GO:0045861",
-  "GO:0051172",
-  "GO:0009250",
-  "GO:0030244",
-  "GO:0000281",
-  "GO:0055074",
-  "GO:0009651",
-  "GO:0000302",
-  "GO:0009408",
-  "GO:0009063",
-  "GO:0098754",
-  "GO:0009926",
-  "GO:0006529",
-  "GO:0006541",
-  "GO:0006534",
-  "GO:0009069",
-  "GO:0006568",
-  "GO:0019684",
-  "GO:0046653",
-  "GO:0019685",
-  "GO:0009853",
-  "GO:0015749",
-  "GO:0045454",
-  "GO:0009767",
-  "GO:0006833",
-  "GO:0031408",
-  "GO:0006749",
-  "GO:0006308",
-  "GO:0015976"
-)
-```
-
-```{r fig.height=8, fig.width=10}
-p1 <- ego_me |>
-  dplyr::filter(ID %in% selected_me_go_terms) |>
+ora_me_marker$MF |>
+  enrichplot::pairwise_termsim(showCategory = NULL) |>
+  enrichRepresent() |>
   enrichplot::dotplot(
-    showCategory = length(selected_me_go_terms),
-    size = "count", label_format = 50) +
-  ggplot2::xlab("cell cluster")
-
-p1
+    showCategory = NULL,
+    size = "count", label_format = 50)
 ```
 
+##### Cellular component
 
-```{r fig.height=7, fig.width=8}
-p2 <- ego_me |>
-  dplyr::filter(ID %in% selected_me_go_terms) |>
-  enrichplot::pairwise_termsim() |>
-  enrichplot::emapplot(
-    showCategory = length(selected_me_go_terms),
-    node_label = "category", layout = "kk",
-    min_edge = 0.05, legend_n = 3) +
-  ggplot2::guides(fill = ggplot2::guide_legend(title = "cell cluster"))
-
-p2
+```{r fig.height=6, fig.width=10}
+ora_me_marker$CC |>
+  enrichplot::pairwise_termsim(showCategory = NULL) |>
+  enrichRepresent() |>
+  enrichplot::dotplot(
+    showCategory = NULL,
+    size = "count", label_format = 50)
 ```
 
 ### Characteristic of outer sheath
@@ -316,157 +277,124 @@ p2
 #### Differential expression
 
 ```{r}
-de_va4 <- Seurat::FindMarkers(
-  obj, ident.1 = "Va_4", ident.2 = c("Va_2", "Va_3"), min.pct = 0.25, only.pos = TRUE)
-de_va3 <- Seurat::FindMarkers(
-  obj, ident.1 = "Va_3", ident.2 = c("Va_2", "Va_4"), min.pct = 0.25, only.pos = TRUE)
-de_va2 <- Seurat::FindMarkers(
-  obj, ident.1 = "Va_2", ident.2 = c("Va_3", "Va_4"), min.pct = 0.25, only.pos = TRUE)
-```
-
-```{r}
-de_va_all <- dplyr::bind_rows(
-  tibble::rownames_to_column(de_va2, "Gene") |>
-    dplyr::mutate(cluster = "Va_2"),
-  tibble::rownames_to_column(de_va3, "Gene") |>
-    dplyr::mutate(cluster = "Va_3"),
-  tibble::rownames_to_column(de_va4, "Gene") |>
-    dplyr::mutate(cluster = "Va_4")
+de_ospa <- xfun::cache_rds(
+  file = "de_marker_outersheath_parenchyma.rds",
+  dir = "../results/ObjectCache/IntegrationAndAnnotation/",
+  expr = local({
+    ospa <- c("Va_2", "Va_3", "Va_4", "Me_4", "Me_5", "Me_6")
+    names(ospa) <- ospa
+    lapply(ospa, function(cls) Seurat::FindMarkers(
+        obj, ident.1 = cls, ident.2 = ospa[ospa != cls],
+        min.pct = 0.25, only.pos = TRUE)
+    )
+  })
 )
 ```
 
-```{r}
-anno <- brookite::pull_annotation(
-  unique(de_va_all$Gene),
-  mart_info = list(
-    mart = "plants_mart",
-    dataset = "taestivum_eg_gene",
-    host = "https://plants.ensembl.org"
-  ),
-  dest_attrs = c(
-    Description = "description",
-    GO_ID = "go_id",
-    GO_Name = "name_1006",
-    GO_Level = "namespace_1003",
-    Interpro_ID = "interpro",
-    Interpro_Short_Description = "interpro_short_description"
-  ))
-```
+#### Enrichment of local markers {.tabset}
 
 ```{r}
-de_va_all |>
-  dplyr::left_join(anno, by = c("Gene" = "ensembl_gene_id")) |>
-  download_table()
-```
+va_marker_list <- lapply(de_ospa,
+  function(df) rownames(df[df$p_val_adj < 0.01,]))
 
-```{r}
-va_marker_list <- list(
-  Va_2 = rownames(de_va2),
-  Va_3 = rownames(de_va3),
-  Va_4 = rownames(de_va4)
+ora_va_marker <- lapply(
+  X = c(BP = "BP", MF = "MF", CC = "CC"),
+  FUN = function(ont)
+    clusterProfiler::compareCluster(
+      va_marker_list,
+      fun = "enrichGO",
+      OrgDb = "org.Taestivum.iwgsc.db",
+      keyType = "GID",
+      ont = ont,
+      universe = rownames(obj)
+    )
 )
-
-ego_os <- clusterProfiler::compareCluster(
-  va_marker_list, OrgDb = orgdb,
-  fun = "enrichGO", universe = rownames(obj),
-  ont = "BP", keyType = "GID")
 ```
 
-```{r}
-printCompareORATable(ego_os)
-```
+##### Biological proess
 
-```{r fig.height=16, fig.width=10}
-ego_os |>
-  enrichplot::pairwise_termsim() |>
+```{r eval = FALSE}
+p <- ora_va_marker$BP |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
   enrichplot::treeplot(
-    showCategory = nrow(ego_os), nCluster = 12,
-    offset = 60, offset_tiplab = 30,
-    label_format_cladelab = 5, size = "count",
-    geneClusterPanel = "dotplot", nWords = 0) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0), add = c(2, 0))) +
+    showCategory = NULL,
+    size = "count",
+    clusterPanel.params = list(
+      clusterPanel = "dotplot"),
+    cluster.params = list(
+      n = 12, label_words_n = 0, label_format = 5),
+    offset.params = list(bar_tree = 48, tiplab = 50),
+    hilight.params = list()) +
+  ggplot2::scale_y_continuous(
+    expand = ggplot2::expansion(mult = c(0, 0), add = c(15, 0))) +
   NULL
+
+plotpowerpoint(
+  ggobj = p,
+  file = "../results/DataPlots/local_marker_ora_va_marker.pptx",
+  template = "../data/60x140.pptx")
 ```
 
 ```{r}
-selected_os_go_terms <- c(
-  "GO:0009753",
-  "GO:1901698",
-  "GO:0009723",
-  "GO:0009751",
-  "GO:0009695",
-  "GO:0009803",
-  "GO:0006032",
-  "GO:0009737",
-  "GO:0061077",
-  "GO:0000162",
-  "GO:0010951",
-  "GO:0050832",
-  "GO:0009617",
-  "GO:0009626",
-  "GO:0009733",
-  "GO:0009268",
-  "GO:0006995",
-  "GO:0042744",
-  "GO:0098754",
-  "GO:0070592",
-  "GO:0019344",
-  "GO:0006564",
-  "GO:0042549",
-  "GO:0006740",
-  "GO:0000302",
-  "GO:0007623",
-  "GO:0009423",
-  "GO:0009651",
-  "GO:0046686",
-  "GO:0009409",
-  "GO:0009853",
-  "GO:0019685",
-  "GO:0021700",
-  "GO:0019685",
-  "GO:0010410",
-  "GO:0005992",
-  "GO:0006094",
-  "GO:0006541",
-  "GO:0006529",
-  "GO:0009072",
-  "GO:0000226",
-  "GO:0030042",
-  "GO:0042538",
-  "GO:0015749",
-  "GO:0006833",
-  "GO:0031408",
-  "GO:0016104",
-  "GO:0006561",
-  "GO:0006749",
-  "GO:0009809",
-  "GO:0009064",
-  "GO:0046283",
-  "GO:0006457"
-)
+reprterms <- ora_va_marker$BP@compareClusterResult |>
+  dplyr::select(Description, ID) |>
+  dplyr::distinct() |>
+  tibble::deframe()
+
+reprterms <- reprterms[
+  extractMarkedTerms("../results/DataPlots/local_marker_ora_va_marker.pptx")]
 ```
 
-```{r fig.height=10, fig.width=8}
-p3 <- ego_os |>
-  dplyr::filter(ID %in% selected_os_go_terms) |>
+```{r fig.height=16, fig.width=8}
+ora_va_marker$BP |>
+  dplyr::filter(ID %in% reprterms) |>
   enrichplot::dotplot(
-    showCategory = length(selected_os_go_terms),
-    size = "count", label_format = 50) +
-  ggplot2::xlab("cell cluster")
-
-p3
+    showCategory = NULL,
+    size = "count", label_format = 50)
 ```
 
-```{r fig.height=7, fig.width=8}
-p4 <- ego_os |>
-  dplyr::filter(ID %in% selected_os_go_terms) |>
-  enrichplot::pairwise_termsim() |>
+```{r fig.height=16, fig.width=16}
+ora_va_marker$BP |>
+  dplyr::filter(ID %in% reprterms) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
   enrichplot::emapplot(
-    showCategory = length(selected_os_go_terms),
-    node_label = "category", layout = "fr",
-    min_edge = 0.05, legend_n = 3)
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "category",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_label = 1.6)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "Cell Clusters")) +
+  ggplot2::scale_fill_brewer(palette = "BrBG")
+```
 
-p4
+##### Molecular function
+
+```{r fig.height=12, fig.width=10}
+ora_me_marker$MF |>
+  enrichplot::pairwise_termsim(showCategory = NULL) |>
+  enrichRepresent() |>
+  enrichplot::dotplot(
+    showCategory = NULL,
+    size = "count", label_format = 50)
+```
+
+##### Cellular component
+
+```{r fig.height=6, fig.width=10}
+ora_me_marker$CC |>
+  enrichplot::pairwise_termsim(showCategory = NULL) |>
+  enrichRepresent() |>
+  enrichplot::dotplot(
+    showCategory = NULL,
+    size = "count", label_format = 50)
+```
+
+```{r}
+knitr::knit_exit()
 ```
 
 ### Combined ORA visualization

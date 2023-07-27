@@ -853,3 +853,15 @@ gointeractive <- function(
     visNetwork::visIgraphLayout(layout = layout)
 }
 
+extractMarkedTerms <- function(pptfile) {
+  ppt <- officer::read_pptx(pptfile)
+  
+  nodes <- xml2::xml_find_all(
+    x = ppt$slide$get_slide(1)$get(),
+    xpath = paste0(
+      "//p:sp[descendant::p:cNvPr[starts-with(@name, 'tx')] ",
+      "and descendant::a:r/a:rPr/a:solidFill/a:srgbClr[@val='FF0000']]")
+  )
+  
+  xml2::xml_text(nodes)
+}

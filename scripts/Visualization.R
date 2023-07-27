@@ -297,6 +297,7 @@ plotExpressionHeatmap <- function(
     simple_anno_size = NULL,
     border = TRUE,
     legend_grid_size = grid::unit(4, "mm"),
+    palette = "BuPu",
     ...) {
   
   mtx <- SummarizedExperiment::assay(se, assay_use)
@@ -358,11 +359,22 @@ plotExpressionHeatmap <- function(
       )
     )
   }
+
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
   
+  bks <- seq(-q, q, length.out = 9)
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), palette)
+  )
+
   p <- ComplexHeatmap::Heatmap(
     matrix = mtx,
-    col = circlize::colorRamp2(
-      c(-1, 0, 1), c("blue", "white", "red")),
+    col = col_fun,
     use_raster = TRUE,
     border = border,
     na_col = "grey",
