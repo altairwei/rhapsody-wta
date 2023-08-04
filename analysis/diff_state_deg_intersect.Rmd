@@ -296,6 +296,39 @@ for (dp in c("1DPI", "2DPI", "3DPI")) {
 }
 ```
 
+#### Euler diagrams of sets {.tabset}
+
+```{r results='asis'}
+for (dp in c("1DPI", "2DPI", "3DPI")) {
+  cat("#####", dp, "{.tabset}\n\n")
+  for (tr in list(c("PNR2", "MOCK"),
+                  c("TR4", "MOCK"),
+                  c("PNR2", "TR4"))) {
+
+    cont = sprintf("X%s.%s-X%s.%s", dp, tr[[1]], dp, tr[[2]])
+    title = sprintf("%s-%s vs. %s-%s", dp, tr[[1]], dp, tr[[2]])
+    cat("######", title, "\n\n")
+
+    suppressMessages(
+      ds_sig %>%
+        rhapsodykit::diff_state_subset(
+          contrast = cont) %>%
+        upset_contrasts_list() %>%
+        setNames(stringr::str_extract(names(.), "(?<=\\[).*(?=\\])")) %>%
+        eulerr::euler(shape = "ellipse") %>%
+        plot(
+          main = title,
+          quantities = list(cex = 1),
+          legend = list(side = "right")) %>%
+        print()
+    )
+
+    cat("\n\n")
+  }
+  cat("\n\n")
+}
+```
+
 #### Uniqueness of cell type responses
 
 Calculate cell type-only DEGs for each `time` and `contrast` combination.
@@ -525,9 +558,7 @@ p <- ComplexHeatmap::Heatmap(
 ComplexHeatmap::draw(p, merge_legend = TRUE)
 ```
 
-### The differences between treatments
-
-Split DEG lists by time.
+### Split DEG lists by time
 
 #### Possible intersections {.tabset}
 
@@ -663,9 +694,7 @@ df_jacmtx |>
   })
 ```
 
-### The concordance within cell type
-
-Split DEG lists by cell type.
+### Split DEG lists by cell type
 
 #### Possible intersections {.tabset}
 
