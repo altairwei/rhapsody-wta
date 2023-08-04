@@ -649,6 +649,22 @@ plotImmunityHeatmap(
   clustering_method = "ward.D2")
 ```
 
+##### Chlorenchyma + Outer Sheath
+
+```{r fig.height=10, fig.width=10, dev='svg'}
+plotImmunityHeatmap(
+  se[rowData(se)$Category != "TFs",
+        se$cell_types %in% c("Chlorenchyma", "Outer sheath")],
+  row_split_by = "Pathway",
+  row_anno_by = "Pathway",
+  col_split_by = "cell_types",
+  col_anno_by = c("contrast", "times"),
+  clustering_method = "ward.D2",
+  fontsize = 16,
+  border = TRUE
+)
+```
+
 ##### Parenchyma
 
 ```{r fig.height=12, fig.width=7}

@@ -32,7 +32,6 @@ editor_options:
   - [Analysis of Intersecting DEG Sets](diff_state_deg_intersect.html)
   - [Known Pathways in DEGs of Each Cell Types](diff_state_known_pathways.html)
   - [Geneset Enrichment for DEGs of Differential States](diff_state_geneset_analysis.html)
-  - []()
   - [Find Identity DEGs from MOCK Samples](diff_state_identity_genes.html)
   - [Transcription Factor Regulation Network of DEGs](diff_state_tf_network.html)
 - Trajectory Inference
@@ -40,4 +39,6 @@ editor_options:
   - [Identify the source of stress subpopulation](sources_of_stress_state_subpopulations.html)
   - [Differential Expression along Pseudotime](differential_expression_along_pseudotime.html)
 - Slides for Presentation
+  - [Slides for Midterm Report](slides_for_midterm_report.html)
   - [Slides for 2023 SSPP](slides_for_2023sspp.html)
+  - [Slides for PhD Defense](slides_for_phd_defense.html)

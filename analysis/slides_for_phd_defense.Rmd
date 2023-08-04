@@ -172,17 +172,6 @@ sce$tissue <- do.call(
   dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_tissues)))
 ```
 
-### Pseudobulk data
-
-```{r}
-pseudobulk_df <- readRDS(Sys.glob("../results/ObjectCache/Pseudobulk/pseudobulk_df_cpm_mean_*.rds"))
-pseudobulk_expr <- readRDS(Sys.glob("../results/ObjectCache/Pseudobulk/pseudobulk_cpm_mean_*.rds"))
-```
-
-```{r}
-pseudobulk_df$cellType <- forcats::fct_relevel(pseudobulk_df$cellType, all_celltypes)
-```
-
 ### DS Results
 
 ```{r}
@@ -202,7 +191,7 @@ pathways <- lapply(filelist, function(filename) {
 })
 ```
 
-### GSVA
+### GSVA data
 
 ```{r}
 gsva_df <- readRDS(Sys.glob(
@@ -235,19 +224,6 @@ p
 ```
 
 ## Cell annotation
-
-### Primary annotation
-
-参考：https://github.com/dpeerlab/SEACellsReproducibility/blob/main/notebooks/Fig1.ipynb
-
-```{r}
-scater::ggcells(sce,
-    mapping = ggplot2::aes(
-      x = UMAP.1, y = UMAP.2, group = ident)) +
-  ggplot2::geom_point(color = "grey") +
-  ggplot2::stat_density_2d(geom = "contour") +
-  ggplot2::coord_fixed()
-```
 
 #### Cluster and resolution tree
 
@@ -283,103 +259,6 @@ p2 <- clustree::clustree(
 ```
 
 #### Marker and LCM-seq
-
-```{r}
-markers = list(
-  # Guardian Cells
-  "ALMT12" = c(
-    "TraesCS1D02G194000",
-    "TraesCS1A02G189900",
-    "TraesCS1B02G192000"
-  ),
-  "MYB60" = c(
-    "TraesCS4A02G322200",
-    "TraesCS5D02G552200"
-  ),
-  "HIC" = c(
-    "TraesCS4D02G226100"
-  ),
-
-  # Epidermal Cells
-  "FDH" = c(
-    "TraesCS4B02G297500",
-    "TraesCS4D02G296400",
-    "TraesCS4A02G007400"
-  ),
-  "ATML1" = c(
-    "TraesCS2A02G474000",
-    "TraesCS2D02G473700"
-  ),
-  "DCR" = c(
-    "TraesCS1A02G341300",
-    "TraesCS1D02G343400"
-  ),
-  
-  # EP3 是排水孔相关基因
-  "EP3" = c(
-    "TraesCS2A02G350700",
-    "TraesCS2D02G348800",
-    "TraesCS6D02G199500",
-    "TraesCS6A02G216100"
-  ),
-
-  # Mesophyll Cells
-  "RBCS" = c(
-    "TraesCS2A02G066800",
-    "TraesCS5A02G165400",
-    "TraesCS5D02G169900"
-  ),
-  "CAB3" = c(
-    "TraesCS7A02G276400",
-    #"TraesCS1D02G411300",
-    #"TraesCS1B02G317500",
-    #"TraesCS7D02G276300",
-    #"TraesCS5B02G353200",
-    #"TraesCS5A02G350600",
-    "TraesCS1A02G403300"
-  ),
-  "LHCB2.1" = c(
-    "TraesCS5D02G329200",
-    "TraesCS5B02G322900",
-    "TraesCS5A02G322500"
-  ),
-  "CA1" = c(
-    #"TraesCS7D02G443400",
-    "TraesCS7B02G354800",
-    "TraesCS3A02G230000",
-    #"TraesCS3D02G223300",
-    "TraesCS3B02G259300"
-  ),
-  "AOC2" = c(
-    "TraesCS6D02G314300",
-    "TraesCS6A02G334800",
-    "TraesCS6B02G365200"
-  ),
-
-  # Vascular Cells
-  "gl-OXO" = c(
-    "TraesCS4D02G032000",
-    "TraesCS4B02G033300",
-    "TraesCS4A02G279200"#,
-    #"TraesCS4D02G031800"
-  ),
-  "TaSUT1" = c(
-    "TraesCS4A02G016400",
-    "TraesCS4B02G287800",
-    "TraesCS4D02G286500"
-  ),
-  "SULTR3;4" = c(
-    "TraesCS7A02G088700",
-    "TraesCS4A02G388000",
-    "TraesCS7D02G084100"
-  ),
-  "CPIII" = c(
-    "TraesCS6B02G050700",
-    "TraesCS6D02G041700",
-    "TraesCS6A02G036100"
-  )
-)
-```
 
 ```{r}
 marker_cosg <- COSG::cosg(
@@ -421,7 +300,7 @@ CIBER <- deconvLCM(
 ```
 
 ```{r fig.height=12, fig.width=14}
-p1 <- Seurat::DotPlot(obj_mock, features = markers) +
+p1 <- Seurat::DotPlot(obj_mock, features = KNOWN_MARKERS) +
   ggplot2::theme(
     axis.text.x = ggplot2::element_blank(),
     strip.text.x = ggplot2::element_text(size = 11),
@@ -809,6 +688,11 @@ p2 <- scater::plotReducedDim(
 (p <- p1 + p2)
 ```
 
+```{r include=FALSE, results='hide'}
+rm(adata_mock, sce_mock_slim)
+gc()
+```
+
 ### Reconstruction of cell identity
 
 #### Me_ε marker
@@ -877,6 +761,8 @@ p <- plist &
   ggplot2::scale_fill_manual(values = mock_celltype_colors) &
   ggplot2::xlab("Cell Population") &
   remove_legend()
+
+p
 ```
 
 
@@ -973,7 +859,7 @@ p <- (p1 + p3) / p4 / p7 +
 p
 ```
 
-### Known Pathways
+### Known Pathways {.tabset}
 
 #### Photosynthesis
 
@@ -998,17 +884,20 @@ p <- plotDEGsHeatmap(
 
 #### Lignin biogenesis
 
+TODO: 这里应该保留最细粒度的 GSVA。
+
 ```{r fig.height=7, fig.width=14}
 lignin <- pathways[c(
     "Aromatic amino acid",
     "General phenylpropanoid",
-    "Lignin biosynthesis",
-    "Myb")] |>
+    "Lignin biosynthesis")] |>
   tibble::enframe(name = "Pathway", "Gene") |>
   tidyr::unnest(cols = Gene)
 
 p1 <- plotLineFacetGSVA(gsva_df, unique(lignin$Pathway)) +
   ggplot2::facet_grid(Pathway ~ cellType)
+
+p1
 ```
 
 ```{r fig.height=10, fig.width=14}
@@ -1025,7 +914,7 @@ p2 <- plotDEGsHeatmap(
   row_title_gp = grid::gpar(fontsize = 8))
 ```
 
-```{r}
+```{r include=FALSE, eval=FALSE}
 ggpreview(p1, height = 7, width = 14)
 plotpreview(p2, width = 14, height = 10)
 ```
@@ -1034,6 +923,8 @@ plotpreview(p2, width = 14, height = 10)
 
 ```{r fig.height=5, fig.width=14}
 p1 <- plotLineFacetGSVA(gsva_df, "RLK")
+
+p1
 ```
 
 ```{r fig.height=5, fig.width=14}
@@ -1055,6 +946,8 @@ plotpreview(p2, height = 6, width = 14)
 
 ```{r fig.height=5, fig.width=14}
 p1 <- plotLineFacetGSVA(gsva_df, "NBLRR")
+
+p1
 ```
 
 ```{r fig.height=5, fig.width=14}
@@ -1081,6 +974,8 @@ ROS <- pathways[c("RBOH", "TaGST")] |>
 
 p1 <- plotLineFacetGSVA(gsva_df, unique(ROS$Pathway)) +
   ggplot2::facet_grid(Pathway ~ cellType)
+
+p1
 ```
 
 ```{r fig.height=10, fig.width=14}
@@ -1103,7 +998,7 @@ plotpreview(p2, height = 6, width = 14)
 
 #### Outer sheath immunity responses
 
-```{r fig.height=5, fig.width=14}
+```{r fig.height=12, fig.width=14}
 Os_immune <- pathways[
     c("RLK", "NBLRR", "RBOH", "Aromatic amino acid",
       "General phenylpropanoid", "TaGST", "Polyamine")] |>
@@ -1112,6 +1007,8 @@ Os_immune <- pathways[
 
 p1 <- plotLineFacetGSVA(gsva_df, unique(Os_immune$Pathway)) +
   ggplot2::facet_grid(Pathway ~ cellType)
+
+p1
 ```
 
 ```{r fig.height=10, fig.width=14}
@@ -1134,7 +1031,7 @@ plotpreview(p2, height = 8, width = 14)
 
 ## Cell Dynamics of L2 Body Layer
 
-### Co-varing neighborhood analysis
+### Cell Type Proportion
 
 ```{r}
 ca_res_all <- readRDS(Sys.glob("../results/ObjectCache/DifferentialAbundance/ca_res_nonclust_all_*.rds"))
@@ -1217,6 +1114,148 @@ p <- rhapsodykit::calculateClusterProportion(
 p
 ```
 
+```{r include=FALSE, results='hide'}
+rm(ca_res_all)
+gc()
+```
+
+### Co-varing neighborhood analysis
+
+```{r}
+sce_all_mock <- sce[, sce$treatment == "MOCK"]
+
+sce_all_mock$time_val <- as.numeric(factor(
+  sce_all_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_all_mock$sample <- as.character(sce_all_mock$sample_id)
+
+sce_all_mock <- association.SingleCellExperiment(
+  sce_all_mock, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r}
+df_ncorrs_mock <- data.frame(
+  time_ncorrs = sce_all_mock$cna_ncorrs,
+  cellType = sce_all_mock$tissue,
+  treatment = "MOCK",
+  fdr_5p_t = metadata(sce_all_mock)$cnaRes$fdr_5p_t)
+
+df_ncorrs_mock$cellType <- forcats::fct_reorder(
+  df_ncorrs_mock$cellType, df_ncorrs_mock$time_ncorrs)
+
+p1 <- plotNcorrRidges(sce_all_mock, group_by = "tissue") +
+  ggthemes::scale_fill_tableau("Tableau 10") +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  NULL
+
+p1
+```
+
+```{r}
+sce_all_pnr2 <- sce[, sce$treatment == "PNR2" | sce$time == "0DPI"]
+
+sce_all_pnr2$time_val <- as.numeric(factor(
+  sce_all_pnr2$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_all_pnr2$sample <- as.character(sce_all_pnr2$sample_id)
+
+sce_all_pnr2 <- association.SingleCellExperiment(
+  sce_all_pnr2, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r}
+df_ncorrs_pnr2 <- data.frame(
+  time_ncorrs = sce_all_pnr2$cna_ncorrs,
+  cellType = sce_all_pnr2$tissue,
+  treatment = "PNR2",
+  fdr_5p_t = metadata(sce_all_pnr2)$cnaRes$fdr_5p_t)
+
+df_ncorrs_pnr2$cellType <- forcats::fct_relevel(
+  df_ncorrs_pnr2$cellType, levels(df_ncorrs_mock$cellType))
+
+p2 <- plotNcorrRidges(sce_all_pnr2, group_by = "tissue") +
+  ggthemes::scale_fill_tableau("Tableau 10") +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  NULL
+
+p2
+```
+
+```{r}
+sce_all_tr4 <- sce[, sce$treatment == "TR4" | sce$time == "0DPI"]
+
+sce_all_tr4$time_val <- as.numeric(factor(
+  sce_all_tr4$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_all_tr4$sample <- as.character(sce_all_tr4$sample_id)
+
+sce_all_tr4 <- association.SingleCellExperiment(
+  sce_all_tr4, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r}
+df_ncorrs_tr4 <- data.frame(
+  time_ncorrs = sce_all_tr4$cna_ncorrs,
+  cellType = sce_all_tr4$tissue,
+  treatment = "TR4",
+  fdr_5p_t = metadata(sce_all_tr4)$cnaRes$fdr_5p_t)
+
+df_ncorrs_tr4$cellType <- forcats::fct_relevel(
+  df_ncorrs_tr4$cellType, levels(df_ncorrs_mock$cellType))
+
+p3 <- plotNcorrRidges(sce_all_tr4, group_by = "tissue") +
+  ggthemes::scale_fill_tableau("Tableau 10") +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4))) +
+  NULL
+
+p3
+```
+
+```{r fig.height=5, fig.width=14}
+df_ncorrs <- dplyr::bind_rows(df_ncorrs_mock, df_ncorrs_pnr2, df_ncorrs_tr4)
+df_ncorrs$cellType <- forcats::fct_reorder(
+  df_ncorrs$cellType, df_ncorrs$time_ncorrs)
+
+fdr_df <- purrr::imap(
+  .x = list(
+    MOCK = sce_all_mock,
+    PNR2 = sce_all_pnr2,
+    TR4  = sce_all_tr4),
+  .f = function(x, treat) {
+    fdr <- metadata(x)$cnaRes$fdr_5p_t
+    data.frame(
+      treatment = treat,
+      posfdr = fdr,
+      negfdr = -fdr)
+  }) |> dplyr::bind_rows()
+
+p2 <- ggplot2::ggplot(df_ncorrs, ggplot2::aes(
+    x = time_ncorrs, y = cellType, fill = cellType)) +
+  ggplot2::ylab("Cell Population") +
+  ggplot2::xlab("Neighborhood coefficients of time") +
+  ggridges::geom_density_ridges(scale = 4) +
+  ggplot2::geom_vline(
+    data = fdr_df, mapping = ggplot2::aes(xintercept = posfdr),
+    linetype = "dashed") +
+  ggplot2::geom_vline(
+    data = fdr_df, mapping = ggplot2::aes(xintercept = negfdr),
+    linetype = "dashed") +
+  ggplot2::facet_wrap(~ treatment) +
+  ggplot2::scale_fill_manual(values = structure(
+    ggthemes::tableau_color_pal("Tableau 10")(length(TISSUE_TYPES)),
+    names = TISSUE_TYPES)) +
+  ggplot2::scale_y_discrete(limits=rev, expand = ggplot2::expansion(add = c(0, 4.5))) +
+  ggridges::theme_ridges(14) +
+  empty_strip(
+    strip.text = ggplot2::element_text(size = 14),
+    panel.spacing = grid::unit(2, "lines")) +
+  remove_legend()
+
+p2
+```
+
+```{r include=FALSE, results='hide'}
+rm(df_ncorrs_mock, sce_all_pnr2, df_ncorrs_pnr2, sce_all_tr4, df_ncorrs_tr4, df_ncorrs)
+gc()
+```
+
 ### RNA Velocity and cluster connectivity
 
 ```{r}
@@ -1284,20 +1323,20 @@ plist <- purrr::imap(sce_sub_list, function(sce_sub, name) {
       title = "cluster", nrow = 1, byrow = TRUE)))
 ```
 
-```{r}
+```{r eval=FALSE}
 adata <- runPAGA(
   sce, group_key = "cluster_id",
   assay.X = "logcounts", use.dimred = "HARMONY"
 )
 ```
 
-```{r}
+```{r eval=FALSE}
 adata$obsm$update(list(
   X_umap = reducedDim(sce, "UMAP")
 ))
 ```
 
-```{r}
+```{r eval=FALSE}
 p <- plotPagaGraph(adata, basis = "umap", edge_cex = 2, node_cex = 2) +
   ggplot2::coord_fixed() +
   ggplot2::xlab("UMAP 1") +
@@ -1305,6 +1344,11 @@ p <- plotPagaGraph(adata, basis = "umap", edge_cex = 2, node_cex = 2) +
   theme_dimred()
 
 p
+```
+
+```{r include=FALSE, results='hide'}
+rm(adata_all_mock, adata_all_pnr2, adata_all_tr4)
+gc()
 ```
 
 ### Differential abundance analysis
@@ -1372,6 +1416,11 @@ p_da_3dpi <- patchwork::wrap_plots(
 ( p <- p_da_1dpi / p_da_2dpi / p_da_3dpi)
 ```
 
+```{r include=FALSE, results='hide'}
+rm(da_ctr_1dpi, da_ctr_2dpi, da_ctr_3dpi)
+gc()
+```
+
 ### Slingshot trajectory inference
 
 #### Mesophyll state transitions
@@ -1437,6 +1486,12 @@ plist <- purrr::imap(
 (p <- patchwork::wrap_plots(plist, ncol = 1, guides = "collect") &
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.01)))
 ```
+
+```{r include=FALSE, results='hide'}
+rm(sce_me_all, sce_me_1dpi, sce_me_2dpi, sce_me_3dpi)
+gc()
+```
+
 
 ## Proof-of-concept studies
 
@@ -1660,6 +1715,9 @@ va_4_marker <- c(
 geneDetectedPercent(obj, va_4_marker, c("Va_4"))
 ```
 
+```{r}
+knitr::knit_exit()
+```
 
 ### Lignin deposition
 
@@ -1842,620 +1900,5 @@ act <- lignin_expr[, names(pts)]
 
 ggplot2::qplot(x = pts, y = act) +
   ggplot2::geom_point()
-```
-
-## Taget genes analysis
-
-### NHR-induced PCD
-
-EDS1
-
-```{r fig.height=7, fig.width=7}
-Seurat::VlnPlot(obj,
-    features = c(
-      "TraesCS5A02G202200",
-      "TraesCS5B02G200800",
-      "TraesCS5D02G208600"),
-    ncol = 1) +
-  remove_legend()
-```
-
-EDS5
-
-```{r fig.height=7, fig.width=7}
-Seurat::VlnPlot(obj,
-    features = c(
-      "TraesCS6A02G066900",
-      "TraesCS6B02G090100",
-      "TraesCSU02G117300"),
-    ncol = 1) +
-  remove_legend()
-```
-
-LSD1
-
-```{r fig.height=7, fig.width=7}
-Seurat::VlnPlot(obj,
-    features = c(
-      "TraesCS1D02G278800",
-      "TraesCS1A02G279500",
-      "TraesCS1B02G288600",
-      # Paralogues
-      "TraesCS5D02G386200",
-      "TraesCS5D02G059500",
-      "TraesCS7D02G307000"),
-    ncol = 1) +
-  remove_legend()
-```
-
-
-CAS
-
-```{r fig.height=7, fig.width=7}
-Seurat::VlnPlot(obj,
-    features = c(
-      "TraesCS6A02G290600",
-      "TraesCS6B02G320900",
-      "TraesCS6D02G271900"),
-    ncol = 1) +
-  remove_legend()
-```
-
-
-```{r}
-NHR_genes <- list(
-  "EDS1" = c(
-    "TraesCS5A02G202200",
-    "TraesCS5B02G200800",
-    "TraesCS5D02G208600"),
-  "EDS5" = c(
-    "TraesCS6A02G066900",
-    "TraesCS6B02G090100",
-    "TraesCSU02G117300"),
-  "LSD1" = c(
-    "TraesCS1D02G278800",
-    "TraesCS1A02G279500",
-    "TraesCS1B02G288600"),
-  "CAS" = c(
-    "TraesCS6A02G290600",
-    "TraesCS6B02G320900",
-    "TraesCS6D02G271900"),
-  "CHUP1" = c(
-    "TraesCS3A02G235800",
-    "TraesCS3B02G264100",
-    "TraesCS3D02G235300")
-)
-```
-
-```{r}
-Seurat::DotPlot(obj, features = NHR_genes) +
-  ggplot2::coord_flip() +
-  ggplot2::facet_grid(
-    facets = feature.groups ~ .,
-    scales = "free_y",
-    space = "free_y") +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-```
-
-### TaNPRs
-
-```{r}
-TaNPRs <- c(
-  "TaNPR1-A" = "TraesCS3A02G105400",
-  "TaNPR1-B" = "TraesCS3B02G123800",
-  "TaNPR1-D" = "TraesCS3D02G107500",
-  "TaNPR2-A" = "TraesCS4A02G470500",
-  "TaNPR2-D" = "TraesCS7D02G019000",
-  "TaNPR3-A" = "TraesCS3A02G298800",
-  "TaNPR3-B" = "TraesCS3B02G337700",
-  "TaNPR3-D" = "TraesCS3D02G302900",
-  "TaNPR4-A" = "TraesCS4A02G294400",
-  "TaNPR4-B" = "TraesCS4B02G018900",
-  "TaNPR4-D" = "TraesCS4D02G017500",
-  "TaNPR5-A" = "TraesCS3A02G489000",
-  "TaNPR5-B" = "TraesCS3B02G537400",
-  "TaNPR5-D" = "TraesCS3D02G484100",
-  "TaNPR6-A" = "TraesCS5A02G134700",
-  "TaNPR6-B" = "TraesCS5B02G133700",
-  "TaNPR6-D" = "TraesCS5D02G139600"
-)
-
-Seurat::DotPlot(obj, features = setNames(TaNPRs, NULL)) +
-  ggplot2::coord_flip() +
-  ggplot2::scale_x_discrete(
-    labels = names(TaNPRs)) +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-```
-
-### PR genes
-
-```{r}
-TaPRs <- c(
-  "PR1-like" = "TraesCS2A02G476800",
-  "PR1-like" = "TraesCS2D02G317800",
-  "PR1-like" = "TraesCS3A02G291000",
-  "PR1-like" = "TraesCS3D02G290800",
-  "PR1-like" = "TraesCS4A02G116400",
-  "PR1-like" = "TraesCS4A02G251300",
-  "PR1-like" = "TraesCS4B02G063600",
-  "PR1-like" = "TraesCS4D02G062500",
-  "PR1-like" = "TraesCS4D02G189200",
-  "PR1-like" = "TraesCS5D02G259800LC",
-  "PR2-like" = "TraesCS6B02G188000",
-  "PR2-like" = "TraesCS7B02G279900",
-  "PR3-like" = "TraesCS2A02G033600",
-  "PR3-like" = "TraesCS3D02G260300",
-  "PR4-like" = "TraesCS2A02G551000",
-  "PR4-like" = "TraesCS2D02G552100",
-  "PR4-like" = "TraesCS3A02G517100",
-  "PR4-like" = "TraesCS3D02G524700",
-  "PR5-like" = "TraesCS2A02G290300",
-  "PR5-like" = "TraesCS2B02G306800",
-  "PR5-like" = "TraesCS2D02G288200",
-  "PR5-like" = "TraesCS3A02G357800",
-  "PR5-like" = "TraesCS3B02G390500",
-  "PR5-like" = "TraesCS3D02G351700",
-  "PR5-like" = "TraesCS4A02G177300",
-  "PR5-like" = "TraesCS4B02G140500",
-  "PR5-like" = "TraesCS4D02G135200",
-  "PR5-like" = "TraesCS5A02G328500",
-  "PR5-like" = "TraesCS5B02G358300",
-  "PR5-like" = "TraesCS5D02G334400",
-  "PR5-like" = "TraesCS6A02G129400",
-  "PR5-like" = "TraesCS6B02G157700",
-  "PR5-like" = "TraesCS6D02G118700",
-  "PR5-like" = "TraesCS7A02G253800",
-  "PR5-like" = "TraesCS7D02G252400",
-  "PR14-like" = "TraesCS3B02G063400",
-  "PR14-like" = "TraesCS3B02G063500",
-  "PR14-like" = "TraesCS3B02G063600",
-  "PR14-like" = "TraesCS3B02G063700"
-)
-
-
-Seurat::DotPlot(obj, features = setNames(TaPRs, NULL)) +
-  ggplot2::coord_flip() +
-  ggplot2::scale_x_discrete(
-    labels = names(TaPRs)) +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-```
-
-### NHPs
-
-```{r}
-NHPs <- list(
-  "FMO-like" = c(
-    "TraesCS1D02G213900",
-    "TraesCS2A02G071500",
-    "TraesCS2A02G071600",
-    "TraesCS2D02G070400",
-    "TraesCS3A02G010900",
-    "TraesCS3D02G000800",
-    "TraesCS4A02G313200",
-    "TraesCS4B02G366800",
-    "TraesCS4B02G370200",
-    "TraesCS4D02G269000",
-    "TraesCS4D02G361000",
-    "TraesCS5A02G348100",
-    "TraesCS5A02G348400",
-    "TraesCS5A02G349300",
-    "TraesCS5B02G194300",
-    "TraesCS5B02G349200",
-    "TraesCS5D02G354600",
-    "TraesCS6A02G150700",
-    "TraesCS6B02G178800",
-    "TraesCS6D02G139800",
-    "TraesCS7A02G552000",
-    "TraesCS7D02G060000"),
-  "ALD1-like" = c(
-    "TraesCS1B02G115200",
-    "TraesCS3A02G310300",
-    "TraesCS4A02G043800",
-    "TraesCS4A02G116000",
-    "TraesCS4B02G188200",
-    "TraesCS4B02G264400",
-    "TraesCS4B02G264500",
-    "TraesCS4D02G189600",
-    "TraesCS4D02G264500",
-    "TraesCS5A02G236100",
-    "TraesCS5B02G234400",
-    "TraesCS5D02G243100"),
-  "SARD4-like" = c(
-    "TraesCS1A02G184900",
-    "TraesCS1B02G192900",
-    "TraesCS1D02G191900")
-)
-
-Seurat::DotPlot(obj, features = NHPs) +
-  ggplot2::coord_flip() +
-  ggplot2::facet_grid(
-    facets = feature.groups ~ .,
-    scales = "free_y",
-    space = "free_y") +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    axis.text.y = ggplot2::element_text(size = 6),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-```
-
-### MAPKs
-
-```{r}
-MAPKs <- c(
-  "TraesCS1A02G086500",
-  "TraesCS1A02G184500",
-  "TraesCS1A02G402400",
-  "TraesCS1A02G415300",
-  "TraesCS1A02G421000",
-  "TraesCS1B02G104900",
-  "TraesCS1B02G192600",
-  "TraesCS1B02G431400",
-  "TraesCS1B02G445300",
-  "TraesCS1B02G452200",
-  "TraesCS1D02G088000",
-  "TraesCS1D02G192200",
-  "TraesCS1D02G410100",
-  "TraesCS1D02G422800",
-  "TraesCS1D02G428900",
-  "TraesCS3A02G228000",
-  "TraesCS3A02G231700",
-  "TraesCS3A02G242100",
-  "TraesCS3B02G256700",
-  "TraesCS3B02G260900",
-  "TraesCS3B02G270200",
-  "TraesCS3D02G221700",
-  "TraesCS3D02G225600",
-  "TraesCS3D02G242200",
-  "TraesCS4A02G106400",
-  "TraesCS4B02G197800",
-  "TraesCS4D02G198600",
-  "TraesCS5A02G295800",
-  "TraesCS5B02G295300",
-  "TraesCS6A02G099600",
-  "TraesCS6A02G118100",
-  "TraesCS6B02G127800",
-  "TraesCS6B02G146300",
-  "TraesCS7A02G111300",
-  "TraesCS7A02G335300",
-  "TraesCS7A02G410700",
-  "TraesCS7A02G422500",
-  "TraesCS7B02G009200",
-  "TraesCS7B02G246900",
-  "TraesCS7B02G309900",
-  "TraesCS7B02G322900",
-  "TraesCS7D02G106400",
-  "TraesCS7D02G342800",
-  "TraesCS7D02G403700",
-  "TraesCS7D02G414700",
-  "TraesCS7D02G414900")
-
-Seurat::DotPlot(obj, features = MAPKs) +
-  ggplot2::coord_flip() +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-```
-
-### TaGRAS
-
-Liu, Y. & Wang, W. Characterization of the GRAS gene family reveals their contribution to the high adaptability of wheat. PeerJ 9, e10811 (2021).
-
-```{r}
-TaGRAS <- list(
-  "DELLA" = c(
-    "TraesCS1A02G413800",
-    "TraesCS1B02G443800",
-    "TraesCS1D02G421200",
-    "TraesCS2A02G096800",
-    "TraesCS2B02G112100",
-    "TraesCS2D02G095300",
-    "TraesCS3A02G233000",
-    "TraesCS3B02G262400",
-    "TraesCS3D02G220100",
-    "TraesCS4A02G271000",
-    "TraesCS4A02G466700",
-    "TraesCS4B02G043100",
-    "TraesCS4B02G342800",
-    "TraesCS4D02G040400",
-    "TraesCS4D02G338800",
-    "TraesCS5A02G511900"
-  ),
-  "DLT" = c(
-    "TraesCS4A02G430600",
-    "TraesCS7A02G059000",
-    "TraesCS7D02G053600"
-  ),
-  "HAM" = c(
-    "TraesCS1A02G209400",
-    "TraesCS1B02G223400",
-    "TraesCS1D02G212800",
-    "TraesCS4A02G088500",
-    "TraesCS4A02G209800",
-    "TraesCS4A02G482000",
-    "TraesCS4B02G113300",
-    "TraesCS4B02G215700",
-    "TraesCS4B02G367300",
-    "TraesCS4D02G110800",
-    "TraesCS4D02G216200",
-    "TraesCS4D02G360200",
-    "TraesCS5A02G535000",
-    "TraesCS6A02G247200",
-    "TraesCS6B02G277400",
-    "TraesCS6D02G229400",
-    "TraesCS7A02G014200",
-    "TraesCS7D02G011400"
-  ),
-  "LAS" = c(
-    "TraesCS6A02G159500",
-    "TraesCS6B02G191800",
-    "TraesCS6D02G153000",
-    "TraesCS7A02G382800",
-    "TraesCS7B02G285500",
-    "TraesCS7D02G379200"
-  ),
-  "LISCL" = c(
-    "TraesCS1A02G030200",
-    "TraesCS1A02G030300",
-    "TraesCS1B02G037200",
-    "TraesCS1B02G037300",
-    "TraesCS1B02G037400",
-    "TraesCS1B02G037500",
-    "TraesCS1D02G030800",
-    "TraesCS1D02G030900",
-    "TraesCS1D02G031000",
-    "TraesCS1D02G031200",
-    "TraesCS3A02G067900",
-    "TraesCS3A02G068000",
-    "TraesCS3A02G360300",
-    "TraesCS3B02G080900",
-    "TraesCS3B02G081000",
-    "TraesCS3B02G081100",
-    "TraesCS3B02G392600",
-    "TraesCS3D02G067700",
-    "TraesCS3D02G067800",
-    "TraesCS3D02G067900",
-    "TraesCS3D02G354100",
-    "TraesCS4A02G176200",
-    "TraesCS4A02G176300",
-    "TraesCS4A02G176400",
-    "TraesCS4A02G176600",
-    "TraesCS4A02G176500",
-    "TraesCS4A02G176700",
-    "TraesCS4A02G177100",
-    "TraesCS4B02G140800",
-    "TraesCS4B02G141100",
-    "TraesCS4B02G141200",
-    "TraesCS4B02G141300",
-    "TraesCS4B02G141400",
-    "TraesCS4B02G141500",
-    "TraesCS4B02G336200",
-    "TraesCS4D02G135500",
-    "TraesCS4D02G135900",
-    "TraesCS4D02G136000",
-    "TraesCS4D02G136100",
-    "TraesCS4D02G136200",
-    "TraesCS4D02G136300",
-    "TraesCS4D02G136400",
-    "TraesCS4D02G136500",
-    "TraesCS4D02G332000",
-    "TraesCS5A02G080300",
-    "TraesCS5A02G139000",
-    "TraesCS5A02G481300",
-    "TraesCS5A02G505900",
-    "TraesCS5A02G506000",
-    "TraesCS5A02G506100",
-    "TraesCS5B02G138100",
-    "TraesCS5B02G494500",
-    "TraesCS5D02G092000",
-    "TraesCS5D02G152700",
-    "TraesCS5D02G494900",
-    "TraesCS7A02G173000",
-    "TraesCS7B02G077800",
-    "TraesCS7B02G078300",
-    "TraesCS7D02G174100",
-    "TraesCS7D02G174300"
-  ),
-  "Os19" = c(
-    "TraesCS2A02G304000",
-    "TraesCS2B02G320700",
-    "TraesCS2D02G302600"
-  ),
-  "Os4" = c(
-    "TraesCS3A02G392400",
-    "TraesCS3A02G392500",
-    "TraesCS3A02G392600",
-    "TraesCS3B02G424500",
-    "TraesCS3B02G424600",
-    "TraesCS3D02G385400",
-    "TraesCS3D02G385500"
-  ),
-  "PAT1" = c(
-    "TraesCS2A02G189600",
-    "TraesCS2A02G214400",
-    "TraesCS2A02G395400",
-    "TraesCS2B02G217500",
-    "TraesCS2B02G239400",
-    "TraesCS2B02G413500",
-    "TraesCS2D02G198200",
-    "TraesCS2D02G220200",
-    "TraesCS2D02G393200",
-    "TraesCS3A02G408000",
-    "TraesCS3B02G441600",
-    "TraesCS3D02G403100",
-    "TraesCS4A02G039000",
-    "TraesCS4A02G465000",
-    "TraesCS4B02G266700",
-    "TraesCS4D02G266400",
-    "TraesCS5A02G409800",
-    "TraesCS5A02G414000",
-    "TraesCS5D02G419400"
-  ),
-  "SCL3" = c(
-    "TraesCS2A02G532900",
-    "TraesCS2B02G562400",
-    "TraesCS2D02G055700",
-    "TraesCS2D02G534700",
-    "TraesCS3A02G487500",
-    "TraesCS3B02G535100",
-    "TraesCS3D02G482600",
-    "TraesCS4A02G185900",
-    "TraesCS4D02G127800",
-    "TraesCS5A02G135000",
-    "TraesCS5B02G133800",
-    "TraesCS5D02G139500",
-    "TraesCS6D02G055100",
-    "TraesCSU02G014000"
-  ),
-  "SCL4/7" = c(
-    "TraesCS4A02G260600",
-    "TraesCS4B02G054000",
-    "TraesCS4D02G054000"
-  ),
-  "SCR" = c(
-    "TraesCS1A02G304000",
-    "TraesCS1B02G314500",
-    "TraesCS1D02G303500",
-    "TraesCS2A02G200700",
-    "TraesCS2B02G228000",
-    "TraesCS2D02G208500",
-    "TraesCS4A02G191300",
-    "TraesCS4B02G124000",
-    "TraesCS4D02G122000",
-    "TraesCS5A02G144000",
-    "TraesCS5B02G143100",
-    "TraesCS5D02G148000"
-  ),
-  "SHR" = c(
-    "TraesCS1A02G319700",
-    "TraesCS1B02G332000",
-    "TraesCS1D02G319500",
-    "TraesCS2A02G192600",
-    "TraesCS2A02G194600",
-    "TraesCS2A02G460200",
-    "TraesCS2B02G212300",
-    "TraesCS2B02G214600",
-    "TraesCS2B02G481900",
-    "TraesCS2D02G193300",
-    "TraesCS2D02G194800",
-    "TraesCS2D02G460500"
-  )
-)
-```
-
-```{r fig.height=18, fig.width=10}
-p <- Seurat::DotPlot(obj_mock, features = TaGRAS) +
-  ggplot2::coord_flip() +
-  ggplot2::facet_grid(
-    facets = feature.groups ~ .,
-    scales = "free_y",
-    space = "free_y") +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-
-p
-```
-
-```{r fig.height=18, fig.width=10}
-p <- Seurat::DotPlot(obj, features = TaGRAS) +
-  ggplot2::coord_flip() +
-  ggplot2::facet_grid(
-    facets = feature.groups ~ .,
-    scales = "free_y",
-    space = "free_y") +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-
-p
-```
-
-大部分转录因子的表达量都很低。
-
-### TaNAC
-
-```{r}
-Seurat::DotPlot(obj_mock, features = c(
-    "TraesCS5A02G143200",
-    "TraesCS5B02G142100",
-    "TraesCS5D02G148800")) +
-  ggplot2::coord_flip() +
-  ggplot2::theme(
-    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-    strip.text.y = ggplot2::element_text(angle = 0)
-  )
-```
-
-```{r fig.height=12, fig.width=7}
-Seurat::VlnPlot(obj_mock, features = c(
-    "TraesCS5A02G143200",
-    "TraesCS5B02G142100",
-    "TraesCS5D02G148800"), ncol = 1)
-```
-
-
-```{r}
-Seurat::FeaturePlot(
-    obj_mock, features = "TraesCS5A02G143200",
-    reduction = "umap", order = TRUE) +
-  ggplot2::coord_fixed() +
-  theme_dimred()
-```
-
-```{r}
-Seurat::FeaturePlot(
-    obj_mock, features = "TraesCS5B02G142100",
-    reduction = "umap", order = TRUE) +
-  ggplot2::coord_fixed() +
-  theme_dimred()
-```
-
-```{r}
-Seurat::FeaturePlot(
-    obj_mock, features = "TraesCS5D02G148800",
-    reduction = "umap", order = TRUE) +
-  ggplot2::coord_fixed() +
-  theme_dimred()
-```
-
-### TaACT
-
-> Kage, U., Karre, S., Kushalappa, A. C., & McCartney, C. (2017). Identification and characterization of a fusarium head blight resistance gene TaACT in wheat QTL-2DL. Plant Biotechnology Journal, 15(4), 447–457.
-
-```{r}
-Seurat::FeaturePlot(
-    obj, features = "TraesCS2D02G490400",
-    reduction = "umap", order = TRUE) +
-  ggplot2::coord_fixed() +
-  theme_dimred()
-```
-
-```{r}
-Seurat::FeaturePlot(
-    obj, features = "TraesCS2A02G490000",
-    reduction = "umap", order = TRUE) +
-  ggplot2::coord_fixed() +
-  theme_dimred()
-```
-
-```{r}
-Seurat::FeaturePlot(
-    obj, features = "TraesCS2B02G518300",
-    reduction = "umap", order = TRUE) +
-  ggplot2::coord_fixed() +
-  theme_dimred()
 ```
 

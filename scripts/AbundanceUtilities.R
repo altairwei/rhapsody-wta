@@ -107,10 +107,11 @@ association.SingleCellExperiment <- function(
 
 plotNcorrRidges <- function(
     sce, theme_size = 11,
-    y_expand = ggplot2::expansion(mult = c(0, 0.2))) {
+    y_expand = ggplot2::expansion(mult = c(0, 0.2)),
+    group_by = "cluster_id") {
   cnaRes <- metadata(sce)$cnaRes
   data.frame(cna_ncorrs = sce$cna_ncorrs,
-             cellType = sce$cluster_id) |>
+             cellType = colData(sce)[, group_by]) |>
     ggplot2::ggplot(ggplot2::aes(
       x = cna_ncorrs, y = forcats::fct_reorder(cellType, cna_ncorrs),
       fill = cellType)) +

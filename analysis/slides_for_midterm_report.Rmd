@@ -7,10 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 library(magrittr)
-source("../scripts/UtilityFunctions.R")
-source("../scripts/TrajectoryUtilities.R")
-source("../scripts/EnrichmentUtilities.R")
-source("../scripts/AbundanceUtilities.R")
+source("../scripts/LoadUtils.R", chdir = TRUE)
 knitr::opts_chunk$set(dev = "png")
 scv <- reticulate::import("scvelo")
 plt <- reticulate::import("matplotlib.pyplot")
@@ -184,102 +181,7 @@ p
 ### Expression of marker genes
 
 ```{r fig.height=12, fig.width=10}
-markers = list(
-  # Guardian Cells
-  "ALMT12" = c(
-    "TraesCS1D02G194000",
-    "TraesCS1A02G189900",
-    "TraesCS1B02G192000"
-  ),
-  "MYB60" = c(
-    "TraesCS4A02G322200",
-    "TraesCS5D02G552200"
-  ),
-  "HIC" = c(
-    "TraesCS4D02G226100"
-  ),
-
-  # Epidermal Cells
-  "FDH" = c(
-    "TraesCS4B02G297500",
-    "TraesCS4D02G296400",
-    "TraesCS4A02G007400"
-  ),
-  "ATML1" = c(
-    "TraesCS2A02G474000",
-    "TraesCS2D02G473700"
-  ),
-  "DCR" = c(
-    "TraesCS1A02G341300",
-    "TraesCS1D02G343400"
-  ),
-  
-  # EP3 是排水孔相关基因
-  "EP3" = c(
-    "TraesCS2A02G350700",
-    "TraesCS2D02G348800",
-    "TraesCS6D02G199500",
-    "TraesCS6A02G216100"
-  ),
-
-  # Mesophyll Cells
-  "RBCS" = c(
-    "TraesCS2A02G066800",
-    "TraesCS5A02G165400",
-    "TraesCS5D02G169900"
-  ),
-  "CAB3" = c(
-    "TraesCS7A02G276400",
-    #"TraesCS1D02G411300",
-    #"TraesCS1B02G317500",
-    #"TraesCS7D02G276300",
-    #"TraesCS5B02G353200",
-    #"TraesCS5A02G350600",
-    "TraesCS1A02G403300"
-  ),
-  "LHCB2.1" = c(
-    "TraesCS5D02G329200",
-    "TraesCS5B02G322900",
-    "TraesCS5A02G322500"
-  ),
-  "CA1" = c(
-    #"TraesCS7D02G443400",
-    "TraesCS7B02G354800",
-    "TraesCS3A02G230000",
-    #"TraesCS3D02G223300",
-    "TraesCS3B02G259300"
-  ),
-  "AOC2" = c(
-    "TraesCS6D02G314300",
-    "TraesCS6A02G334800",
-    "TraesCS6B02G365200"
-  ),
-
-  # Vascular Cells
-  "gl-OXO" = c(
-    "TraesCS4D02G032000",
-    "TraesCS4B02G033300",
-    "TraesCS4A02G279200"#,
-    #"TraesCS4D02G031800"
-  ),
-  "TaSUT1" = c(
-    "TraesCS4A02G016400",
-    "TraesCS4B02G287800",
-    "TraesCS4D02G286500"
-  ),
-  "SULTR3;4" = c(
-    "TraesCS7A02G088700",
-    "TraesCS4A02G388000",
-    "TraesCS7D02G084100"
-  ),
-  "CPIII" = c(
-    "TraesCS6B02G050700",
-    "TraesCS6D02G041700",
-    "TraesCS6A02G036100"
-  )
-)
-
-p2 <- Seurat::DotPlot(obj_mock, features = markers) +
+p2 <- Seurat::DotPlot(obj_mock, features = KNOWN_MARKERS) +
   ggplot2::coord_flip() +
   ggplot2::facet_grid(
     facets = feature.groups ~ .,
@@ -312,7 +214,7 @@ p3
 
 
 ```{r fig.height=6, fig.width=14}
-p2 <- Seurat::DotPlot(obj_mock, features = markers) +
+p2 <- Seurat::DotPlot(obj_mock, features = KNOWN_MARKERS) +
   ggplot2::theme(
     axis.text.x = ggplot2::element_blank(),
     legend.position = "bottom",
@@ -320,7 +222,6 @@ p2 <- Seurat::DotPlot(obj_mock, features = markers) +
   )
 p2
 ```
-
 
 
 ### Newly identified markers
@@ -406,6 +307,11 @@ CIBER <- deconvLCM(
 ```{r fig.height=6, fig.width=8}
 p1 <- deconvScatter(CIBER, LCM_design, ncol = 4)
 p1
+```
+
+```{r include=FALSE, results='hide'}
+rm(CIBER)
+gc()
 ```
 
 ### Cell proportion changes
@@ -498,7 +404,6 @@ p4 <- rhapsodykit::calculateClusterProportion(
       legend.justification = "left") &
     font_plot_tag(16))
 ```
-
 
 ### Cell embeddings across times
 
@@ -692,6 +597,11 @@ p <- patchwork::wrap_plots(plist)
 p
 ```
 
+```{r include=FALSE, results='hide'}
+rm(de_β, avg_expr_df, avg_expr, avg_expr_cor)
+gc()
+```
+
 #### Pathway activity
 
 ```{r}
@@ -829,12 +739,6 @@ gsea <- clusterProfiler::gseGO(
 printGSEATable(gsea)
 ```
 
-
-```{r}
-gointeractive(gsea, showCategory = 100, color = "NES")
-```
-
-
 ```{r fig.height=14, fig.width=14}
 p <- gsea |>
   dplyr::filter(NES < 0) |>
@@ -970,6 +874,11 @@ piclist <- lapply(negcorr, function(GO) {
 (p <- patchwork::wrap_plots(piclist, ncol = 3))
 ```
 
+```{r include=FALSE, results='hide'}
+rm(sce_mock_slim, gsea, gsea_slim, pathway_summed, pathways, corres)
+gc()
+```
+
 ### RNA velocity of MOCK cells
 
 ```{r}
@@ -1061,20 +970,20 @@ p2 <- p1 + ggplot2::facet_wrap(~ time, ncol = 1) +
 
 ### Cell cluster connectivity
 
-```{r}
+```{r eval=FALSE}
 adata <- runPAGA(
   sce_mock_slim, group_key = "cluster_id",
   assay.X = "logcounts", use.dimred = "HARMONY"
 )
 ```
 
-```{r}
+```{r eval=FALSE}
 adata$obsm$update(list(
   X_umap = reducedDim(sce_mock_slim, "UMAP")
 ))
 ```
 
-```{r fig.height=7, fig.width=7}
+```{r fig.height=7, fig.width=7, eval=FALSE}
 p <- plotPagaGraph(adata, basis = "umap", #threshold = 0.11,
                    edge_cex = 5, node_cex = 4, label_cex = 1.5) +
   ggplot2::xlab("UMAP_1") +
@@ -1083,6 +992,11 @@ p <- plotPagaGraph(adata, basis = "umap", #threshold = 0.11,
   theme_dimred()
 
 p
+```
+
+```{r include=FALSE, results='hide'}
+rm(adata_mock, sce_mock_slim, adata)
+gc()
 ```
 
 ## Integration of all samples
@@ -1244,10 +1158,15 @@ p <- (p1 + p3) / p4 / p7 +
 p
 ```
 
+```{r include=FALSE, results='hide'}
+rm(df, overlap_df, df_sankey)
+gc()
+```
+
 ### Expression of marker genes
 
 ```{r fig.height=14, fig.width=12}
-p <- Seurat::DotPlot(obj, features = markers) +
+p <- Seurat::DotPlot(obj, features = KNOWN_MARKERS) +
   ggplot2::coord_flip() +
   ggplot2::facet_grid(
     facets = feature.groups ~ .,
@@ -1387,6 +1306,11 @@ p <- rhapsodykit::calculateClusterProportion(
   rotate_x_labels()
 
 p
+```
+
+```{r include=FALSE, results='hide'}
+rm(marker_cosg_all, ca_res_all)
+gc()
 ```
 
 
@@ -1596,23 +1520,27 @@ p <- p1 / p2 +
 p
 ```
 
+```{r include=FALSE, results='hide'}
+rm(df_ncorrs_mock, sce_all_pnr2, df_ncorrs_pnr2, sce_all_tr4, df_ncorrs_tr4, df_ncorrs)
+gc()
+```
 
 ### Cell cluster connectivity
 
-```{r}
+```{r eval=FALSE}
 adata <- runPAGA(
   sce, group_key = "cluster_id",
   assay.X = "logcounts", use.dimred = "HARMONY"
 )
 ```
 
-```{r}
+```{r eval=FALSE}
 adata$obsm$update(list(
   X_umap = reducedDim(sce, "UMAP")
 ))
 ```
 
-```{r}
+```{r eval=FALSE}
 p <- plotPagaGraph(adata, basis = "umap", edge_cex = 2, node_cex = 2) +
   ggplot2::coord_fixed() +
   ggplot2::xlab("UMAP 1") +
@@ -1671,6 +1599,11 @@ ax = scv.pl.velocity_embedding_stream(
   palette=r.color_sub, show=False, ax = axes[2])
 
 plt.show()
+```
+
+```{r include=FALSE, results='hide'}
+rm(adata_all_mock, adata_all_pnr2, adata_all_tr4)
+gc()
 ```
 
 ### Differential abundance analysis
@@ -1742,6 +1675,11 @@ p_da_3dpi <- patchwork::wrap_plots(
   theme_dimred()
 
 p_da_3dpi
+```
+
+```{r include=FALSE, results='hide'}
+rm(da_ctr_1dpi, da_ctr_2dpi, da_ctr_1dpi)
+gc()
 ```
 
 ### Characteristic of mesophylls
@@ -1822,29 +1760,6 @@ p
 
 ```{r}
 de_me1 <- Seurat::FindMarkers(obj, ident.1 = "Me_1", ident.2 = "Me_2", min.pct = 0.25)
-```
-
-```{r}
-anno <- brookite::pull_annotation(
-  rownames(unique(de_me1)),
-  mart_info = list(
-    mart = "plants_mart",
-    dataset = "taestivum_eg_gene",
-    host = "https://plants.ensembl.org"
-  ),
-  dest_attrs = c(
-    Description = "description",
-    GO_ID = "go_id",
-    GO_Name = "name_1006",
-    GO_Level = "namespace_1003",
-    Interpro_ID = "interpro",
-    Interpro_Short_Description = "interpro_short_description"
-  ))
-
-de_me1 |>
-  tibble::rownames_to_column("Gene") |>
-  dplyr::left_join(anno, by = c("Gene" = "ensembl_gene_id")) |>
-  download_table()
 ```
 
 ```{r}
@@ -1950,6 +1865,11 @@ p2 <- ego_me |>
   ggplot2::guides(fill = ggplot2::guide_legend(title = "cell cluster"))
 
 p2
+```
+
+```{r include=FALSE, results='hide'}
+rm(avg_expr_df, de_me1, ego_me)
+gc()
 ```
 
 ### Characteristic of outer sheath
@@ -2110,6 +2030,11 @@ p4 <- ego_os |>
 p4
 ```
 
+```{r include=FALSE, results='hide'}
+rm(da_va4, da_va3, da_va2, de_va_all, ego_os)
+gc()
+```
+
 ### Combined ORA visualization
 
 ```{r}
@@ -2170,6 +2095,11 @@ p <- ego |>
 p
 ```
 
+```{r include=FALSE, results='hide'}
+rm(ego, marker_df)
+gc()
+```
+
 ### PAL-related pathway activity
 
 ```{r}
@@ -2211,8 +2141,9 @@ piclist <- lapply(PAL_pathways, function(p) {
 (p <- patchwork::wrap_plots(piclist, ncol = 3))
 ```
 
-```{r fig.height=14, fig.width=7}
-scater::plotExpression(sce_pal, PAL_pathways, x = "cluster_id", exprs_values = "activity", ncol = 1)
+```{r include=FALSE, results='hide'}
+rm(sce_pal)
+gc()
 ```
 
 ### Slingshot trajectory inference
@@ -2279,6 +2210,11 @@ plist <- purrr::imap(
 
 (p <- patchwork::wrap_plots(plist, ncol = 1, guides = "collect") &
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.01)))
+```
+
+```{r include=FALSE, results='hide'}
+rm(sce_me_all, sce_me_1dpi, sce_me_2dpi, sce_me_3dpi)
+gc()
 ```
 
 #### Outer sheath state transitions
@@ -2351,6 +2287,12 @@ plist <- purrr::imap(
 (p <- patchwork::wrap_plots(plist, ncol = 1, guides = "collect") &
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = 0.015)))
 ```
+
+```{r include=FALSE, results='hide'}
+rm(sce_os_all, sce_os_1dpi, sce_os_2dpi, sce_os_3dpi)
+gc()
+```
+
 
 ## Future plans
 
@@ -2761,8 +2703,4 @@ p2 <- Seurat::DotPlot(obj,
 p <- p1 + p2 + patchwork::plot_layout(widths = c(17, 12))
 
 p
-```
-
-```{r}
-knitr::knit_exit()
 ```
