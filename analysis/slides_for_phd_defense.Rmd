@@ -1323,20 +1323,20 @@ plist <- purrr::imap(sce_sub_list, function(sce_sub, name) {
       title = "cluster", nrow = 1, byrow = TRUE)))
 ```
 
-```{r eval=FALSE}
+```{r}
 adata <- runPAGA(
   sce, group_key = "cluster_id",
   assay.X = "logcounts", use.dimred = "HARMONY"
 )
 ```
 
-```{r eval=FALSE}
+```{r}
 adata$obsm$update(list(
   X_umap = reducedDim(sce, "UMAP")
 ))
 ```
 
-```{r eval=FALSE}
+```{r}
 p <- plotPagaGraph(adata, basis = "umap", edge_cex = 2, node_cex = 2) +
   ggplot2::coord_fixed() +
   ggplot2::xlab("UMAP 1") +

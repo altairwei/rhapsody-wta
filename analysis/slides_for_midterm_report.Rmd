@@ -970,20 +970,20 @@ p2 <- p1 + ggplot2::facet_wrap(~ time, ncol = 1) +
 
 ### Cell cluster connectivity
 
-```{r eval=FALSE}
+```{r}
 adata <- runPAGA(
   sce_mock_slim, group_key = "cluster_id",
   assay.X = "logcounts", use.dimred = "HARMONY"
 )
 ```
 
-```{r eval=FALSE}
+```{r}
 adata$obsm$update(list(
   X_umap = reducedDim(sce_mock_slim, "UMAP")
 ))
 ```
 
-```{r fig.height=7, fig.width=7, eval=FALSE}
+```{r fig.height=7, fig.width=7}
 p <- plotPagaGraph(adata, basis = "umap", #threshold = 0.11,
                    edge_cex = 5, node_cex = 4, label_cex = 1.5) +
   ggplot2::xlab("UMAP_1") +
@@ -1527,20 +1527,20 @@ gc()
 
 ### Cell cluster connectivity
 
-```{r eval=FALSE}
+```{r}
 adata <- runPAGA(
   sce, group_key = "cluster_id",
   assay.X = "logcounts", use.dimred = "HARMONY"
 )
 ```
 
-```{r eval=FALSE}
+```{r}
 adata$obsm$update(list(
   X_umap = reducedDim(sce, "UMAP")
 ))
 ```
 
-```{r eval=FALSE}
+```{r}
 p <- plotPagaGraph(adata, basis = "umap", edge_cex = 2, node_cex = 2) +
   ggplot2::coord_fixed() +
   ggplot2::xlab("UMAP 1") +

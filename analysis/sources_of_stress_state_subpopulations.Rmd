@@ -15,8 +15,7 @@ library(Matrix)
 library(patchwork)
 library(SingleCellExperiment)
 library(TrajectoryUtils)
-source("../scripts/TrajectoryUtilities.R")
-source("../scripts/UtilityFunctions.R")
+source("../scripts/LoadUtils.R", chdir = TRUE)
 sc <- reticulate::import("scanpy")
 scv <- reticulate::import("scvelo")
 ```
@@ -841,10 +840,11 @@ scater::plotReducedDim(
     point_size = 0.5,
     colour_by = "cellType",
     text_by = "cellType",
-    text_size = 3) +
+    text_size = 5) +
   ggplot2::guides(color = ggplot2::guide_legend(
     override.aes = list(size = 2))) +
-  ggplot2::coord_fixed()
+  ggplot2::coord_fixed() +
+  theme_dimred()
 ```
 
 #### 轨迹推断 {.tabset}
@@ -854,8 +854,11 @@ scater::plotReducedDim(
 ```{r}
 plotSlingshotCurveOnReduc(sce_os_all, dimred = "PHATE",
                     linewidth = 1, point_size = 0.5,
-                    text_by = "cellType") +
-  ggplot2::coord_fixed()
+                    lineage_rename = c("Lineage1" = "Va_2",
+                                       "Lineage2" = "Va_4",
+                                       "Lineage3" = "Va_3")) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
 ```
 
 #### 差异拓扑分析
