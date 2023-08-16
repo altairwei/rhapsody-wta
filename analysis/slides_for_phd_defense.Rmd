@@ -179,6 +179,12 @@ logfc_data <- readRDS(Sys.glob(
   "../results/ObjectCache/DifferentialState/ds_deg_logfc_data_*.rds"))
 ```
 
+```{r}
+lfcse <- SummarizedExperiment(
+  assays = list(logFC = logfc_data$mtx),
+  colData = logfc_data$coldata[-1])
+```
+
 ### Gene List
 
 ```{r}
@@ -1902,3 +1908,346 @@ ggplot2::qplot(x = pts, y = act) +
   ggplot2::geom_point()
 ```
 
+```{r}
+knitr::knit_exit()
+```
+
+## Heatmap Stripe for Model
+
+### Outer sheath
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$BXDs,
+             lfcse$cell_types == "Outer sheath"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$RLK,
+             lfcse$cell_types == "Outer sheath"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% unlist(pathways[c(
+                "PhotosynPSEA", "PhotosynAnt", "PhotosynCfix")]),
+             lfcse$cell_types == "Outer sheath"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+### Parenchyma
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$RLK,
+             lfcse$cell_types == "Parenchyma"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$NBLRR,
+             lfcse$cell_types == "Parenchyma"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% unlist(pathways[c(
+                "WRKY", "NAC", "Myb", "bZIP")]),
+             lfcse$cell_types == "Parenchyma"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+### Chlorenchyma
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% unlist(pathways[c(
+                "PhotosynPSEA", "PhotosynAnt", "PhotosynCfix")]),
+             lfcse$cell_types == "Chlorenchyma"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+### Phloem
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% unlist(pathways[c(
+                "WRKY", "NAC", "Myb", "bZIP")]),
+             lfcse$cell_types == "Phloem"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+### Procambium
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$`General phenylpropanoid`,
+             lfcse$cell_types == "Procambium"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+### Epidermis
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$`General phenylpropanoid`,
+             lfcse$cell_types == "Epidermis"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+```{r fig.height=2, fig.width=1}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% unlist(pathways[c(
+                "WRKY", "NAC", "Myb", "bZIP")]),
+             lfcse$cell_types == "Epidermis"],
+  col_split_by = "contrast",
+  col_anno_by = "times",
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+
+plotpreview(p, width = 1, height = 2, ext = ".svg")
+```
+
+### Redox homeostasis
+
+```{r}
+RBOH <- c(
+  `TaNOX1-1AL` = "TraesCS1A02G290700",
+  `TaNOX1-1BL` = "TraesCS1B02G300000",
+  `TaNOX1-1DL` = "TraesCS1D02G289300",
+  `TaNOX2-1AL` = "TraesCS1A02G347700",
+  `TaNOX2-1BL` = "TraesCS1B02G362200",
+  `TaNOX2-1DL` = "TraesCS1D02G350600",
+  `TaNOX3-1BL` = "TraesCS1B02G295200",
+  `TaNOX3-1DL` = "TraesCS1D02G284900",
+  `TaNOX5-3AL` = "TraesCS3A02G354200",
+  `TaNOX5-3BL` = "TraesCS3B02G386600",
+  `TaNOX5-3DL` = "TraesCS3D02G347900",
+  `TaNOX6-3AL` = "TraesCS3A02G280200",
+  `TaNOX6-3BL` = "TraesCS3B02G314000",
+  `TaNOX6-3DL` = "TraesCS3D02G279900",
+  `TaNOX7-3AS` = "TraesCS3A02G182900",
+  `TaNOX7-3AS` = "TraesCS3D02G187300",
+  `TaNOX7-3AS` = "TraesCS3B02G212900",
+  `TaNOX8-4BL` = "TraesCS4B02G358800",
+  `TaNOX8-4DL` = "TraesCS4D02G352200",
+  `TaNOX13-5AL` = "TraesCS5A02G527600",
+  `TaNOX9-4BL` = "TraesCS4B02G327800",
+  `TaNOX9-4DL` = "TraesCS4D02G324800",
+  `TaNOX11-5AL` = "TraesCS5A02G499900",
+  `TaNOX10-5AL` = "TraesCS5A02G301700",
+  `TaNOX10-5BL` = "TraesCS5B02G299000",
+  `TaNOX10-5BL` = "TraesCS5D02G306400",
+  `TaNOX12-5AL` =	"TraesCS5A02G211800",
+  `TaNOX12-5BL` =	"TraesCS5B02G212100",
+  `TaNOX12-5DL` =	"TraesCS5D02G222100",
+  `TaNOX14-5AS` =	"TraesCS5A02G093600",
+  `TaNOX14-5BS` =	"TraesCS5B02G099700",
+  `TaNOX14-5DS` =	"TraesCS5D02G105900",
+  `TaNOX15-6AS` =	"TraesCS6A02G180600",
+  `TaNOX15-6BS` =	"TraesCS6B02G205000",
+  `TaNOX-like4-6DS` = "TraesCS6D02G164500",
+  #`TaNOX-like1-1AL` = "TraesCS1B02G637700LC",
+  #`TaNOX-like3-1BL` = "TraesCS1B02G637700LC",
+  `TaNOX-like2-1BL` = "TraesCS1B02G295300",
+  `TaNOX-like2-1BL` = "TraesCS1D02G285000",
+  `TaFRO1-1AL` = "TraesCS1A02G284600",
+  `TaFRO1-1BL` = "TraesCS1B02G293900",
+  `TaFRO1-1DL` = "TraesCS1D02G283600",
+  `TaFRO2-1BL` = "TraesCS1B02G295100",
+  `TaNOX4-1DL` = "TraesCS1D02G284800",
+  `TaNOX4-1DL` = "TraesCS1A02G285700",
+  `TaFRO3-2AL` = "TraesCS2A02G312600",
+  `TaFRO3-2BL` = "TraesCS2B02G329600",
+  `TaFRO3-2DL` = "TraesCS2D02G311100",
+  `TaFRO4-2AL` = "TraesCS2A02G396000",
+  `TaFRO4-2BL` = "TraesCS2B02G414300",
+  `TaFRO4-2DL` = "TraesCS2D02G393700"
+)
+
+RBOH <- tibble::enframe(RBOH, name = "Name", value = "ID")
+```
+
+```{r fig.height=2.5, fig.width=9}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% RBOH$ID,],
+  col_split_by = "cell_types",
+  col_anno_by = c("times", "contrast"),
+  show_row_dend = FALSE,
+  show_row_names = TRUE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE,
+  row_labels = with(RBOH, {
+    Name[match(rownames(lfcse)[rownames(lfcse) %in% ID], ID)]
+  })
+)
+```
+
+```{r fig.height=2.5, fig.width=9}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% RBOH$ID,],
+  col_split_by = "cell_types",
+  col_anno_by = c("times", "contrast"),
+  show_row_dend = FALSE,
+  show_row_names = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+```
+
+```{r fig.height=2.5, fig.width=9}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$TaGST,],
+  col_split_by = "cell_types",
+  col_anno_by = c("times", "contrast"),
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+```
+
+```{r fig.height=2.5, fig.width=9}
+p <- plotImmunityHeatmap(
+  se = lfcse[rownames(lfcse) %in% pathways$Polyamine,],
+  col_split_by = "cell_types",
+  col_anno_by = c("times", "contrast"),
+  show_row_dend = FALSE,
+  show_col_anno_name = FALSE,
+  show_heatmap_legend = FALSE,
+  column_title = NULL,
+  show_col_anno_legend = FALSE,
+  simple_anno_size = grid::unit(3, "mm"),
+  border = FALSE
+)
+```

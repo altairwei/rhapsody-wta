@@ -390,7 +390,7 @@ pb_mds_list$counts %>%
 ```
 
 ```{r mds-plot-by-cluster, fig.height=7, fig.width=14}
-plot_mds_by_cluster <- function(df, clusters = NULL) {
+plot_mds_by_cluster <- function(df, clusters = NULL, nrow = NULL, theme_size = 11) {
   if (!is.null(clusters))
     df <- dplyr::filter(df, cluster_id %in% clusters)
 
@@ -399,7 +399,7 @@ plot_mds_by_cluster <- function(df, clusters = NULL) {
       x = "MDS1", y = "MDS2",
       color = "treatment", size = "time", alpha = "time")) +
     ggplot2::geom_point() +
-    ggplot2::facet_wrap(~cluster_id, nrow = 2) +
+    ggplot2::facet_wrap(~cluster_id, nrow = nrow) +
     ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
     ggplot2::scale_alpha_manual(values = c(
       "0DPI" = 1, "1DPI" = .8, "2DPI" = .6, "3DPI" = .4)) +
@@ -407,7 +407,7 @@ plot_mds_by_cluster <- function(df, clusters = NULL) {
       "0DPI" = 1, "1DPI" = 2, "2DPI" = 3, "3DPI" = 4)) +
     ggplot2::guides(
       color = ggplot2::guide_legend(override.aes = list(alpha = 1))) +
-    ggplot2::theme_bw() +
+    ggplot2::theme_bw(base_size = theme_size) +
     ggplot2::theme(
       axis.text = ggplot2::element_text(color = "black"),
       panel.grid.minor = ggplot2::element_blank(),
@@ -416,9 +416,17 @@ plot_mds_by_cluster <- function(df, clusters = NULL) {
     )
 }
 
-(p <- plot_mds_by_cluster(pb_mds_list$counts) +
+(p <- plot_mds_by_cluster(pb_mds_list$counts, nrow = 2) +
     ggplot2::ggtitle("Pseudobulk Counts"))
 ```
+
+```{r fig.height=6, fig.width=10}
+(p <- plot_mds_by_cluster(pb_mds_list$counts,
+                          nrow = 2, theme_size = 14) +
+   legend_override("color", list(size = 4)) +
+    ggplot2::theme(legend.position = "bottom"))
+```
+
 
 ### Pseudobulk differential expression
 
@@ -594,6 +602,7 @@ df_degs |>
     group = paste(contrast, regu_type))) +
   ggplot2::geom_point() +
   ggplot2::geom_line() +
+  ggplot2::scale_color_brewer(palette = "Set1") +
   ggplot2::ylab("Number of DS genes") +
   ggplot2::theme_bw()
 ```
