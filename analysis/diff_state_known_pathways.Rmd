@@ -2287,7 +2287,9 @@ PCD <- list(
   CHUP1 = c(
     "TraesCS3A02G235800",
     "TraesCS3B02G264100",
-    "TraesCS3D02G235300")
+    "TraesCS3D02G235300"),
+  TaMDAR6 = "TraesCS7A02G304000",
+  `TaBI-1` = "TraesCS6B02G113900"
 )
 
 PCD <- tibble::enframe(PCD, name = "Name", value = "ID") |>

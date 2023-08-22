@@ -679,4 +679,162 @@ p <- p %<+% pdata +
 p
 ```
 
+```{r include=FALSE, results='hide'}
+rm(list = ls())
+gc()
+```
 
+## Downstream Analysis of Optimum
+
+### Load Data
+
+```{r}
+samples <- c(
+  "0DPI-MOCK-1",
+  "0DPI-MOCK-2",
+  "1DPI-MOCK-1",
+  "1DPI-MOCK-2",
+  "2DPI-MOCK-1",
+  "2DPI-MOCK-2",
+  "3DPI-MOCK-1",
+  "3DPI-MOCK-2"
+)
+
+names(samples) <- samples
+```
+
+```{r}
+obj_mock <- lapply(samples, function(sample) readRDS(
+  Sys.glob(paste0(
+    "../results/ObjectCache/QualityControl/",
+    "obj_strained_", sample, "_*.rds"))
+  )
+)
+```
+
+### Data Integration
+
+#### Optimum parameters
+
+```{r}
+npcs <- 20
+k <- 40
+res <- 0.3
+```
+
+#### Merge objects
+
+```{r}
+obj_mock_combined <- merge(
+  x = obj_mock[[1]],
+  y = obj_mock[-1],
+  add.cell.ids = names(obj_mock)
+)
+```
+
+```{r}
+obj_mock_combined <- obj_mock_combined %>%
+  Seurat::NormalizeData(verbose = FALSE) %>%
+  Seurat::FindVariableFeatures(selection.method = "vst", nfeatures = 2000) %>%
+  Seurat::ScaleData(verbose = FALSE)
+```
+
+```{r}
+obj_mock_combined <- obj_mock_combined %>%
+  Seurat::RunPCA(features = NULL, npcs = npcs, verbose = FALSE)
+```
+
+#### Run Harmony
+
+```{r fig.height=2.5, fig.width=6}
+obj_mock_combined <- obj_mock_combined %>% 
+    harmony::RunHarmony(
+      group.by.vars = c("time", "sample"),
+      theta = c(4, 2),
+      kmeans_init_nstart=20, kmeans_init_iter_max=100,
+      epsilon.cluster=-Inf, epsilon.harmony=-Inf,
+      plot_convergence = TRUE)
+```
+
+### Dim Reduction and Clustering
+
+```{r}
+obj_mock_combined <- obj_mock_combined %>%
+    Seurat::RunUMAP(reduction = "harmony", dims = seq_len(npcs), verbose = FALSE, seed.use = 230816) 
+```
+
+```{r}
+obj_mock_combined <- obj_mock_combined %>%
+    Seurat::FindNeighbors(reduction = "harmony", dims = seq_len(npcs), k.param = k, verbose = FALSE) %>%
+    Seurat::FindClusters(resolution = res, verbose = FALSE, random.seed = 230816)
+```
+
+### Visualize dim reduction {.tabset}
+
+```{r fig.height=7, fig.width=8}
+ident_cols <- Seurat::DiscretePalette(length(levels(Seurat::Idents(obj_mock_combined))), palette = NULL)
+
+Seurat::DimPlot(
+        obj_mock_combined, reduction = "umap", cols = ident_cols,
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(values = rep("white", length(ident_cols))) +
+  ggplot2::coord_fixed() +
+  theme_dimred() +
+  ggplot2::ggtitle(sprintf("pc=%s, k=%s, res=%s", npcs, k, res)) +
+  center_plot_title()
+```
+
+### Deconvolution of LCM-seq Samples
+
+```{r}
+marker_cosg <- COSG::cosg(
+ obj_mock_combined,
+ groups = 'all',
+ assay = 'RNA',
+ slot = 'data',
+ mu = 1,
+ n_genes_user = 300
+)
+```
+
+```{r}
+LCM_design <- c(
+  "VC_1" = "vb.",
+  "VC_2" = "vb.",
+  "VC_3" = "vb.",
+  "CC_1" = "bp.",
+  "CC_2" = "bp.",
+  "CC_3" = "bp.",
+  "MC3_1" = "dp.",
+  "MC3_2" = "dp.",
+  "MC3_3" = "dp.",
+  "MC_1" = "me.",
+  "MC_2" = "me.",
+  "MC_3" = "me.",
+  "EC_1" = "ep.",
+  "EC_2" = "ep.",
+  "EC_3" = "ep."
+)
+
+CIBER <- deconvLCM(
+  seurat = obj_mock_combined,
+  lcm_file = "../results/LCMSeq/gene_quanti/counts/all.featureCounts",
+  markers = unique(unlist(marker_cosg$names)),
+  design = LCM_design,
+  mc.cores = 4
+)
+```
+
+```{r fig.height=7, fig.width=7, dev='svg'}
+deconvScatter(CIBER, LCM_design, ncol = 3)
+```
+
+```{r fig.height=6, fig.width=14}
+p2 <- Seurat::DotPlot(obj_mock_combined, features = KNOWN_MARKERS) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_blank(),
+    legend.position = "bottom",
+    legend.title = ggplot2::element_text(vjust = 1)
+  )
+p2
+```
