@@ -1,0 +1,179 @@
+---
+title: "Deconvolution of LCM-seq data with CIBERSORTx"
+author: "Altair Wei"
+date: "2023-08-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/LoadUtils.R", chdir = TRUE)
+```
+
+## Load Data
+
+### MOCK samples
+
+```{r}
+obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
+sce_mock <- muscat::prepSCE(sce_mock,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+mock_celltypes <- c(
+  "Gu", "Ep_α", "Ep_β",
+  "Me_α", "Me_β", "Me_γ", "Me_δ", "Me_ε",
+  "BS", "CC", "Va_α", "Va_β", "Va_γ", "Va_δ", "MPV")
+
+mock_celltype_names <- c(
+  "Guard cell", "Epidermal α", "Epidermal β",
+  
+  "Mesophyll α", "Mesophyll β", "Mesophyll γ",
+  "Mesophyll δ", "Mesophyll ε",
+  
+  "Vascular bundle sheath", "Phloem companion cell",
+  "Vascular α", "Vascular β", "Vascular γ",
+  "Vascular δ", "Midvein provascular cell"
+)
+
+mock_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(mock_celltypes))
+#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
+names(mock_celltype_colors) <- mock_celltypes
+```
+
+```{r}
+mock_body_layers <- c(
+  "Gu"   = "L1",
+  "Ep_α" = "L1",
+  "Ep_β" = "L1",
+  "Me_α" = "L2",
+  "Me_β" = "L2",
+  "Me_γ" = "L2",
+  "Me_δ" = "L2",
+  "Me_ε" = "L2",
+  "BS"   = "L3",
+  "CC"   = "L3",
+  "Va_α" = "L3",
+  "Va_β" = "L3",
+  "Va_γ" = "L3",
+  "Va_δ" = "L3",
+  "MPV"  = "L3"
+)
+```
+
+```{r}
+sce_mock$cluster_id <- forcats::fct_relevel(sce_mock$cluster_id, mock_celltypes)
+sce_mock$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce_mock$cluster_id), as.list(mock_body_layers)))
+Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_celltypes)
+```
+
+```{r}
+rm(obj_mock)
+gc()
+```
+
+
+## Buld Signature Matrix
+
+### Prepare scRNA-seq counts
+
+```{r}
+sce_slim <- sce_mock
+logcounts(sce_slim) <- NULL
+sce_slim <- sce_slim[
+  # Gene expressed in at least 10 cells
+  Matrix::rowSums(counts(sce_slim) > 0) > 10,
+  # Ensure no empty cell
+  Matrix::colSums(counts(sce_slim)) > 0
+]
+
+mtx <- as.matrix(counts(sce_slim))
+colnames(mtx) <- sce_slim$cluster_id
+rownames(mtx) <- rownames(sce_slim)
+
+# To save disk, because expression matrix has been corrected by SoupX
+mtx <- round(mtx, digits = 1)
+```
+
+注意，不要缺失第一列的列名，否则会导致 cell labels 完全错位！这里使用自定义的 `writeMatrixToTSV` 函数修正了 `write.table` 的不足。
+
+```{r}
+writeMatrixToTSV(mtx, "../results/DataPlots/sc_mock_counts.tsv")
+```
+
+```{r}
+rm(sce_mock, sce_slim, mtx)
+gc()
+```
+
+### Create signature matrix
+
+```{r}
+system2("docker", c("pull", "cibersortx/fractions"), stdout = FALSE)
+```
+
+```{r}
+system2(
+  command = "docker",
+  args = c(
+    "run",
+    "-v", sprintf("%s:/src/data", fs::path_abs("../results/DataPlots/")), 
+    "-v", sprintf("%s:/src/outdir", fs::path_abs("../results/DataPlots/")),
+    "cibersortx/fractions",
+    "--username",    USERNAME,
+    "--token",       TOKEN,
+    "--single_cell", "TRUE",
+    "--fraction",    "0",
+    "--refsample",   "sc_mock_counts.tsv",
+    "--verbose",      "TRUE"
+  )
+)
+```
+
+```{r}
+sigmatrix_file = sprintf("%s/CIBERSORTx_%s_inferred_phenoclasses.CIBERSORTx_%s_inferred_refsample.bm.K%s.txt",
+                         "../results/DataPlots", "sc_mock_counts", "sc_mock_counts", 999)
+file.rename(sigmatrix_file, sprintf("%s/%s_sigmatrix.tsv", "../results/DataPlots", "sc_mock_counts"))
+```
+
+
+## Impute Cell Fractions
+
+### Prepare LCM-seq TPM matrix
+
+这个不是 TPM，需要自己合并一下。
+
+```{r}
+lcm_tpm_mtx <- getTpmMatrixLCM("../results/LCMSeq/gene_quanti/tpm")
+writeMatrixToTSV(lcm_tpm_mtx, file = "../results/DataPlots/lcm_tpm_matrix.tsv")
+```
+
+### Impute fractions
+
+```{r}
+system2(
+  command = "docker",
+  args = c(
+    "run",
+    "-v", sprintf("%s:/src/data", fs::path_abs("../results/DataPlots/")), 
+    "-v", sprintf("%s:/src/outdir", fs::path_abs("../results/DataPlots/")),
+    "cibersortx/fractions",
+    "--username",     USERNAME,
+    "--token",        TOKEN,
+    "--refsample",    "sc_mock_counts.tsv",
+    "--mixture",      "lcm_tpm_matrix.tsv",
+    "--sigmatrix",    "sc_mock_counts_sigmatrix.tsv",
+    "--perm",         "100",
+    "--rmbatchSmode", "TRUE",
+    "--verbose",      "TRUE"
+  )
+)
+```
+

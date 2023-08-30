@@ -278,6 +278,20 @@ getMatrixLCM <- function(lcm_file) {
   lcm_mtx <- lcm_mtx[ rowSums(lcm_mtx) > 1, ]
 }
 
+getTpmMatrixLCM <- function(folder) {
+  # Ref: https://github.com/ncbi/TPMCalculator/wiki/Output-files
+  files <- Sys.glob(file.path(folder, "*.out"))
+  readr::read_tsv(files, id = "file", col_select = c(Gene_Id, TPM)) |>
+    dplyr::mutate(file = stringr::str_sub(basename(file), 0L, -5L)) |>
+    tidyr::pivot_wider(names_from = file,
+                       values_from = TPM,
+                       values_fill = 0,
+                       # For duplicated organelle genes
+                       values_fn = sum) |>
+    tibble::column_to_rownames(var = "Gene_Id") |>
+    as.matrix()
+}
+
 #' Deconvolution of LCM Samples
 #'
 #' @param seurat Seurat object
@@ -449,4 +463,14 @@ convertV11ToV10 <- function(genes) {
   # IWGSC annotation v1.1 add wrongly removed genes during the integration,
   # so it's safe to just change version of annotation in ID of HC genes.
   stringr::str_replace(genes, "(?<=TraesCS([1-7][ABD]|U))02G", "01G")
+}
+
+writeMatrixToTSV <- function(mtx, filename) {
+  if (!is.null(colnames(mtx))) {
+    cat(c("rowid", colnames(mtx)), file = filename, sep = "\t")
+    cat("\n", file = filename, append = TRUE)
+  }
+
+  write.table(mtx, file = filename, append = !is.null(colnames(mtx)),
+              sep = "\t", col.names = FALSE, quote = FALSE)
 }

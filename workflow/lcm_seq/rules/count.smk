@@ -34,9 +34,9 @@ rule calculate_TPM:
         bam="results/LCMSeq/align/alignments/{sample}/Aligned.sortedByCoord.out.bam",
         gtf=config["Reference_Genome"]["Annotation"]
     output:
-        out="results/LCMSeq/gene_quanti/tpm/{sample}.out",
-        ent="results/LCMSeq/gene_quanti/tpm/{sample}.ent",
-        uni="results/LCMSeq/gene_quanti/tpm/{sample}.uni"
+        out="results/LCMSeq/gene_quanti/tpm/{sample}.out", # includes the TPM values at gene level
+        ent="results/LCMSeq/gene_quanti/tpm/{sample}.ent", # includes the TPM values for each exon and intron at gene level
+        uni="results/LCMSeq/gene_quanti/tpm/{sample}.uni" # exclude reads on overlapping features of each gene
     log: config["Log_Dir"] + "/TPMCalculator/{sample}.log"
     conda:
         "../envs/tpmcalculator.yaml"

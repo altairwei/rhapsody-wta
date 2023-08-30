@@ -16,7 +16,7 @@ pltpreview <- function(
 }
 
 #' Save Plots Within Powerpoint Slides
-plotpowerpoint <- function(ggobj, template, file = NULL,
+plotpowerpoint <- function(ggobj, template, file = NULL, location = NULL,
     margins = c(top = 0.5, right = 0.5,bottom = 0.5, left = 0.5), ...) {
   stopifnot(!missing(template))
 
@@ -27,23 +27,34 @@ plotpowerpoint <- function(ggobj, template, file = NULL,
   if (!is.null(template))
     file.copy(template, target.file, overwrite = TRUE)
   
-  # TODO: allow create pptx with given size using internal function sof {officer}.
+  # TODO: allow create pptx with given size using internal function of {officer}.
   # Refer to: https://learn.microsoft.com/en-us/office/open-xml/open-xml-sdk
   doc <- officer::read_pptx(path = target.file)
   doc = officer::add_slide(doc, layout = "Blank", master = "Office Theme")
   pagesize = export:::get.slide.size(doc)
   pagesize["width"] = pagesize["width"] - (margins["left"] + margins["right"])
   pagesize["height"] = pagesize["height"] - (margins["top"] + margins["bottom"])
-  
+
+  if (is.null(location)) {
+    phloc <- officer::ph_location(
+      left = margins["left"], top = margins["top"],
+      width = pagesize["width"], height = pagesize["height"])
+  }
+  else {
+    location <- grid::convertUnit(location, "inches")
+    phloc <- officer::ph_location(
+      left = location[[1]], top = location[[2]],
+      width = location[[3]], height = location[[4]]
+    )
+  }
+
   doc = officer::ph_with(
     x = doc,
     value = rvg::dml(code = print(ggobj), ...),
-    location = officer::ph_location(
-      left = margins["left"], top = margins["top"],
-      width = pagesize["width"], height = pagesize["height"]))
-  
+    location = phloc)
+
   print(doc, target = target.file)
-  
+
   if (is.null(file))
     utils::browseURL(target.file)
 }
