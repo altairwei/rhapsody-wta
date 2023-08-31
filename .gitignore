@@ -36,3 +36,4 @@ docs/
 output/
 *.e*
 *.o*
+secrets
