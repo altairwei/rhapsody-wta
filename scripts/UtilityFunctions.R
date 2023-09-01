@@ -395,6 +395,27 @@ deconvHeatmap <- function(CIBER) {
   )
 }
 
+deconvBarplot <- function(df) {
+  ggplot2::ggplot(df, ggplot2::aes(
+    x = Sample, y = Fraction, fill = CellType)) +
+    ggplot2::facet_wrap(~SampleClass, ncol = 1, scales = "free_y",
+                        strip.position = "left") +
+    ggplot2::geom_bar(
+      stat = "identity", col = "white",
+      width = 1, size = 0.2, position = "stack") +
+    ggplot2::coord_flip() +
+    ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+    ggplot2::scale_x_discrete(expand = c(0, 0)) +
+    ggplot2::theme(
+      aspect.ratio = NULL,
+      panel.grid = ggplot2::element_blank(),
+      panel.spacing = grid::unit(1, "mm"),
+      strip.text.y.left = ggplot2::element_text(angle = 0),
+      strip.placement = "outside",
+      strip.background = ggplot2::element_blank()
+    )
+}
+
 
 pseudobulk <- function(seurat,
     type = c("counts", "logcounts", "cpm", "vstresiduals"),

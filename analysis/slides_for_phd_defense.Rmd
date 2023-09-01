@@ -231,7 +231,7 @@ p
 
 ## Cell annotation
 
-#### Cluster and resolution tree
+### Cluster and resolution tree
 
 ```{r}
 library(clustree)

@@ -11,12 +11,16 @@ source("../scripts/LoadUtils.R", chdir = TRUE)
 source("../secrets")
 ```
 
-## Load Data
+## Prepare Count Matrix
+
+```{r}
+obj_mock <- readRDS(Sys.glob(
+  "../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+```
 
 ### MOCK samples
 
 ```{r}
-obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
 sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
 sce_mock <- muscat::prepSCE(sce_mock,
   kid = "ident", # subpopulation assignments
@@ -76,16 +80,6 @@ Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_
 ```
 
 ```{r}
-rm(obj_mock)
-gc()
-```
-
-
-## Buld Signature Matrix
-
-### Prepare scRNA-seq counts
-
-```{r}
 sce_slim <- sce_mock
 logcounts(sce_slim) <- NULL
 sce_slim <- sce_slim[
@@ -109,6 +103,67 @@ mtx <- round(mtx, digits = 1)
 writeMatrixToTSV(mtx, "../results/Deconv/sc_mock_counts.tsv")
 ```
 
+### Optimal clustering
+
+```{r}
+npcs <- 20
+k <- 40
+res <- 0.3
+
+obj_mock <- obj_mock %>%
+    Seurat::FindNeighbors(reduction = "harmony", verbose = FALSE,
+                          dims = seq_len(npcs), k.param = k) %>%
+    Seurat::FindClusters(resolution = res, verbose = FALSE,random.seed = 230816)
+```
+
+```{r fig.height=7, fig.width=8}
+Seurat::DimPlot(
+        obj_mock, reduction = "umap",
+        cols = Seurat::DiscretePalette(
+          length(levels(Seurat::Idents(obj_mock))), palette = NULL),
+        label = TRUE, label.box = TRUE, label.color = "black", label.size = 2) +
+  ggplot2::scale_fill_manual(
+    values = rep("white", length(levels(Seurat::Idents(obj_mock))))) +
+  ggplot2::coord_fixed() +
+  theme_dimred() +
+  ggplot2::ggtitle(sprintf("pc=%s, k=%s, res=%s", npcs, k, res)) +
+  center_plot_title()
+```
+
+```{r}
+sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
+sce_mock <- muscat::prepSCE(sce_mock,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = TRUE
+)
+```
+
+```{r}
+sce_slim <- sce_mock
+logcounts(sce_slim) <- NULL
+sce_slim <- sce_slim[
+  # Gene expressed in at least 10 cells
+  Matrix::rowSums(counts(sce_slim) > 0) > 10,
+  # Ensure no empty cell
+  Matrix::colSums(counts(sce_slim)) > 0
+]
+
+mtx <- as.matrix(counts(sce_slim))
+colnames(mtx) <- sce_slim$cluster_id
+rownames(mtx) <- rownames(sce_slim)
+
+# To save disk, because expression matrix has been corrected by SoupX
+mtx <- round(mtx, digits = 1)
+```
+
+```{r}
+writeMatrixToTSV(mtx, "../results/Deconv-Optimum/sc_mock_counts.tsv")
+```
+
+## Build Signature Matrix
+
 ```{r}
 rm(sce_mock, sce_slim, mtx)
 gc()
@@ -117,33 +172,48 @@ gc()
 ### Create signature matrix
 
 ```{r}
-system2("docker", c("pull", "cibersortx/fractions"), stdout = FALSE)
-```
-
-```{r}
-system2(
-  command = "docker",
-  args = c(
-    "run",
-    "-v", sprintf("%s:/src/data", fs::path_abs("../results/Deconv/")), 
-    "-v", sprintf("%s:/src/outdir", fs::path_abs("../results/Deconv/")),
-    "cibersortx/fractions",
-    "--username",    USERNAME,
-    "--token",       TOKEN,
-    "--single_cell", "TRUE",
-    "--fraction",    "0",
-    "--refsample",   "sc_mock_counts.tsv",
-    "--verbose",      "TRUE"
+build_sigmatrix <- function(folder) {
+  ret <- system2(
+    command = "docker",
+    args = c(
+      "run",
+      "-v", sprintf("%s:/src/data", fs::path_abs(folder)), 
+      "-v", sprintf("%s:/src/outdir", fs::path_abs(folder)),
+      "cibersortx/fractions",
+      "--username",    USERNAME,
+      "--token",       TOKEN,
+      "--single_cell", "TRUE",
+      "--fraction",    "0",
+      "--refsample",   "sc_mock_counts.tsv",
+      "--verbose",      "TRUE"
+    )
   )
-)
+
+  if (ret) {
+    sigmatrix_file = sprintf("%s/CIBERSORTx_%s_inferred_phenoclasses.CIBERSORTx_%s_inferred_refsample.bm.K%s.txt",
+                           folder, "sc_mock_counts", "sc_mock_counts", 999)
+    file.rename(sigmatrix_file, sprintf("%s/%s_sigmatrix.tsv", folder, "sc_mock_counts"))
+  } else {
+    stop("Failed to build signature matrix.") 
+  }
+}
 ```
 
 ```{r}
-sigmatrix_file = sprintf("%s/CIBERSORTx_%s_inferred_phenoclasses.CIBERSORTx_%s_inferred_refsample.bm.K%s.txt",
-                         "../results/Deconv", "sc_mock_counts", "sc_mock_counts", 999)
-file.rename(sigmatrix_file, sprintf("%s/%s_sigmatrix.tsv", "../results/Deconv", "sc_mock_counts"))
+build_sigmatrix("../results/Deconv/")
 ```
 
+### Visualization of signature matrix
+
+```{r}
+sigmatrix <- readr::read_tsv("../results/Deconv/sc_mock_counts_sigmatrix.tsv") |>
+  tibble::column_to_rownames("NAME") |>
+  as.matrix()
+```
+
+```{r fig.height=8, fig.width=7}
+heatmap(sigmatrix, col = colorRamps::blue2red(50), labRow=NA, ylab=NA)
+```
 
 ## Impute Cell Fractions
 
@@ -177,4 +247,44 @@ system2(
   )
 )
 ```
+
+### Visualization of cell fractions
+
+```{r}
+CIBER_raw <- readr::read_tsv("../results/Deconv/CIBERSORTx_Adjusted.txt")
+CIBER_extra <- dplyr::select(CIBER_raw, Sample = Mixture, `P-value`, Correlation, RMSE)
+CIBER_frac <- dplyr::select(CIBER_raw, Sample = Mixture, !c(`P-value`, Correlation, RMSE)) |>
+  tidyr::pivot_longer(!Sample, names_to = "CellType", values_to = "Fraction")
+```
+
+```{r}
+LCM_design <- c(
+  "VC_1" = "vb.",
+  "VC_2" = "vb.",
+  "VC_3" = "vb.",
+  "CC_1" = "bp.",
+  "CC_2" = "bp.",
+  "CC_3" = "bp.",
+  "MC3_1" = "dp.",
+  "MC3_2" = "dp.",
+  "MC3_3" = "dp.",
+  "MC_1" = "me.",
+  "MC_2" = "me.",
+  "MC_3" = "me.",
+  "EC_1" = "ep.",
+  "EC_2" = "ep.",
+  "EC_3" = "ep."
+)
+
+CIBER_frac$SampleClass <- dplyr::recode(CIBER_frac$Sample, !!!LCM_design)
+CIBER_frac$CellType <- factor(CIBER_frac$CellType, levels = mock_celltypes)
+
+deconvScatter(CIBER_frac, LCM_design)
+```
+
+```{r}
+deconvBarplot(CIBER_frac) +
+  ggplot2::scale_fill_manual(values = mock_celltype_colors)
+```
+
 
