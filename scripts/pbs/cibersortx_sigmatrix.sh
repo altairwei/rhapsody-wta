@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-#PBS -l mem=96gb,nodes=1:ppn=1,walltime=24:00:00
-#PBS -q fat
-#PBS -N cibersortx_fractions
+#PBS -l mem=64gb,nodes=1:ppn=1,walltime=24:00:00
+#PBS -q batch
+#PBS -N cibersortx_sigmatrix
 #PBS -o logs
 #PBS -e logs
 
@@ -23,9 +23,10 @@ singularity exec --no-home -c \
   /src/CIBERSORTxFractions \
   --username $USERNAME \
   --token $TOKEN \
-  --refsample sc_mock_counts.tsv \
-  --mixture lcm_tpm_matrix.tsv \
-  --sigmatrix sc_mock_counts_sigmatrix.tsv \
-  --perm 100 \
-  --rmbatchSmode TRUE \
-  --verbose TRUE
+  --verbose TRUE \
+  --single_cell TRUE \
+  --fraction 0 \
+  --refsample sc_mock_counts.tsv
+
+mv $INPUT_DIR/CIBERSORTx_sc_mock_counts_inferred_phenoclasses.CIBERSORTx_sc_mock_counts_inferred_refsample.bm.K999.txt \
+   $INPUT_DIR/sc_mock_counts_sigmatrix.tsv
