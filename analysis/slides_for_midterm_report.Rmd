@@ -565,7 +565,10 @@ avg_expr_cor <- cor(avg_expr)
 
 p <- ComplexHeatmap::Heatmap(
   matrix = avg_expr_cor,
+  col = viridis::viridis(256),
   column_names_rot = 45,
+  clustering_distance_rows = \(x) as.dist(1 - x),
+  clustering_distance_columns = \(x) as.dist(1 - x),
   heatmap_legend_param = list(
     title = "Pearson's R",
     title_position = "topcenter",

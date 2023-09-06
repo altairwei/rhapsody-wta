@@ -7,10 +7,10 @@ output: html_document
 library(magrittr)
 library(patchwork)
 knitr::opts_chunk$set(echo = TRUE)
-source("../scripts/UtilityFunctions.R")
+source("../scripts/LoadUtils.R", chdir = TRUE)
 ```
 
-## 工具函数的定义
+## Define Helper Functions
 
 ```{r}
 make_sample_pseudobulk <- function(seurat,
@@ -50,7 +50,8 @@ sample_correlation_heatmap <- function(
     column_dend_side = "top",
     column_names_rot = 45,
     show_column_dend = FALSE,
-  
+    clustering_distance_rows = \(x) as.dist(1 - x),
+    clustering_distance_columns = \(x) as.dist(1 - x),
     cell_fun = if (label) function(j, i, x, y, width, height, fill) {
       grid::grid.text(
         sprintf("%.2f", cormat[i, j]),
@@ -164,11 +165,11 @@ plot_density_morph <- function(morph) {
 }
 ```
 
-## 原始数据的分析
+## Analysis of Raw Data
 
 这部分数据只经历过 BD Rhapsody 官方预处理流程的二阶导数分析，移除掉了空磁珠；没有经过进一步的质量控制和批次效应移除。
 
-### 读取原始数据
+### Read raw data
 
 ```{r}
 samples <- c(
@@ -224,18 +225,12 @@ obj_merged <- merge(
 )
 ```
 
-```{r}
-head(obj_merged@assays$RNA@counts)
-```
-
-### 样本相关性分析
+### Sample correlation analysis
 
 Pseudobulk 基于归一化后的表达值聚合而成，没有经历质量控制。
 
 ```{r}
 pseudobulk_raw <- make_sample_pseudobulk(obj_merged, type = "logcounts", fun = "mean")
-
-head(pseudobulk_raw)
 ```
 
 ```{r}
@@ -247,7 +242,7 @@ p1 <- plot_correlation_heatmap(cormat)
 p1
 ```
 
-### 样本密度形态分析
+### Sample density morph analysis
 
 ```{r}
 obj_merged <- obj_merged |>
@@ -288,7 +283,7 @@ p2 <- ggplot2::ggplot(data_to_plot, ggplot2::aes(
 p2
 ```
 
-### 合并图片
+### Combine plots
 
 ```{r fig.height=6, fig.width=14}
 (p <- ggplotify::as.ggplot(p1) + p2 +
@@ -302,9 +297,9 @@ rm(obj_list, obj_merged)
 gc()
 ```
 
-## 质量控制的分析
+## Analysis of Quality Controlled Data
 
-### 读取质量控制后的数据
+### Read quality controlled data
 
 ```{r}
 obj_list <- lapply(samples, function(sample) readRDS(
@@ -327,7 +322,7 @@ obj_merged <- merge(
 head(obj_merged@assays$RNA@counts)
 ```
 
-### 样本相关性分析
+### Sample correlation analsysis
 
 ```{r}
 pseudobulk_qc <- make_sample_pseudobulk(obj_merged, type = "logcounts", fun = "mean")
@@ -343,7 +338,7 @@ p1 <- plot_correlation_heatmap(cormat)
 p1
 ```
 
-### 样本密度形态分析
+### Sample density morph analysis
 
 ```{r}
 obj_merged <- obj_merged |>
@@ -363,7 +358,7 @@ p2 <- plot_density_morph(morph)
 p2
 ```
 
-### 合并图片
+### Combine plots
 
 ```{r fig.height=6, fig.width=14}
 (p <- ggplotify::as.ggplot(p1) + p2 +
@@ -377,16 +372,16 @@ rm(obj_list, obj_merged)
 gc()
 ```
 
-## 批次效应移除的分析
+## Analysis of Batch-effect Corrected Data
 
-### 加载整合后的数据
+### Read integrated data
 
 ```{r}
 obj_int <- readRDS(Sys.glob(
   "../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
 ```
 
-### 样本相关性分析
+### Sample correlation analsysis
 
 ```{r}
 pseudobulk_int <- make_sample_pseudobulk(obj_int, type = "logcounts", fun = "mean")
@@ -402,7 +397,7 @@ p1 <- plot_correlation_heatmap(cormat)
 p1
 ```
 
-### 样本密度形态分析
+### Sample density morph analysis
 
 ```{r}
 morph <- calculateDensityMorph(obj_int, reduction = "harmony")
@@ -413,7 +408,7 @@ p2 <- plot_density_morph(morph)
 p2
 ```
 
-### 合并图片
+### Combine plots
 
 ```{r fig.height=6, fig.width=14}
 (p <- ggplotify::as.ggplot(p1) + p2 +

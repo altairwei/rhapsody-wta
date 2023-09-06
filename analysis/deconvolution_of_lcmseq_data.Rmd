@@ -215,6 +215,16 @@ sigmatrix <- readr::read_tsv("../results/Deconv/sc_mock_counts_sigmatrix.tsv") |
 heatmap(sigmatrix, col = colorRamps::blue2red(50), labRow=NA, ylab=NA)
 ```
 
+```{r}
+ComplexHeatmap::Heatmap(
+  matrix = t(scale(t(sigmatrix))),
+  col = viridis::viridis(256),
+  show_row_names = FALSE,
+  row_dend_width = grid::unit(30, "mm")
+)
+```
+
+
 ## Impute Cell Fractions
 
 ### Prepare LCM-seq TPM matrix
@@ -278,13 +288,28 @@ LCM_design <- c(
 
 CIBER_frac$SampleClass <- dplyr::recode(CIBER_frac$Sample, !!!LCM_design)
 CIBER_frac$CellType <- factor(CIBER_frac$CellType, levels = mock_celltypes)
+```
 
-deconvScatter(CIBER_frac, LCM_design)
+```{r fig.height=7, fig.width=7}
+p <- deconvScatter(CIBER_frac, LCM_design, ncol = 3, theme_size = 14) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5, vjust = 0.5))
+
+p
+```
+
+```{r fig.height=7, fig.width=5}
+p <- deconvScatter(CIBER_frac, LCM_design, ncol = 3, theme_size = 14) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5, vjust = 0.5),
+    axis.text.y = ggplot2::element_blank(),
+    axis.ticks.y = ggplot2::element_blank())
+
+p
 ```
 
 ```{r}
 deconvBarplot(CIBER_frac) +
   ggplot2::scale_fill_manual(values = mock_celltype_colors)
 ```
-
 
