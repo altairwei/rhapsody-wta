@@ -495,3 +495,8 @@ writeMatrixToTSV <- function(mtx, filename) {
   write.table(mtx, file = filename, append = !is.null(colnames(mtx)),
               sep = "\t", col.names = FALSE, quote = FALSE)
 }
+
+number_to_circle_unicode <- function(number) {
+  if (any(number < 0) || any(number > 20)) stop("Number must be between 0 and 20.")
+  intToUtf8(ifelse(number == 0, 0x24EA, 0x2460 + number - 1), multiple = TRUE)
+}

@@ -30,7 +30,7 @@ KNOWN_MARKERS = list(
   
   # EP3 是排水孔相关基因
   "EP3" = c(
-    "TraesCS2A02G350700",
+    #"TraesCS2A02G350700",
     "TraesCS2D02G348800",
     "TraesCS6D02G199500",
     "TraesCS6A02G216100"
@@ -56,13 +56,13 @@ KNOWN_MARKERS = list(
     "TraesCS5B02G322900",
     "TraesCS5A02G322500"
   ),
-  "CA1" = c(
-    #"TraesCS7D02G443400",
-    "TraesCS7B02G354800",
-    "TraesCS3A02G230000",
-    #"TraesCS3D02G223300",
-    "TraesCS3B02G259300"
-  ),
+  # "CA1" = c(
+  #   #"TraesCS7D02G443400",
+  #   "TraesCS7B02G354800",
+  #   "TraesCS3A02G230000",
+  #   #"TraesCS3D02G223300",
+  #   "TraesCS3B02G259300"
+  # ),
   "AOC2" = c(
     "TraesCS6D02G314300",
     "TraesCS6A02G334800",

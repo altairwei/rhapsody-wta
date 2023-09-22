@@ -50,8 +50,8 @@ sample_correlation_heatmap <- function(
     column_dend_side = "top",
     column_names_rot = 45,
     show_column_dend = FALSE,
-    clustering_distance_rows = \(x) as.dist(1 - x),
-    clustering_distance_columns = \(x) as.dist(1 - x),
+    clustering_distance_rows = \(x) as.dist(sqrt(1 - x^2)),
+    clustering_distance_columns = \(x) as.dist(sqrt(1 - x^2)),
     cell_fun = if (label) function(j, i, x, y, width, height, fill) {
       grid::grid.text(
         sprintf("%.2f", cormat[i, j]),

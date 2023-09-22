@@ -6043,8 +6043,8 @@
       "RemoteRepo": "scclusteval",
       "RemoteUsername": "altairwei",
       "RemoteRef": "HEAD",
-      "RemoteSha": "000129199652dff28b11b4e4b25153cca8145fb3",
-      "Hash": "24bad138ab396356d41f0778f7dec03b",
+      "RemoteSha": "a6ae13134720da9f17a3a7bb172e91343326a966",
+      "Hash": "1f8a884764c500e4fb06d52514fd366d",
       "Requirements": [
         "BiocParallel",
         "ComplexHeatmap",

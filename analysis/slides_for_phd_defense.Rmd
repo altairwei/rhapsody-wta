@@ -546,7 +546,7 @@ Seurat::DotPlot(obj_mock, features = bundle_sheath) +
   )
 ```
 
-表达量太低。
+表达量太低。请注意右边的图例。
 
 #### Xylem parenchyma
 

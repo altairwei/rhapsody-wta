@@ -220,7 +220,8 @@ ComplexHeatmap::Heatmap(
   matrix = t(scale(t(sigmatrix))),
   col = viridis::viridis(256),
   show_row_names = FALSE,
-  row_dend_width = grid::unit(30, "mm")
+  row_dend_width = grid::unit(30, "mm"),
+  column_names_rot = 30
 )
 ```
 
