@@ -16,7 +16,7 @@ pltpreview <- function(
 }
 
 #' Save Plots Within Powerpoint Slides
-plotpowerpoint <- function(ggobj, template, file = NULL, location = NULL,
+plotpowerpoint <- function(ggobj, template, fun = NULL, file = NULL, location = NULL,
     margins = c(top = 0.5, right = 0.5,bottom = 0.5, left = 0.5), ...) {
   stopifnot(!missing(template))
 
@@ -48,9 +48,15 @@ plotpowerpoint <- function(ggobj, template, file = NULL, location = NULL,
     )
   }
 
+  myplot = if (is.null(fun)){
+    function(pl = ggobj) print(pl) 
+  } else {
+    fun
+  } 
+
   doc = officer::ph_with(
     x = doc,
-    value = rvg::dml(code = print(ggobj), ...),
+    value = rvg::dml(code = myplot(), ...),
     location = phloc)
 
   print(doc, target = target.file)

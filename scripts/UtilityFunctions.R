@@ -500,3 +500,48 @@ number_to_circle_unicode <- function(number) {
   if (any(number < 0) || any(number > 20)) stop("Number must be between 0 and 20.")
   intToUtf8(ifelse(number == 0, 0x24EA, 0x2460 + number - 1), multiple = TRUE)
 }
+
+#' Calculate latent space of DensityMorph
+#'
+#' @param Xref When calculating self-PDLR reference, if `npc` and `min_cells`
+#' is same, we can just use the pre-calculated `Xref`.
+calculateDensityMorph <- function(
+    seurat, reduction = "pca", Xref = NULL, npc = 10) {
+  # Get cell embeddings of PCA
+  expr_data <- Seurat::Embeddings(seurat[[reduction]])[, 1:npc]
+  
+  # Remove duplicated cells
+  keep_cells <- !duplicated(expr_data, MARGIN = 1)
+  expr_data <- expr_data[keep_cells,]
+  
+  mat_split <- function(x, f) {
+    stopifnot(nrow(x) == length(f))
+    lapply(split(x, f), matrix, ncol = ncol(x))
+  }
+  expr_list <- mat_split(expr_data, seurat$sample[keep_cells])
+  
+  # Remove duplicated cells
+  expr_list <- lapply(expr_list, function(x) {
+    x[!duplicated(x, MARGIN = 1),]
+  })
+  
+  # Calculate self-PDLR reference
+  if (is.null(Xref)) {
+    min_cells <- min(sapply(expr_list, nrow))
+    message("Calculating Xref with npc = ", npc, ", min_cells = ", min_cells)
+    Xref <- DensityMorph::reference_distribution(
+      npc, min_cells*100, min_cells)
+  }
+  
+  # Subsampling
+  expr_list_down <- lapply(expr_list, function(x) {
+    idx <- sample(1:nrow(x), min_cells, replace = FALSE)
+    x[idx,]
+  })
+  
+  # Calculate latent space
+  LS <- DensityMorph::latent_space(expr_list_down, Xref)
+  rownames(LS$latent_space) <- names(expr_list_down)
+  
+  list(LS = LS, Xref = Xref)
+}
