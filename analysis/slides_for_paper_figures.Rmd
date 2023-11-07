@@ -8,12 +8,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
+library(ggtree, include.only = "%<+%")
 source("../scripts/LoadUtils.R", chdir = TRUE)
 ```
 
 ```{r}
 options(ggrastr.default.dpi=300)
-ggplot2::theme_set(cowplot::theme_cowplot(font_size = 22, font_family = "Arial"))
+#ggplot2::theme_set(cowplot::theme_cowplot(font_size = 22, font_family = "Arial"))
 PT = 1/2.13
 FT = 6/17.1
 ```
@@ -138,6 +139,13 @@ all_tissues <- c(
   MPV_1 = "Procambium",
   MPV_2 = "Procambium"
 )
+
+all_tissues_colors <- structure(
+  names = c("Stomata",      "Epidermis",    "Chlorenchyma", "Parenchyma",
+            "Outer sheath", "Inner sheath", "Phloem",       "Procambium"),
+  .Data = c("#4e79a7",      "#f28e2b",      "#8cd17d",      "#b6992d",
+            "#86bcb6",      "#e15759",      "#ff9d9a",      "#79706e")
+)
 ```
 
 ```{r}
@@ -147,6 +155,225 @@ sce$body_layer <- do.call(
   dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_body_layers)))
 sce$tissue <- do.call(
   dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_tissues)))
+
+obj$tissue <- sce$tissue
+```
+
+### DS Results
+
+```{r}
+logfc_data <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_deg_logfc_data_*.rds"))
+
+ds_res <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/ds_res_*.rds"))
+
+ds_sig <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0)
+```
+
+### Gene List
+
+```{r}
+filelist <- Sys.glob("../data/pathways/*.txt")
+names(filelist) <- basename(filelist) |> stringr::str_remove(stringr::fixed(".txt"))
+
+pathways <- lapply(filelist, function(filename) {
+  genes <- stringr::str_trim(readLines(filename))
+  genes[genes != ""]
+})
+```
+
+### Pseudobulk CPM
+
+```{r}
+pseudobulk_cpm_mean <- readRDS(Sys.glob(
+  "../results/ObjectCache/Pseudobulk/pseudobulk_cpm_mean_*.rds"))
+```
+
+```{r}
+cpm_se <- local({
+  cpm_df <- as.data.frame(pseudobulk_cpm_mean) |>
+      tibble::rownames_to_column("Gene") |>
+      tidyr::pivot_longer(-Gene, names_to = "bulk", values_to = "cpm") |>
+      tidyr::separate(bulk, sep = "\\.", into = c("treatment", "time", "cellType"))
+  
+  cpm_df_0 <- dplyr::filter(cpm_df, time == "0DPI")
+  
+  cpm_df <- cpm_df |>
+    dplyr::add_row(dplyr::mutate(cpm_df_0, treatment = "PNR2")) |>
+    dplyr::add_row(dplyr::mutate(cpm_df_0, treatment = "TR4"))
+  
+  cpm_df$cellType <- factor(cpm_df$cellType, levels = TISSUE_TYPES)
+  cpm_df$treatment <- factor(cpm_df$treatment, levels = c("MOCK", "PNR2", "TR4"))
+  cpm_df$time <- factor(cpm_df$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+  
+  cpm_df <- cpm_df |>
+    dplyr::select(cellType, treatment, time, Gene, cpm) |>
+    dplyr::arrange(cellType, treatment, time)
+  
+  cpm_coldata <- cpm_df |>
+    dplyr::group_by(cellType, treatment, time) |>
+    dplyr::summarise(.groups = "drop")
+  
+  cpm_mtx <- cpm_df |>
+    tidyr::pivot_wider(names_from = c(cellType, treatment, time),
+                       values_from = cpm, names_sep = "#") |>
+    tibble::column_to_rownames("Gene") |>
+    as.matrix()
+  
+  SummarizedExperiment(
+    assays = list(
+      raw = cpm_mtx,
+      scaled = t(scale(t(cpm_mtx)))),
+    colData = cpm_coldata)
+})
+```
+
+## Figure 2 Experiment Layout
+
+### Sample correlation
+
+```{r}
+pb <- rhapsodykit::calculate_pseudo_bulk(
+  sce, "logcounts", fun = "mean", by = "sample_id")
+
+pb_int <- assay(pb, 1)
+pb_cormat <- cor(pb_int, method = "pearson", use = "complete.obs")
+pb_dist <- as.dist(sqrt(1 - pb_cormat^2))
+pb_hc <- hclust(pb_dist)
+```
+
+```{r}
+p1 <- pb_hc |>
+  ggtree::ggtree(hang = -1, size = 1.5 * PT) +
+  ggtree::geom_tiplab(size = 18 * FT, offset = .01)
+
+p1df <- local({
+  matched <- stringr::str_match(
+    names(pb_dist), "(\\dDPI)-(MOCK|PNR2|TR4)-(\\d)")
+  data.frame(
+    label = matched[, 1],
+    Time = matched[, 2],
+    Treatment = matched[, 3],
+    Rep = matched[, 4]
+  )
+})
+
+p1 <- ggtree::gheatmap(p1,
+  data = as.matrix(
+    tibble::column_to_rownames(
+      p1df[, c("label", "Time")], "label")),
+  offset = 0.3, width = 0.4, font.size = 18 * FT,
+  colnames_position = "top") +
+  ggplot2::scale_fill_brewer(palette = "YlGn", guide = "none") +
+  ggnewscale::new_scale_fill()
+
+p1 <- ggtree::gheatmap(p1,
+    data = as.matrix(
+    tibble::column_to_rownames(
+      p1df[, c("label", "Treatment")], "label")),
+    offset = 0.6, width = 0.4, font.size = 18 * FT,
+    colnames_position = "top") +
+  ggplot2::scale_fill_brewer(type = "qual", palette = "Dark2", guide = "none")
+
+p1
+```
+
+```{r}
+p1 <- pb_hc |>
+  ggtree::ggtree(hang = -1, size = 1.5 * PT) +
+  ggtree::geom_tiplab(size = 18 * FT, offset = 0.12, vjust = 0.6)
+
+p1df <- local({
+  matched <- stringr::str_match(
+    names(pb_dist), "(\\dDPI)-(MOCK|PNR2|TR4)-(\\d)")
+  data.frame(
+    label = matched[, 1],
+    Time = matched[, 2],
+    Treatment = matched[, 3],
+    Rep = matched[, 4]
+  )
+})
+
+p1 <- p1 %<+% p1df +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(shape = Time),
+    x = 0.7, size = 6, stroke = 2 * PT) +
+    ggplot2::scale_shape_manual(values = c(
+      "0DPI" = 22, "1DPI" = 21, "2DPI" = 23, "3DPI" = 24), guide = "none") +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(color = Treatment),
+    x = 0.75, size = 6) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2", guide = "none") +
+  ggtree::hexpand(0.2) +
+  # ggplot2::annotate("text", x = 0.7, y = 0, size = 18 * FT,
+  #                   label = "Time", angle = 35, hjust = 1, vjust = 0.5) +
+  # ggplot2::annotate("text", x = 0.75, y = 0, size = 18 * FT,
+  #                   label = "Treatment", angle = 35, hjust = 1, vjust = 0.5) +
+  # ggplot2::coord_cartesian(clip = "off") +
+  NULL
+
+p1
+```
+
+
+### Density Morph
+
+```{r}
+morph <- calculateDensityMorph(obj, reduction = "harmony")
+```
+
+```{r}
+p2 <- local({
+  sample_info <- stringr::str_match(rownames(morph$LS$latent_space), "^(.*)-(.*)-(.*)$")
+  
+  data_to_plot <- morph$LS$latent_space[, 1:2]
+  data_to_plot$Sample <- sample_info[, 1]
+  data_to_plot$Time <- sample_info[, 2]
+  data_to_plot$Treatment <- sample_info[, 3]
+  
+  ggplot2::ggplot(data_to_plot, ggplot2::aes(
+      x = A1, y = A2,
+      fill = Treatment, color = Treatment,
+      shape = Time, label = Sample
+    )) +
+    ggplot2::geom_point(size = 6) +
+    ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+    ggplot2::scale_fill_brewer(type = "qual", palette = "Dark2") +
+    ggplot2::scale_shape_manual(values = c(
+      "0DPI" = 22, "1DPI" = 21, "2DPI" = 23, "3DPI" = 24),
+      guide = ggplot2::guide_legend(override.aes = list(stroke = 2 * PT))) +
+    ggplot2::xlab("LSC1") +
+    ggplot2::ylab("LSC2") +
+    ggplot2::ggtitle("Latent space of scRNA-seq samples") +
+    ggplot2::coord_fixed() +
+    ggplot2::theme_bw(base_size = 22) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 22),
+      axis.text.x = ggplot2::element_blank(),
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+      panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
+      legend.key.height = grid::unit(1, "cm")) +
+    center_plot_title() +
+    NULL
+})
+
+p2
+```
+
+
+### Combine Two Plots
+
+```{r fig.height=7, fig.width=18}
+(p3 <- p1 + p2 + patchwork::plot_layout(widths = c(1, 1)))
+```
+
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 32.16, 49.01, 18.94), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
 ## Figure 3 Cell Annotation
@@ -499,3 +726,1149 @@ p <- ComplexHeatmap::Heatmap(
 
 p <- ComplexHeatmap::draw(p, heatmap_legend_side = "top")
 ```
+
+
+## Figure 4 Immunity Partition
+
+### Dim Reduction
+
+```{r fig.height=8, fig.width=10}
+p1 <- local({
+  df_to_plot <- Seurat::FetchData(obj, vars = c("UMAP_1", "UMAP_2", "treatment", "time"))
+  df_to_plot$treatment <- factor(
+    x = with(df_to_plot, ifelse(time == "0DPI", "PreT", treatment)),
+    levels = c("PreT", "MOCK", "PNR2", "TR4"))
+
+  df_to_plot <- df_to_plot[sample(nrow(df_to_plot)), ]
+  
+  p <- ggplot2::ggplot(df_to_plot, ggplot2::aes(
+      x = UMAP_1, y = UMAP_2, color = treatment)) +
+    ggplot2::geom_point(size = 0.2) +
+    ggplot2::scale_color_manual(
+      values = c(PreT = "grey", MOCK = "#1b9e77", PNR2 = "#d95f02", TR4 = "#7570b3")) +
+    ggplot2::guides(
+      color = ggplot2::guide_legend(
+        override.aes = list(size = 4), title = "Treatment")) +
+    ggplot2::coord_fixed() +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(legend.position = c(0.75, 0.8),
+                   legend.title = ggplot2::element_text(size = 20),
+                   legend.text = ggplot2::element_text(size = 18))
+  
+
+  ggrastr::rasterise(p)
+})
+
+p1
+```
+
+
+```{r fig.height=8, fig.width=10}
+p2 <- local({
+  df_to_plot <- Seurat::FetchData(obj, vars = c("UMAP_1", "UMAP_2", "ident", "tissue"))
+  
+  df_to_label <- df_to_plot |>
+    dplyr::group_by(tissue) |>
+    dplyr::summarise(
+      UMAP_1 = median(UMAP_1),
+      UMAP_2 = median(UMAP_2),
+      text = unique(tissue))
+
+  p <- ggplot2::ggplot(df_to_plot, ggplot2::aes(x = UMAP_1, y = UMAP_2, color = tissue)) +
+    ggplot2::geom_point(size = 0.2) +
+    ggplot2::scale_color_manual(values = all_tissues_colors) +
+    ggrepel::geom_text_repel(
+      data = df_to_label,
+      mapping = ggplot2::aes(x = UMAP_1, y = UMAP_2, label = text),
+      color = "black", size = 16 * FT) +
+    ggplot2::guides(
+      color = ggplot2::guide_legend(
+        override.aes = list(size = 4), title = "Cell Type")) +
+    ggplot2::coord_fixed() +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(legend.position = c(0.75, 0.15)) +
+    remove_legend()
+  
+  
+  ggrastr::rasterise(p)
+})
+
+p2
+```
+
+### Cell Type Proportion
+
+```{r}
+p3 <- local({
+  df <- rhapsodykit::calculateClusterProportion(
+    obj$tissue, obj$sample, obj$group)
+  
+  matched <- stringr::str_match(
+    df$sample_id, "(\\dDPI)-(MOCK|PNR2|TR4)-(\\d)")
+  
+  df$time <- factor(matched[, 2], levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+  df$treatment <- factor(matched[, 3], levels = c("MOCK", "PNR2", "TR4"))
+  df$rep <- matched[, 4]
+  
+  df <- dplyr::select(df, treatment, time, rep, cluster_id, frequency)
+  
+  df <- df |>
+    dplyr::group_by(treatment, time, cluster_id) |>
+    dplyr::summarise(frequency = mean(frequency), .groups = "drop")
+  
+  df_0dpi <- dplyr::filter(df, time == "0DPI")
+  
+  df <- df |>
+    dplyr::bind_rows(
+      dplyr::mutate(df_0dpi, treatment = "PNR2"),
+      dplyr::mutate(df_0dpi, treatment = "TR4")) |>
+    dplyr::arrange(time, treatment, cluster_id)
+  
+  df %>%
+    ggplot2::ggplot(ggplot2::aes(
+      x = time, y = frequency, fill = cluster_id)) +
+    ggplot2::facet_wrap(~treatment, nrow = 1) +
+    ggplot2::geom_bar(
+      stat = "identity", col = "white",
+      width = 1, size = 0.2, position = "stack") +
+    ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0),
+                                labels = scales::percent) +
+    ggplot2::scale_x_discrete(expand = c(0, 0)) +
+    ggplot2::scale_fill_manual(values = all_tissues_colors) +
+    ggplot2::labs(y = "Proportion", fill = "Cell Type") +
+    ggplot2::theme_grey() +
+    ggplot2::theme(
+      aspect.ratio = NULL,
+      axis.title.x = ggplot2::element_blank(),
+      axis.title.y = ggplot2::element_text(family = "Arial", size = 20, color = "black"),
+      axis.text = ggplot2::element_text(family = "Arial", size = 16, color = "black"),
+      axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1),
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks.y = ggplot2::element_blank(),
+      panel.grid = ggplot2::element_blank(),
+      panel.spacing = grid::unit(4, "mm"),
+      strip.background = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(family = "Arial", size = 20, color = "black"),
+      legend.title = ggplot2::element_text(family = "Arial", size = 20),
+      legend.text = ggplot2::element_text(family = "Arial", size = 18),
+      legend.key.size = grid::unit(0.8, "cm")
+    )
+})
+
+p3
+```
+
+```{r fig.height=7, fig.width=20}
+(p123 <- p1 + p2 + p3 + patchwork::plot_layout(widths = c(1, 1, 0.8)))
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p123, "../data/Figure.pptx",
+  location = grid::unit(c(3.37, 5.02, 47.28, 17.17), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Visualize Number of DEGs
+
+```{r fig.height=7, fig.width=9}
+p4 <- local({
+  genecount_df <- rhapsodykit::diff_state_format(ds_sig)
+  
+  genecount_df$cluster_id <- factor(genecount_df$cluster_id, unique(all_tissues))
+  genecount_df$time <- stringr::str_extract(genecount_df$contrast, "\\dDPI")
+  genecount_df$contrast <- factor(genecount_df$contrast, levels = CONTRAST_NAMES)
+  genecount_df$regu_type <- ifelse(genecount_df$logFC > 0, "Up-regulated", "Down-regulated")
+
+  df_to_plot <- genecount_df |>
+    dplyr::group_by(time, contrast, cluster_id, regu_type) |>
+    dplyr::count() |>
+    dplyr::mutate(n = ifelse(regu_type == "Up-regulated", n, -1 * n)) |>
+    tidyr::pivot_wider(names_from = "cluster_id", values_from = "n", values_fill = NA) |>
+    tidyr::pivot_longer(cols = -c(time, contrast, regu_type), names_to = "cluster_id", values_to = "n") |>
+    dplyr::mutate(contrast = stringr::str_replace(contrast,
+        "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2 vs. \\4")) |>
+    dplyr::filter(contrast != "PNR2 vs. TR4")
+  
+  df_to_plot$cluster_id <- factor(df_to_plot$cluster_id, unique(all_tissues))
+  df_to_plot$contrast <- factor(df_to_plot$contrast, c("PNR2 vs. MOCK", "TR4 vs. MOCK"))
+  
+  ggplot2::ggplot(
+      data = df_to_plot,
+      mapping = ggplot2::aes(x = cluster_id, y = n, fill = contrast)) +
+    ggplot2::geom_bar(
+      data = subset(df_to_plot, regu_type == "Up-regulated"),
+      stat = "identity", width = 0.6,
+      position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+    ggplot2::geom_bar(
+      data = subset(df_to_plot, regu_type == "Down-regulated"),
+      stat = "identity", alpha = 0.5, width = 0.6,
+      position = ggplot2::position_dodge2(preserve = "single", padding = 0)) +
+    ggplot2::facet_grid(time ~ .) +
+    ggplot2::scale_fill_brewer(palette = "Set1") +
+    ggplot2::labs(x = "Cell Types", y = "Number of DEGs", fill = "Contrast") +
+    ggplot2::theme_bw(base_size = 22) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(size = 16, angle = 20, hjust = 1, color = "black"),
+      axis.text.y = ggplot2::element_text(size = 16, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+      legend.position = c(0.44, 0.96),
+      legend.title = ggplot2::element_blank(),
+      legend.text = ggplot2::element_text(family = "Arial", size = 18),
+      legend.background = ggplot2::element_blank(),
+      legend.direction = "horizontal",
+      panel.grid = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(size = 18),
+      strip.background = ggplot2::element_rect(linewidth = 1.5 * PT),
+      panel.border = ggplot2::element_rect(linewidth = 1.5 * PT)) +
+    NULL
+})
+
+p4
+```
+
+### Similarity of DEG Sets
+
+```{r fig.height=7, fig.width=9}
+p5 <- local({
+  df_degs <- rhapsodykit::diff_state_format(ds_sig)
+
+  matched <- stringr::str_match(
+    df_degs$contrast, "X(\\dDPI)\\.(MOCK|PNR2|TR4)-X(\\dDPI)\\.(MOCK|PNR2|TR4)")
+
+  df_degs$time <- factor(matched[, 2], levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+  df_degs$contrast <- paste(matched[, 3], matched[, 5], sep = " vs. ")
+  df_degs$regu_type <- factor(ifelse(df_degs$logFC > 0, "UP", "DOWN"), levels = c("UP", "DOWN"))
+
+  df_degs <- df_degs |>
+    dplyr::select(time, contrast, cluster_id, regu_type, gene) |>
+    dplyr::filter(contrast != "PNR2 vs. TR4")
+
+  df_jacmtx <- df_degs |>
+    dplyr::select(-regu_type) |>
+    dplyr::mutate(
+      time = forcats::fct_drop(time),
+      cluster_id = factor(cluster_id, levels = TISSUE_TYPES),
+      contrast = factor(contrast, levels = c("PNR2 vs. MOCK", "TR4 vs. MOCK"))) |>
+    dplyr::group_by(time) |>
+    tidyr::nest() |>
+    dplyr::mutate(
+      jacmtx = lapply(data, function(x) {
+        dplyr::group_by(x, contrast, cluster_id) |>
+          dplyr::summarise(genes = list(gene), .groups = "drop") |>
+          dplyr::rename(contrast.1 = contrast, cluster_id.1 = cluster_id) |>
+          dplyr::mutate(data = lapply(
+            X = seq_along(genes),
+            FUN = function(idx) {
+              data.frame(
+                contrast.2 = contrast.1,
+                cluster_id.2 = cluster_id.1,
+                jaccard = vapply(
+                  X = genes,
+                  FUN = function(gs)
+                    bayesbio::jaccardSets(genes[[idx]], gs),
+                  FUN.VALUE = numeric(1))
+              )
+            })) |>
+          dplyr::select(contrast.1, cluster_id.1, data) |>
+          tidyr::unnest(cols = data)
+      }),
+      anno = lapply(data, function(x) {
+        dplyr::group_by(x, contrast, cluster_id) |>
+          dplyr::summarise(genes = list(gene),
+                           size = length(gene),
+                           .groups = "drop") |>
+          dplyr::mutate(
+            label = paste(contrast, cluster_id, sep = " - "),
+            .before = 1)
+      })) |>
+    dplyr::select(time, jacmtx, anno)
+
+  plist <- purrr::pmap(df_jacmtx, function(time, jacmtx, anno) {
+    mtx <- jacmtx |>
+      dplyr::mutate(
+        set.1 = paste(time, contrast.1, cluster_id.1, sep = " - "),
+        set.2 = paste(time, contrast.2, cluster_id.2, sep = " - ")) |>
+      dplyr::select(set.1, set.2, jaccard) |>
+      tidyr::pivot_wider(names_from = set.2, values_from = jaccard) |>
+      tibble::column_to_rownames("set.1") |>
+      as.matrix()
+
+    anno <- dplyr::mutate(anno, label = paste(time, label, sep = " - "))
+    
+    jacdist <- as.dist(1 - mtx)
+
+    p <- ggtree::ggtree(hclust(jacdist, method = "average")) %<+% anno
+    p$data
+  })
+
+  plist[[2]]$x <- plist[[2]]$x + max(plist[[1]]$x) + 1.2
+  plist[[3]]$x <- plist[[3]]$x + max(plist[[2]]$x) + 1.2
+  dd <- dplyr::bind_rows(plist) |>
+    dplyr::filter(!is.na(label))
+
+  ggtree::ggtree(tr = plist[[1]], size = 1.5 * PT) +
+    ggtree::geom_tree(data = plist[[2]], size = 1.5 * PT) +
+    ggtree::geom_tree(data = plist[[3]], size = 1.5 * PT) +
+    ggtree::geom_point(
+      data = dd,
+      mapping = ggplot2::aes(
+        x, y, color = cluster_id,
+        shape = contrast, size = size)) +
+    ggplot2::scale_shape_discrete(name = "Contrast") +
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.05))) +
+    ggplot2::scale_size_continuous(range = c(5, 12), breaks = c(10, 100, 1000)) +
+    ggplot2::scale_color_manual(values = all_tissues_colors) +
+    legend_override("color", list(linetype = 0, size = 5), order = 2, title = "Cell Types") +
+    legend_override("shape", list(size = 5), order = 1, title = "Contrast") +
+    ggplot2::labs(size = "DEG Size") +
+    ggplot2::theme(legend.title = ggplot2::element_text(size = 20),
+                   legend.text = ggplot2::element_text(size = 18),
+                   legend.key.size = grid::unit(0.7, "cm")) +
+    NULL
+})
+
+p5
+```
+
+```{r fig.height=7, fig.width=18}
+(p45 <- p4 + p5 + patchwork::plot_layout(widths = c(1, 1.5)))
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p45, "../data/Figure.pptx",
+  location = grid::unit(c(3.48, 21, 47.28, 18.35), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Euler diagrams of DEG sets
+
+```{r}
+upset_contrasts_list <- function(input, ...) {
+  sets_list <- input$table %>%
+    purrr::map(function(x) {
+      purrr::map(x, "gene") %>%
+        purrr::compact()
+    })
+
+  sets_list <- Filter(\(x) length(x) > 0, sets_list)
+
+  sets_metadata <- sets_list %>%
+    purrr::imap(function(contrast, key) {
+      cbind(
+        sets = sprintf(
+          "%s [%s]",
+          stringr::str_replace(key,
+            "X(\\dDPI)\\.(.*)-X.*", "\\1-\\2"),
+          names(contrast)),
+        contrast = key,
+        cluster = names(contrast)
+      )
+    }) %>%
+    do.call(rbind, .) %>%
+    as.data.frame()
+
+  sets_to_plot <- sets_list %>%
+    unlist(recursive = FALSE)
+  
+  names(sets_to_plot) <- sets_metadata$sets
+
+  sets_to_plot
+}
+```
+
+```{r}
+deg_bool_df <- local({
+  boolmtx <- ds_sig %>%
+    rhapsodykit::diff_state_subset(
+      contrast = c(
+        "X1DPI.PNR2-X1DPI.MOCK",
+        "X1DPI.TR4-X1DPI.MOCK",
+  
+        "X2DPI.PNR2-X2DPI.MOCK",
+        "X2DPI.TR4-X2DPI.MOCK",
+  
+        "X3DPI.PNR2-X3DPI.MOCK",
+        "X3DPI.TR4-X3DPI.MOCK"
+      )) %>%
+    upset_contrasts_list() |>
+    rhapsodykit::from_list_to_upset()
+  
+  boolmtx = (boolmtx == 1)
+
+  df <- boolmtx |>
+    as.data.frame() |>
+    tibble::rownames_to_column("Gene") |>
+    tidyr::pivot_longer(!Gene, names_to = c("Time", "Treatment", "CellType"),
+                        names_pattern = "(\\dDPI)-(PNR2|TR4) \\[(.*)\\]",
+                        values_to = "Logical") |>
+    tidyr::pivot_wider(names_from = CellType, values_from = Logical,
+                       values_fill = FALSE) |>
+    dplyr::mutate(Time = as.factor(Time), Treatment = as.factor(paste0(Treatment, " vs. MOCK"))) |>
+    dplyr::select(names(all_tissues_colors), Time, Treatment)
+
+  df
+})
+```
+
+```{r}
+set.seed(20221016)
+fit <- eulerr::euler(deg_bool_df, by = list(Time, Treatment), shape = "ellipse")
+```
+
+```{r fig.height=14, fig.width=7}
+eulerr::eulerr_options(
+  strips = list(fontsize = 20, font = 1, fontfamily = "Arial"),
+  quantities = list(fontsize = 16, fontfamily = "Arial"),
+  legend = list(fontsize = 20, vgap = grid::unit(0.5, "lines"),
+                fontfamily = "Arial"))
+
+p6 <- plot(
+  fit,
+  legend = FALSE,
+  labels = FALSE,
+  fills = all_tissues_colors
+)
+
+p6
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p6, "../data/Figure.pptx",
+  location = grid::unit(c(6.56, 43.29, 19.91, 40.9), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r eval=FALSE, include=FALSE}
+set.seed(20221016)
+fit2 <- eulerr::euler(deg_bool_df, by = list(Time, Treatment), shape = "ellipse")
+
+eulerr::eulerr_options(
+  strips = list(fontsize = 20, font = 1, fontfamily = "Arial"),
+  quantities = list(fontsize = 16, fontfamily = "Arial"),
+  legend = list(fontsize = 20, vgap = grid::unit(0.5, "lines"),
+                fontfamily = "Arial"))
+
+p6l <- plot(
+  fit2, legend = FALSE,
+  fills = all_tissues_colors,
+  quantities = list(type = c("percent", "counts"))
+)
+
+plotpowerpoint(p6l, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 69.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Heatmap of LogFC
+
+```{r}
+immunity_genes <- list(
+  PTI = pathways[c("RLK", "MAPK", "RBOH")],
+  ETI = pathways[c("NBLRR", "PR")],
+  SAR = pathways[c("TaNPR", "NHP", "GOSAR")],
+  Photosynthesis = pathways[c("PhotosynPSEA", "PhotosynAnt", "PhotosynCfix")],
+  Metabolism = pathways[c(
+    "Aromatic amino acid", "General phenylpropanoid", "Lignin biosynthesis",
+    "TaGST", "Polyamine")],
+  TFs = pathways[c("WRKY", "NAC", "Myb", "bZIP")]
+)
+```
+
+```{r}
+immunity_df <- immunity_genes |>
+  tibble::enframe(name = "Category", value = "Data") |>
+  dplyr::rowwise() |>
+  dplyr::mutate(Data = list(tibble::enframe(
+    Data, name = "Pathway", value = "Gene"))) |>
+  tidyr::unnest(cols = Data) |>
+  tidyr::unnest(cols = Gene) |>
+  dplyr::mutate(
+    Pathway = dplyr::recode(Pathway,
+      RLK = "RLKs", MAPK = "MAPKs", RBOH = "RBOHs",
+      NBLRR = "NBLRRs", PR = "PRs", TaNPR = "NPRs",
+      NHP = "NHPs", "Aromatic amino acid" = "AromaticSyn",
+      "General phenylpropanoid" = "PheSyn",
+      TaGST = "GSTs", WRKY = "WRKYs", NAC = "NACs",
+      Myb = "MYBs", bZIP = "bZIPs"))
+```
+
+```{r}
+se <- SummarizedExperiment(
+  assays = list(logFC = logfc_data$mtx),
+  colData = logfc_data$coldata[-1])
+se <- se[intersect(rownames(se), immunity_df$Gene), ]
+
+# Duplicated genes existed
+rowData(se) <- with(immunity_df, local({
+  idx <- match(rownames(se), Gene)
+  DataFrame(
+    Pathway = factor(Pathway[idx], unique(Pathway)),
+    Category = factor(Category[idx], unique(Category))
+  )
+}))
+```
+
+```{r fig.height=10, fig.width=14}
+p7fun <- local({
+  fontsize <- 16
+  fontfamily <- "Arial"
+  sesub <- se[rowData(se)$Category %in% c("PTI", "ETI", "SAR"), ]
+  mtx <- assay(sesub, "logFC")
+
+  mtx_coldata <- colData(sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("contrast", "times"), drop = FALSE],
+    annotation_label = c("Contrast", "Time"),
+    annotation_name_side = "left",
+    show_legend = TRUE,
+    col = list(
+      contrast = structure(
+        c("#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$contrast)
+      ),
+      times = structure(
+        RColorBrewer::brewer.pal(3, "YlGn"),
+        names = levels(mtx_coldata$times)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      contrast = list(
+        nrow = 1,
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Contrast",
+        labels = c("PNR2 vs. MOCK", "TR4 vs. MOCK"),
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      times = list(
+        nrow = 1,
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = circlize::colorRamp2(
+      c(-5, 0, 5), c("blue", "white", "red")),
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+    row_split = rowData(sesub)[["Pathway"]],
+    cluster_row_slices = FALSE,
+    row_title_rot = 0,
+    row_title_side = "left",
+    show_row_dend = FALSE,
+    cluster_rows = function(x) {
+      dend_mtx <- x
+      dend_mtx[is.na(dend_mtx)] <- 0
+      dendsort::dendsort(
+        fastcluster::hclust(
+          d = dist(dend_mtx),
+          method = "ward.D2"),
+        isReverse = TRUE)
+    },
+    column_title = c("ST", "EP", "CH", "PA", "VOS", "VIS", "PH", "PR"),
+    column_split = colData(sesub)[["cell_types"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = FALSE,
+    row_names_gp = grid::gpar(fontsize = 8),
+    top_annotation = colHA,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    heatmap_legend_param = list(
+      title = "Log2 Fold Change",
+      at = c(-5, 0, 5), 
+      labels = c("≤ -5", "0", "≥ 5"),
+      direction = "horizontal",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
+  }
+})
+
+p7 <- p7fun()
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p7, "../data/Figure.pptx", fun = p7fun,
+  location = grid::unit(c(21.65, 39.61, 29.85, 21.94), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Heatmap of Z-score
+
+```{r fig.height=10, fig.width=14}
+p7suppfun <- local({
+  se_sub <- se[rownames(p7@ht_list[[1]]@matrix), ]
+  cpm_sesub <- cpm_se[rownames(se_sub), ]
+  rowData(cpm_sesub) <- rowData(se_sub)
+
+  mtx <- SummarizedExperiment::assay(cpm_sesub, "scaled")
+
+  fontsize <- 16
+  fontfamily <- "Arial"
+  mtx_coldata <- colData(cpm_sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "left",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(mtx_coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        nrow = 1,
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        nrow = 1,
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+  
+  bks <- seq(-q, q, length.out = 9)
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), "BuPu")
+  )
+
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = col_fun,
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+    row_split = rowData(cpm_sesub)[["Pathway"]],
+    cluster_row_slices = FALSE,
+    cluster_row = FALSE,
+    row_order = p7@ht_list[[1]]@row_order,
+    row_title_rot = 0,
+    row_title_side = "left",
+    column_split = colData(cpm_sesub)[["cellType"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = TRUE,
+    row_names_gp = grid::gpar(fontsize = 8),
+    top_annotation = colHA,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    heatmap_legend_param = list(
+      title = "Z-score",
+      direction = "horizontal",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
+  }
+})
+
+p7supp <- p7suppfun()
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p7, "../data/Figure.pptx", fun = p7fun,
+  location = grid::unit(c(2.5, 4.49, 49.01, 69.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p7supp, "../data/Figure.pptx", fun = p7suppfun,
+  location = grid::unit(c(2.5, 4.49, 49.01, 69.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+## Figure 5 Specific pathways
+
+### Dirigent proteins
+
+```{r fig.height=7, fig.width=14}
+lapply(
+  X = c(
+    "TraesCS7D02G053100",
+    "TraesCS3D02G080700",
+    "TraesCS4A02G430200",
+    "TraesCS5A02G386000",
+    "TraesCS3A02G080800",
+    "TraesCS3D02G486600",
+    "TraesCS5D02G179200",
+    "TraesCS5D02G395800",
+    "TraesCS5D02G395900"
+  ),
+  function(g) {
+    p1 <- Seurat::FeaturePlot(obj, features = g, reduction = "umap",
+                              order = TRUE, combine = FALSE)[[1]] +
+      ggplot2::coord_fixed() +
+      theme_dimred()
+    
+    p2 <- Seurat::VlnPlot(obj, features = g, combine = FALSE)[[1]] +
+      Seurat::NoLegend()
+    
+    p1 + p2
+  }
+)
+```
+
+
+### NLRs Expression
+
+```{r}
+#' Plot Heatmap for NLR Genes
+#'
+#' @param cpm A SummarizedExperiment object containing pseudo-bulk expression.
+#' @param xlsx The file path to a xlsx file.
+plotNLRsExprHeatmap <- function(
+    cpm, xlsx, assay_use = "raw", sheet_use = "NLR",
+    rowname_fontsize = 8) {
+
+  # Read genes and annotations
+  NLR <- readxl::read_excel(path = xlsx,  sheet = sheet_use)
+
+  # Prepare expression matrix
+  cpm_sesub <- cpm[NLR$Gene, ]
+  rowData(cpm_sesub) <- NLR
+  mtx <- SummarizedExperiment::assay(cpm_sesub, assay_use)
+
+  # Create column annotations
+  fontsize <- 16
+  fontfamily <- "Arial"
+  mtx_coldata <- colData(cpm_sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "right",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(mtx_coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        direction = "vertical",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+
+  rowHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "row",
+    annotation_name_side = "top",
+    df = rowData(cpm_sesub)[, c("DEG", "Type", "CatB", "ID"), drop = FALSE],
+    annotation_label = c("DEG", "Type", "CatB", "ID"),
+    col = list(
+      DEG = c(D = "black"),
+      Type = c(NLR = "#c1f062", `Partial-NLR` = "#e164ce"),
+      CatB = structure(
+        ggthemes::tableau_color_pal("Tableau 20")(length(na.omit(unique(rowData(cpm_sesub)$CatB)))),
+        names = na.omit(unique(rowData(cpm_sesub)$CatB))),
+      ID = structure(
+        ggthemes::gdocs_pal()(length(na.omit(unique(rowData(cpm_sesub)$ID)))),
+        names = na.omit(unique(rowData(cpm_sesub)$ID)))
+    ),
+    annotation_legend_param = list(
+      direction = "vertical",
+      nrow = 5,
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      grid_height = grid::unit(6, "mm"),
+      grid_width = grid::unit(6, "mm")
+    )
+  )
+  
+  # Determine colorbar
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+
+  if (all(mtx_uni >= 0))
+    bks <- seq(0, q, length.out = 9)
+  else
+    bks <- seq(-q, q, length.out = 9)
+
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), "BuPu")
+  )
+
+  # Create heatmap
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = col_fun,
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+
+    row_labels = rowData(cpm_sesub)[["RankName"]],
+    show_row_names = TRUE,
+    row_names_gp = grid::gpar(fontsize = rowname_fontsize),
+    cluster_row_slices = FALSE,
+    cluster_row = TRUE,
+    row_dend_width = unit(30, "mm"),
+    row_title_rot = 0,
+    row_title_side = "left",
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    left_annotation = rowHA,
+
+    top_annotation = colHA,
+    column_split = colData(cpm_sesub)[["cellType"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+
+    heatmap_legend_param = list(
+      title = switch(assay_use, raw = "CPM", scaled = "Z-score"),
+      direction = "vertical",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  # Wrap drawing function
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
+  }
+}
+```
+
+```{r fig.height=14, fig.width=14, eval=FALSE, include=FALSE}
+pFun <- plotNLRsExprHeatmap(
+  cpm_se, xlsx = "~/src/rhapsody-wta/data/898NLR-8sheet-for-heatmap.xlsx",
+  assay_use = "raw", sheet_use = "NLR-DEG-low", rowname_fontsize = 8)
+p <- pFun()
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 76.01), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+
+plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+  location = grid::unit(c(2.5, 1.49, 49.01, 40), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+## Figure 6 Pathogen-responsive cells
+
+### PAGA Connectivity
+
+```{r}
+p1_adata <- runPAGA(
+  sce, group_key = "tissue",
+  assay.X = "logcounts", use.dimred = "HARMONY"
+)
+
+p1_adata$obsm$update(list(
+  X_umap = reducedDim(sce, "UMAP")
+))
+```
+
+```{r fig.height=7, fig.width=7}
+p1 <- local({
+  adata <- p1_adata
+  basis <- "umap"
+  threshold <- 0
+  colour_by <- "group"
+  edge_cex = 16
+  node_cex = 4
+  point_alpha = 0.1
+  
+  paga <- createPagaObject(adata, basis = basis)
+  
+  # Inspired by https://romanhaa.github.io/blog/paga_to_r/
+  paga_edges <- tibble::tibble(
+    group1 = rownames(paga$connectivities)[row(paga$connectivities)[upper.tri(paga$connectivities)]],
+    group2 = colnames(paga$connectivities)[col(paga$connectivities)[upper.tri(paga$connectivities)]],
+    weight = paga$connectivities[upper.tri(paga$connectivities)]
+  ) %>%
+    dplyr::mutate(
+      x1 = paga$position$x[match(.$group1, rownames(paga$position))],
+      y1 = paga$position$y[match(.$group1, rownames(paga$position))],
+      x2 = paga$position$x[match(.$group2, rownames(paga$position))],
+      y2 = paga$position$y[match(.$group2, rownames(paga$position))]
+    )
+
+  paga_edges_sig <- dplyr::filter(paga_edges, weight >= threshold)
+  paga_edges_und <- dplyr::filter(paga_edges, weight < threshold)
+
+  p <- ggplot2::ggplot(
+      paga$position, ggplot2::aes(x, y))
+
+  if (colour_by != "group")
+    paga$embeddings[[colour_by]] <- adata$obs[[colour_by]]
+
+  p <- p +
+    ggplot2::geom_point(
+      data = paga$embeddings,
+      mapping = ggplot2::aes_string(
+        x = "Dim_1", y = "Dim_2", color = colour_by),
+      shape = 19,
+      alpha = point_alpha,
+      show.legend = FALSE)
+
+  if (colour_by == "group")
+    p <- p + ggplot2::scale_color_manual(values = all_tissues_colors)
+
+  p <- p +
+    ggplot2::geom_segment(
+      data = paga_edges_und,
+      mapping = ggplot2::aes(
+        x = x1, y = y1, xend = x2, yend = y2),
+      linetype = "dashed",
+      color = "grey",
+      linewidth = paga_edges_und$weight*edge_cex,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_segment(
+      data = paga_edges_sig,
+      mapping = ggplot2::aes(
+        x = x1, y = y1, xend = x2, yend = y2),
+      linetype = "solid",
+      color = "black",
+      linewidth = paga_edges_sig$weight*edge_cex,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(fill = group), shape = 21,
+      size = 3*node_cex, alpha = 1, show.legend = FALSE) +
+    ggplot2::scale_fill_manual(values = all_tissues_colors) +
+    # shadowtext::geom_shadowtext(
+    #   ggplot2::aes(label = group), color = "black",
+    #   size = 16 * FT, fontface = "bold", bg.color = "white") +
+    ggrepel::geom_text_repel(ggplot2::aes(label = group),
+                             color = "black", size = 16 * FT) +
+    ggplot2::coord_fixed() +
+    ggplot2::labs(x = "UMAP_1", y = "UMAP_2", fill = "Cell Types") +
+    legend_override("fill", list(size = 6)) +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(
+      axis.title = ggplot2::element_text(size = 22),
+      legend.text = ggplot2::element_text(size = 18))
+
+  ggrastr::rasterise(p)
+})
+```
+
+### RNA Velocity on DA Measure
+
+```{r}
+p2data <- local({
+  scv <- reticulate::import("scvelo")
+
+  adata_all_pnr2 <- readPickle(Sys.glob(
+    "../results/ObjectCache/TrajectoryInference/unitvelo_adata_pnr2_*.pickle"))
+  adata_all_tr4 <- readPickle(Sys.glob(
+    "../results/ObjectCache/TrajectoryInference/unitvelo_adata_tr4_*.pickle"))
+
+  sce_sub_list <- lapply(
+    X = list(
+      PNR2 = adata_all_pnr2,
+      TR4  = adata_all_tr4),
+    FUN = function(adata) {
+      sce_sub <- sce[, adata$obs_names$to_list()]
+      adata$obsm$update(list(X_umap = reducedDim(sce_sub, "UMAP")))
+      scv$tl$velocity_embedding(adata, basis = "umap")
+      reducedDim(sce_sub, "velocity_umap") <- adata$obsm["velocity_umap"]
+      sce_sub
+    })
+
+  sce_sub_list
+})
+
+p2da <- local({
+  da_ctr_all <- readRDS(Sys.glob(
+    "../results/ObjectCache/DifferentialAbundance/da_ctr_all_*.rds"))
+  list(
+    PNR2 = da_ctr_all[["PNR2 vs. MOCK"]],
+    TR4 = da_ctr_all[["TR4 vs. MOCK"]]
+  )
+})
+```
+
+```{r fig.height=7, fig.width=12}
+p2 <- local({
+  plist <- purrr::pmap(list(names(p2data), p2data, p2da), function(name, sce_sub, da) {
+    # Plot DA measure
+    embedding <- da$embeddings[["umap"]][da$cells$cell.idx, ]
+    data_to_plot <- data.frame(
+      Dim1 = embedding[, 1],
+      Dim2 = embedding[, 2],
+      clusters = da$info$ident[da$cells$cell.idx],
+      score = da$cells$da.pred)
+
+    p <-  ggplot2::ggplot(data_to_plot) +
+      ggplot2::geom_point(
+        mapping = ggplot2::aes(x = Dim1, y = Dim2, col = score),
+        size = 0.2) +
+      ggplot2::scale_color_gradientn(colours = c("blue", "white", "red"))
+
+    p <- ggrastr::rasterise(p)
+
+    # Plot RNA Velocity
+    colnames(reducedDim(sce_sub, "UMAP")) <- NULL
+    vector_df <- velociraptor::gridVectors(
+        reducedDim(sce_sub, "UMAP"),
+        reducedDim(sce_sub, "velocity_umap"),
+        resolution = 20)
+    p <- p +
+      ggplot2::geom_segment(
+        data = vector_df,
+        mapping = ggplot2::aes_string(
+          x = "start.1",
+          y = "start.2", 
+          xend = "end.1",
+          yend = "end.2"),
+        arrow = grid::arrow(
+          length = grid::unit(7, "pt"),
+          angle = 30,
+          type = "open"),
+        linewidth = 0.7) +
+      ggplot2::coord_fixed() +
+      ggplot2::ggtitle(paste0(name, " vs. MOCK")) +
+      ggplot2::labs(x = "UMAP_1", y = "UMAP_2", color = "DA Score") +
+      cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+      theme_dimred(linesize = 1.5 * PT) +
+      ggplot2::theme(
+        axis.title = ggplot2::element_text(size = 22),
+        plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5),
+        legend.title = ggplot2::element_text(size = 20),
+        legend.text = ggplot2::element_text(size = 18))
+
+    p
+  })
+
+  plist
+})
+```
+
+```{r fig.height=7, fig.width=19}
+(p12 <- p1 + p2)
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p12, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 18.07), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Trajectory Inference
+
+
+
+### Gene Dynamic Expression
