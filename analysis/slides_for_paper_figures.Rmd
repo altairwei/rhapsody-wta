@@ -10,9 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(magrittr)
 library(ggtree, include.only = "%<+%")
 source("../scripts/LoadUtils.R", chdir = TRUE)
-```
 
-```{r}
 options(ggrastr.default.dpi=300)
 #ggplot2::theme_set(cowplot::theme_cowplot(font_size = 22, font_family = "Arial"))
 PT = 1/2.13
@@ -1869,6 +1867,23 @@ plotpowerpoint(p12, "../data/Figure.pptx",
 
 ### Trajectory Inference
 
+```{r}
+sce_os_all <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_os_all_*.rds"))
+```
+
+```{r}
+p3 <- local({
+  plotSlingshotCurveOnReduc(sce_os_all, dimred = "PHATE",
+                      linewidth = 1, point_size = 0.5,
+                      lineage_rename = c("Lineage1" = "Branch 1",
+                                         "Lineage2" = "Branch 2",
+                                         "Lineage3" = "Branch 3")) +
+    ggplot2::coord_fixed() +
+    theme_dimred()
+})
+
+p3
+```
 
 
 ### Gene Dynamic Expression

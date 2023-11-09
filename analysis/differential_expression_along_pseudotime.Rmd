@@ -7,20 +7,37 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+source("../scripts/LoadUtils.R", chdir = TRUE)
 ```
 
-#### 基因动态表达
+## Load Trajectory Data
 
-##### 特征选择
+```{r}
+sce_os_all <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_os_all_*.rds"))
+```
+
+## Trajectories
+
+```{r}
+plotSlingshotCurveOnReduc(sce_os_all, dimred = "PHATE",
+                    linewidth = 1, point_size = 0.5,
+                    lineage_rename = c("Lineage1" = "Va_2",
+                                       "Lineage2" = "Va_4",
+                                       "Lineage3" = "Va_3")) +
+  ggplot2::coord_fixed() +
+  theme_dimred()
+```
+
+## Highly Variable Genes
 
 ```{r}
 # Fit GAM for all genes will take too much memory. So
 # we select features based on two different methods. See
 # https://github.com/statOmics/tradeSeq/issues/150
-sce_me_da_1dpi <- scry::devianceFeatureSelection(sce_me_da_1dpi, assay = "logcounts", sorted = FALSE)
-rowData(sce_me_da_1dpi)$geneVar <- scran::modelGeneVar(sce_me_da_1dpi, density.weights = FALSE)
-hvg.vars <- scran::getTopHVGs(rowData(sce_me_da_1dpi)$geneVar, n = 5000)
-sorted <- sort(rowData(sce_me_da_1dpi)$binomial_deviance, decreasing = TRUE)
+sce_os_all <- scry::devianceFeatureSelection(sce_os_all, assay = "logcounts", sorted = FALSE)
+rowData(sce_os_all)$geneVar <- scran::modelGeneVar(sce_os_all, density.weights = FALSE)
+hvg.vars <- scran::getTopHVGs(rowData(sce_os_all)$geneVar, n = 5000)
+sorted <- sort(rowData(sce_os_all)$binomial_deviance, decreasing = TRUE)
 hvg.dev <- names(sorted)[1:5000]
 hvgs <- union(hvg.dev, hvg.vars)
 ```
@@ -37,7 +54,7 @@ hvgs <- union(hvg.dev, hvg.vars)
 ```{r fig.height=4, fig.width=10}
 layout(matrix(c(1, 2), nrow = 1))
 
-fit.var <- metadata(rowData(sce_me_da_1dpi)$geneVar)
+fit.var <- metadata(rowData(sce_os_all)$geneVar)
 plot(fit.var$mean, fit.var$var, xlab = "Mean of log-expression",
     ylab = "Variance of log-expression",
     main="Feature Selection with Variance")
@@ -55,36 +72,42 @@ segments(
 abline(v = 5000, lty = 2, col = "red")
 ```
 
-##### 参数优化
+## Fit Negative Binomial Model
 
 ```{r}
 icMat <- xfun::cache_rds(
-  file = "icMat_me_da_1dpi.rds",
+  file = "icMat_os_all.rds",
   dir = "../results/ObjectCache/TrajectoryInference/",
-  expr = tradeSeq::evaluateK(sce_me_da_1dpi, k = 3:10)
+  expr = tradeSeq::evaluateK(sce_os_all, k = 3:10)
 )
 ```
 
 ```{r}
+invisible(tradeSeq::plot_evalutateK_results(icMat, k = 3:10, aicDiff = 2))
+```
+
+The middle panels show that the drop in AIC levels off if the number of knots is increased beyond 8, and we will choose that number of knots to fit the tradeSeq models.
+
+```{r}
 tradeSce <- xfun::cache_rds(
-  file = "tradeseq_gam_me_da_1dpi.rds",
+  file = "tradeseq_gam_os_all.rds",
   dir = "../results/ObjectCache/TrajectoryInference/",
   expr = tradeSeq::fitGAM(
     # fitGAM needs counts rather than logcounts, see
     # the source code of SCE-version fitGAM.
-    counts = sce_me_da_1dpi, nknots = 6,
-    conditions = factor(sce_me_da_1dpi$treatment),
+    counts = sce_os_all, nknots = 8,
+    conditions = factor(sce_os_all$treatment),
     sce = TRUE, verbose = TRUE,
-    genes = hvgs
+    genes = hvgs,
+    BPPARAM = BiocParallel::MulticoreParam(6)
   )
 )
 ```
 
-感觉 Slingshot 的 pseudotime 计算的不好，头部和尾部的细胞分布太少了。
 
-##### 差异表达
+## Differential Expression
 
-###### 谱系内的比较
+### Within-lineage comparisons
 
 > To assess significant changes in gene expression as a function of pseudotime within each lineage, we use the `associationTest`, which tests the null hypothesis that gene expression is not a function of pseudotime, i.e., whether the estimated smoothers are significantly varying as a function of pseudotime within each lineage.
 
@@ -128,7 +151,7 @@ UpSetR::upset(
   keep.order = TRUE)
 ```
 
-###### 谱系间的比较
+### Between-lineage comparisons
 
 因为只有两条世系，所以 `pairwise = TRUE` 无用。
 
@@ -185,7 +208,7 @@ enrichplot::dotplot(
     comp_enr, showCategory = 10, by = "count", label_format = 100)
 ```
 
-###### 条件间的比较
+### Between-condition comparisons
 
 > To test differential expression between conditions, we use the `conditionTest` function implemented in `tradeSeq`.
 > This function tests the null hypothesis that genes have identical expression patterns in each condition
