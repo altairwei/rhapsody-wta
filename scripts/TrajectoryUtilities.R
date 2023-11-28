@@ -463,7 +463,6 @@ plotSlingshotCurveOnReduc <- function(
         y = dim2name,
         label = "lineage"
       ),
-      bg.color = "white",
       show.legend = FALSE,
       size = lineage_label_size
     )
@@ -875,12 +874,11 @@ blue2white2red <- function(n) {
 
 plotPseudotimeHeatmap <- function(
     mtx, cluster_rows = TRUE, query_set = FALSE,
-    seriation = FALSE, seriation_method = "GW",
     palette = colorRamps::matlab.like2,
     color_branches = FALSE,
-    dend_k = NULL,
     ...) {
 
+  # Calculate color bar
   mtx_uni <- unique(mtx)
   if (length(mtx_uni) < 100)
     q <- max(abs(mtx))
@@ -893,28 +891,6 @@ plotPseudotimeHeatmap <- function(
     colors = palette(length(bks))
   )
 
-  row_dist <- as.dist(1 - cor(t(mtx)))
-  row_dist[is.na(row_dist)] <- 1
-
-  if (seriation) {
-    o1 <- seriation::seriate(row_dist, method = seriation_method)
-    # Currently, the permutation vector can be stored as a simple
-    # integer vector or as an object of class hclust.
-    row_dend <- as.dendrogram(o1[[1]])
-  } else {
-    row_dend <- hclust(row_dist, method = "ward.D2")
-    if (color_branches)
-      row_dend <- dendextend::color_branches(row_dend, k = dend_k)
-  }
-
-  if (cluster_rows) {
-    show_row_dend <- TRUE
-    cluster_rows <- row_dend
-  } else {
-    cluster_rows <- FALSE
-    show_row_dend = FALSE
-  }
-
   ph_res <- ComplexHeatmap::Heatmap(
     mtx,
 
@@ -923,7 +899,7 @@ plotPseudotimeHeatmap <- function(
     use_raster = TRUE,
 
     # Keep original row/col order
-    row_order = rownames(mtx),
+    #row_order = rownames(mtx),
     column_order = colnames(mtx),
     col = col_fun,
 
@@ -931,9 +907,7 @@ plotPseudotimeHeatmap <- function(
     # right_annotation = gene_ann,
     # ACTUAL SPLIT by sample group
     cluster_rows = cluster_rows,
-    row_split = dend_k,
     show_row_names = FALSE,
-    show_row_dend = show_row_dend,
 
     cluster_columns = FALSE,
     show_column_names = FALSE,

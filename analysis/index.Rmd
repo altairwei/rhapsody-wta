@@ -42,3 +42,10 @@ editor_options:
   - [Slides for Midterm Report](slides_for_midterm_report.html)
   - [Slides for 2023 SSPP](slides_for_2023sspp.html)
   - [Slides for PhD Defense](slides_for_phd_defense.html)
+- Figures for Journal Articles
+  - [Figure 2: Experiment Layout](figure_2_experiment_layout.html)
+  - [Figure 3: Cell Annotation](figure_3_cell_annotation.html)
+  - [Figure 4: Immunity Partition](figure_4_immunity_partition.html)
+  - [Figure 5: Specific Pathways](figure_5_specific_pathways.html)
+  - [Figure 6: Pathogen-responsive cells](figure_6_pathogen_responsive_cells.html)
+  - [Figure 7: Chloroplast-bearing cells](figure_7_chloroplast_bearing_cells.html)

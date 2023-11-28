@@ -26,16 +26,11 @@ import matplotlib.pyplot as plt
 import scanpy as sc
 ```
 
-```{r message=FALSE, warning=FALSE, results="hide"}
-library(org.Taestivum.iwgsc.db)
-orgdb <- org.Taestivum.iwgsc.db
-```
-
 ```{r}
 sce <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_spliced_*.rds"))
 ```
 
-## 1 叶肉前体分化
+## 1 L2 Body Layer
 
 在这里要探索清楚 mesophyll 和 outer sheath 之间的关系。
 
@@ -62,7 +57,7 @@ sce_precursor <- xfun::cache_rds(
 )
 ```
 
-### 降维可视化 {.tabset}
+### Dim Reduction {.tabset}
 
 #### PAHTE
 
@@ -80,7 +75,7 @@ scater::plotReducedDim(sce_precursor,
   theme_dimred()
 ```
 
-### 细胞种群连接性
+### Cell Cluster Connectivity
 
 ```{r}
 adata_precursor <- runPAGA(
@@ -99,9 +94,9 @@ p <- plotPagaGraph(adata_precursor, basis = "phate",
 p
 ```
 
-### RNA 速度
+### RNA Velocity
 
-#### 运行算法
+#### Calculation
 
 ```{r message=FALSE, warning=FALSE}
 adata <- cache_pickle(
@@ -131,7 +126,7 @@ adata$obsm$update(list(
 ))
 ```
 
-#### 速度流线
+#### Velocity Streamline
 
 ```{r}
 color_cls <- setNames(
@@ -155,9 +150,9 @@ rm(sce_precursor, adata, adata_precursor)
 gc()
 ```
 
-## 2 叶肉细胞世系
+## 2 Mesophyll Trajectory
 
-### 2.1 时间整合分析
+### 2.1 Integrated Time Series
 
 是否要正对不同 condition 拟合不同的轨迹？参
 考下面 KRAS 教程试试，另外 Fibrosis 教程通过排除一个 cellType 也避免了拟合不同轨迹，还比较了两个选择间的不同。
@@ -200,7 +195,7 @@ sce_me_all <- xfun::cache_rds(
 )
 ```
 
-#### 降维可视化 {.tabset}
+#### Dim Reduction {.tabset}
 
 ##### PAHTE
 
@@ -217,7 +212,7 @@ scater::plotReducedDim(sce_me_all, dimred = "PHATE",
 
 从 PHATE 图看，Va_1 确实深度参与了叶肉细胞世系的形成。
 
-#### 轨迹推断 {.tabset}
+#### Plot Trajectories {.tabset}
 
 ##### PHATE
 
@@ -231,7 +226,7 @@ p <- p1 + p2 + p3 + p4 + patchwork::plot_layout(ncol = 2) & ggplot2::coord_fixed
 p
 ```
 
-#### 差异拓扑分析
+#### Trajectory Topology
 
 > Test whether or not slingshot should be fitted independently for different conditions or not.
 > The null hypothesis that a common trajectory should be fitted.
@@ -268,7 +263,7 @@ top_res_time
 
 输出结果：`statistic = 0.5499402` 以及 `p.value = 5.686433e-75` ，应该为 time 分别拟合轨迹。
 
-#### 按时间拆分轨迹
+#### Split Trajectories by Times
 
 如何处理 0DPI-MOCK ？将`slingshot_conditions` 源代码拆分出来运行，单独取子集。不
 行，最后有 merge_sds 的步骤，不能重复 0DPI 数据集。
@@ -789,9 +784,77 @@ rm(sce_me_all, sce_me_1dpi, sce_me_2dpi, sce_me_3dpi)
 gc()
 ```
 
-## 3 外鞘世系
+## 3 Chlorenchyma Trajectory
 
-### 3.1 时间整合分析
+### 3.1 Integrated Time Series
+
+```{r}
+sce_chl_all <- xfun::cache_rds(
+  file = "sce_all_slingshot_chl_all.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = local({
+    # Get subsets
+    cells_chosen <- sce$cluster_id %in% c(
+      "Me_1", "Me_2", "Me_3", "Va_1")
+    sce_chl_all <- sce[, cells_chosen]
+    sce_chl_all <- sce_chl_all[
+      Matrix::rowSums(counts(sce_chl_all) > 0) > 10, ]
+
+    sce_chl_all$cluster_id <- droplevels(sce_chl_all$cluster_id)
+    sce_chl_all$cellType <- droplevels(sce_chl_all$cellType)
+
+    # Run dimred
+    sce_chl_all <- scater::runUMAP(sce_chl_all, dimred = "HARMONY", ncomponents = 30L)
+    sce_chl_all <- runPHATE(sce_chl_all, dimred = "HARMONY", seed = 1209, t = 60)
+
+    # Infer Trajectories
+    sce_chl_all <- slingshot::slingshot(sce_chl_all,
+        clusterLabels = sce_chl_all$cluster_id,
+        reducedDim = "UMAP", start.clus = "Me_3",
+        approx_points = 500)
+
+    # Split lineages by time
+    sdslist_chl_all <- condiments::slingshot_conditions(
+        sce_chl_all, sce_chl_all$time, approx_points = 500)
+    metadata(sce_chl_all)$sdslist <- sdslist_chl_all
+
+    sce_chl_all
+  })
+)
+```
+
+#### Dim Reduction {.tabset}
+
+##### PAHTE
+
+```{r}
+scater::plotReducedDim(sce_chl_all, dimred = "PHATE",
+    point_size = 0.5,
+    colour_by = "cellType",
+    text_by = "cellType",
+    text_size = 3) +
+  ggplot2::guides(color = ggplot2::guide_legend(
+    override.aes = list(size = 2))) +
+  ggplot2::coord_fixed()
+```
+
+#### Plot Trajectories {.tabset}
+
+##### PHATE
+
+```{r fig.height=8, fig.width=14}
+p1 <- plotSlingshotCurveOnReduc(sce_chl_all, dimred = "PHATE", linewidth = 1.2)
+p2 <- scater::plotReducedDim(sce_chl_all, dimred = "PHATE", colour_by = "cellType", text_by = "cellType")
+p3 <- plotLineageCurveOnReduc(sce_chl_all, 1, dimred = "PHATE", linewidth = 1.2)
+p4 <- plotLineageCurveOnReduc(sce_chl_all, 2, dimred = "PHATE", linewidth = 1.2)
+
+p <- p1 + p2 + p3 + p4 + patchwork::plot_layout(ncol = 2) & ggplot2::coord_fixed()
+p
+```
+
+## 4 Parenchyma and Outer sheath
+
+### 4.1 时间整合分析
 
 ```{r}
 sce_os_all <- xfun::cache_rds(
@@ -938,7 +1001,7 @@ p <- p1 + p2 + p6 +
 p
 ```
 
-### 3.2 分析 1DPI 外鞘世系
+### 4.2 分析 1DPI 外鞘世系
 
 ```{r}
 sce_os_1dpi <- xfun::cache_rds(
@@ -1125,7 +1188,7 @@ pairwiseFateSelectionTest(sce_os_1dpi, conditions = sce_os_1dpi$treatment) |>
   download_table("1dpi_os_rfc")
 ```
 
-### 3.3 分析 2DPI 外鞘世系
+### 4.3 分析 2DPI 外鞘世系
 
 ```{r}
 sce_os_2dpi <- xfun::cache_rds(
@@ -1306,7 +1369,7 @@ pairwiseFateSelectionTest(sce_os_2dpi, conditions = sce_os_2dpi$treatment) |>
   download_table("2dpi_os_rfc")
 ```
 
-### 3.4 分析 3DPI 的外鞘世系
+### 4.4 分析 3DPI 的外鞘世系
 
 ```{r}
 sce_os_3dpi <- xfun::cache_rds(

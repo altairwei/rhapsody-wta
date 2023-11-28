@@ -1,0 +1,867 @@
+---
+title: "Figure 6 Pathogen-responsive cells"
+author: "Altair Wei"
+date: "2023-11-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Data Objects
+
+### Seurat Objects
+
+#### MOCK samples
+
+```{r}
+obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
+sce_mock <- muscat::prepSCE(sce_mock,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+mock_celltypes <- c(
+  "Gu", "Ep_α", "Ep_β",
+  "Me_α", "Me_β", "Me_ε", "Me_γ", "Va_δ", "Me_δ",
+  "Va_β", "BS", "CC", "MPV", "Va_α", "Va_γ")
+
+mock_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(mock_celltypes))
+names(mock_celltype_colors) <- mock_celltypes
+```
+
+```{r}
+mock_body_layers <- c(
+  "Gu"   = "L1",
+  "Ep_α" = "L1",
+  "Ep_β" = "L1",
+  "Me_α" = "L2",
+  "Me_β" = "L2",
+  "Me_γ" = "L2",
+  "Me_δ" = "L2",
+  "Me_ε" = "L2",
+  "BS"   = "L3",
+  "CC"   = "L3",
+  "Va_α" = "L3",
+  "Va_β" = "L3",
+  "Va_γ" = "L3",
+  "Va_δ" = "L3",
+  "MPV"  = "L3"
+)
+```
+
+```{r}
+sce_mock$cluster_id <- forcats::fct_relevel(sce_mock$cluster_id, mock_celltypes)
+sce_mock$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce_mock$cluster_id), as.list(mock_body_layers)))
+Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_celltypes)
+```
+
+#### All samples
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+sce <- muscat::prepSCE(sce,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+all_celltypes <- c(
+   "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
+names(all_celltype_colors) <- all_celltypes
+scales::show_col(all_celltype_colors)
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+
+all_tissues_colors <- structure(
+  names = c("Stomata",      "Epidermis",    "Chlorenchyma", "Parenchyma",
+            "Outer sheath", "Inner sheath", "Phloem",       "Procambium"),
+  .Data = c("#4e79a7",      "#f28e2b",      "#8cd17d",      "#b6992d",
+            "#86bcb6",      "#e15759",      "#ff9d9a",      "#79706e")
+)
+
+
+obj$tissue <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_tissues)))
+```
+
+```{r}
+sce$cluster_id <- forcats::fct_relevel(sce$cluster_id, all_celltypes)
+Seurat::Idents(obj) <- forcats::fct_relevel(Seurat::Idents(obj), all_celltypes)
+sce$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_body_layers)))
+sce$tissue <- do.call(
+  dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_tissues)))
+```
+
+## Figure 6 Pathogen-responsive cells
+
+```{r}
+sce_os_all <- readRDS(Sys.glob("../results/ObjectCache/TrajectoryInference/sce_all_slingshot_os_all_*.rds"))
+```
+
+### Differential Abundance
+
+```{r}
+da_os_all_pnr2 <- rhapsodykit::findDiffAbundantCells(
+  subset(obj, cells = colnames(sce_os_all)),
+  stim = paste(1:3, "DPI-PNR2", sep = ""),
+  ctrl = paste(0:3, "DPI-MOCK", sep = ""),
+  reduction = "harmony", npc = 30,
+  k.vector = seq(50, 1000, 50)
+)
+
+da_os_all_tr4 <- rhapsodykit::findDiffAbundantCells(
+  subset(obj, cells = colnames(sce_os_all)),
+  stim = paste(1:3, "DPI-TR4", sep = ""),
+  ctrl = paste(0:3, "DPI-MOCK", sep = ""),
+  reduction = "harmony", npc = 30,
+  k.vector = seq(50, 1000, 50)
+)
+```
+
+试试先把 NA 排到地步，然后再随机排布红蓝色。
+
+```{r fig.height=7, fig.width=11.3}
+p1 <- local({
+  df_phate <- reducedDim(sce_os_all, "PHATE") |>
+    as.data.frame() |>
+    tibble::rownames_to_column("cell")
+
+  plist <- purrr::imap(
+    .x = list(
+      "PNR2 vs. MOCK" = da_os_all_pnr2,
+      "TR4 vs. MOCK" = da_os_all_tr4),
+    .f = function(da_os_all, index) {
+      da_df <- data.frame(
+        cell = rownames(da_os_all$embeddings$pca),
+        score = da_os_all$cells$da.pred)
+
+      df_to_plot <- dplyr::left_join(df_phate, da_df) |>
+        dplyr::arrange(!is.na(score), abs(score))
+
+      p <-  ggplot2::ggplot(df_to_plot) +
+        ggplot2::geom_point(
+          mapping = ggplot2::aes(x = PHATE1, y = PHATE2, col = score),
+          size = 0.5) +
+        ggplot2::scale_color_gradientn(colours = c("blue", "white", "red"))
+
+      p <- ggrastr::rasterise(p)
+
+      p <- p +
+          ggplot2::coord_fixed() +
+          ggplot2::labs(x = "PHATE_1", y = "PHATE_2") +
+          ggplot2::ggtitle(index) +
+          ggplot2::guides(color = ggplot2::guide_colorbar(
+            title = "DA Score", title.position = "top")) +
+          cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+          theme_dimred(linesize = 1.5 * PT) +
+          ggplot2::theme(
+            axis.title = ggplot2::element_text(size = 22),
+            plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5, margin = ggplot2::margin()),
+            legend.title = ggplot2::element_text(size = 20),
+            legend.text = ggplot2::element_text(size = 18),
+            legend.key.width = grid::unit(1.2, "cm"),
+            legend.key.height = grid::unit(0.7, "cm"),
+            legend.direction = "horizontal",
+            legend.title.align = 0.5,
+            legend.position = c(0.55, 0))
+
+      p
+      
+    })
+
+  plist
+})
+
+patchwork::wrap_plots(p1)
+```
+
+### Trajectory Inference
+
+```{r fig.height=7, fig.width=9}
+p2 <- local({
+  plotSlingshotCurveOnReduc(sce_os_all, dimred = "PHATE",
+                      linewidth = 1, point_size = 0.5, rasterise = TRUE,
+                      lineage_label_size = 20 * FT, point_alpha = 1,
+                      lineage_rename = c("Lineage1" = "Branch 1",
+                                         "Lineage2" = "Branch 2",
+                                         "Lineage3" = "Branch 3")) +
+    ggplot2::coord_fixed() +
+    ggplot2::labs(x = "PHATE_1", y = "PHATE_2") +
+    ggplot2::guides(color = ggplot2::guide_colorbar(
+      title = "Pseudotime", title.position = "top")) +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(
+      axis.title = ggplot2::element_text(size = 22),
+      plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5),
+      legend.title = ggplot2::element_text(size = 20),
+      legend.text = ggplot2::element_text(size = 18),
+      legend.key.width = grid::unit(1.2, "cm"),
+      legend.key.height = grid::unit(0.7, "cm"),
+      legend.direction = "horizontal",
+      legend.title.align = 0.5,
+      legend.position = c(0.55, 0))
+})
+
+p2
+```
+
+```{r fig.height=7, fig.width=20.9}
+(p12 <- patchwork::wrap_plots(p1[[1]] + p1[[2]], p2, widths = c(2, 1)) &
+   ggplot2::theme(plot.margin = ggplot2::margin(1, 2, 2, 2)))
+```
+
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p12, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 16.34), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Gene Dynamic Expression
+
+```{r}
+tradeSce_os_all <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/tradeseq_gam_os_all_*.rds"))
+
+patternRes_os_all <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/tradeseq_patternRes_os_all_*.rds"))
+```
+
+```{r}
+yhatkm <- local({
+  patternRes_df <- patternRes_os_all |>
+    tibble::rownames_to_column("gene") |>
+    dplyr::mutate(fdr = p.adjust(pvalue, "fdr"))
+
+  patternGenes <- patternRes_df |>
+    dplyr::filter(fdr <= 0.01) |>
+    dplyr::pull(gene) |>
+    unique()
+
+  yhatSmooth <- tradeSeq::predictSmooth(tradeSce_os_all, gene = patternGenes, nPoints = 100, tidy = FALSE)
+  yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+
+  set.seed(1124)
+  fit_km <- kmeans(yhatSmoothScaled, 6, nstart = 25)
+
+  avgtime <- split(
+    x = as.data.frame(t(fit_km$centers)),
+    f = stringr::str_match(
+      colnames(fit_km$centers), "(lineage\\d)_")[, 2]) |>
+  vapply(
+    FUN.VALUE = numeric(nrow(fit_km$centers)),
+    FUN = function(df) apply(df, 2, which.max)) |>
+  base::rowMeans()
+
+  row_split <- factor(
+    x = paste0("G", fit_km$cluster),
+    levels = paste0("G", names(sort(avgtime))))
+  
+  list(
+    mtx = yhatSmoothScaled,
+    km = fit_km,
+    cluster = row_split
+  )
+})
+```
+
+```{r}
+p4fun <- local({
+  row_split <- yhatkm$cluster
+  mtx <- yhatkm$mtx
+  palette <- colorRamps::matlab.like
+
+  # Calculate color bar
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+
+  bks <- seq(-q, q, length.out = 9)
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = palette(length(bks))
+  )
+
+  ph_res <- ComplexHeatmap::Heatmap(
+    mtx,
+
+    # Remove name from fill legend
+    use_raster = TRUE,
+
+    # Keep original row/col order
+    column_order = colnames(mtx),
+    col = col_fun,
+
+    cluster_rows = TRUE,
+    show_row_names = FALSE,
+    row_split = row_split,
+    row_title_rot = 0,
+    show_row_dend = FALSE,
+    cluster_row_slices = FALSE,
+    row_title_gp = grid::gpar(fontsize = 20, fontfamily = "Arial"),
+
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_column_dend = FALSE,
+    column_split = stringr::str_match(
+      colnames(mtx), "(lineage\\d)_")[, 2],
+    column_title = paste("Branch", 1:3),
+    column_title_gp = grid::gpar(fontsize = 20, fontfamily = "Arial"),
+
+    heatmap_legend_param = list(
+      title = "Gene Expression",
+      legend_direction = "horizontal",
+      legend_width = grid::unit(7, "cm"),
+      title_position = "topcenter",
+      title_gp = grid::gpar(fontsize = 20,fontfamily = "Arial"),
+      labels_gp = grid::gpar(fontsize = 16, fontfamily = "Arial")
+    )
+  )
+
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(
+        ph_res, heatmap_legend_side = "bottom",
+        align_heatmap_legend = "heatmap_left",
+        legend_gap = grid::unit(1.5, "cm"),
+        ...)
+    )
+  }
+})
+
+p4 <- p4fun()
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p4, "../data/Figure.pptx", fun = p4fun,
+  location = grid::unit(c(2.5, 21.87, 25.39, 15.65), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r}
+local({
+  genedf <- data.frame(
+    cluster = yhatkm$cluster,
+    gene = names(yhatkm$km$cluster)
+  )
+
+  exprdf <- yhatkm$mtx |>
+    as.data.frame() |>
+    tibble::rownames_to_column("gene") |>
+    tidyr::pivot_longer(cols = !gene,
+                        names_pattern = "(lineage\\d+)_(\\d+)",
+                        names_to = c("lineage", "pseudotime"),
+                        values_to = "expression") |>
+    dplyr::mutate(pseudotime = as.numeric(pseudotime))
+
+  df_to_plot <- dplyr::left_join(exprdf, genedf, by = "gene") |>
+    dplyr::select(gene, cluster, dplyr::everything()) |>
+    dplyr::mutate(group = paste(gene, lineage))
+
+  df_to_plot |>
+    dplyr::sample_frac() |>
+    ggplot2::ggplot(ggplot2::aes(
+      x = pseudotime, y = expression)) +
+    ggplot2::geom_line(
+      mapping = ggplot2::aes(
+        group = group, color = lineage)) +
+    ggplot2::facet_wrap(~ cluster, scales = "free_y")
+})
+```
+
+### Enrichment of Gene Cluster
+
+```{r}
+p5data <- local({
+  gene_list <- split(names(yhatkm$km$cluster), paste0("G", yhatkm$km$cluster))
+  gene_list <- gene_list[levels(yhatkm$cluster)]
+
+  clusterProfiler::compareCluster(
+      gene_list,
+      fun = "enrichGO",
+      OrgDb = "org.Taestivum.iwgsc.db",
+      keyType = "GID",
+      ont = "BP",
+      universe = rownames(tradeSce_os_all)) |>
+    enrichRepresent()
+})
+```
+
+```{r fig.height=7, fig.width=10.4}
+(p5 <- p5data |>
+  enrichplot::dotplot(
+    showCategory = 5,
+    by = "count", label_format = 50) +
+   ggplot2::ggtitle("Top GO biological process") +
+   ggplot2::xlab("Gene Cluster") +
+   ggplot2::theme(plot.title = ggplot2::element_text(size = 20, hjust = 0.22),
+                  plot.title.position = "plot",
+                  axis.title = ggplot2::element_text(size = 20),
+                  axis.text.x = ggplot2::element_text(size = 16),
+                  axis.text.y = ggplot2::element_text(size = 16),
+                  legend.title = ggplot2::element_text(size = 18),
+                  legend.text = ggplot2::element_text(size = 16),
+                  legend.background = ggplot2::element_blank(),
+                  axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+                  panel.border = ggplot2::element_rect(linewidth = 1.5 * PT))
+)
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p5, "../data/Figure.pptx",
+  location = grid::unit(c(28.21, 21.87, 23.29, 15.65), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Selected Gene Dynamics
+
+```{r eval=FALSE}
+plotPseudotimeExpression <- function(
+    models, gene, nPoints = 100, lwd = 2,
+    size = 2/3, xlab = "Pseudotime",
+    ylab = "Log(expression + 1)",
+    alpha = 2/3) {
+  id <- gene
+  sample <- 1
+  lineagesToPlot <- NULL
+  pointCol <- NULL
+  counts <- counts(models)
+  # design matrix
+  dm <- colData(models)$tradeSeq$dm
+  # expression value
+  y <- unname(counts[names(models),][id,])
+  # linear predictor
+  X <- colData(models)$tradeSeq$X
+
+  slingshotColData <- colData(models)$crv
+  # pseudotime value of each lineage
+  pseudotime <- slingshotColData[,grep(x = colnames(slingshotColData),
+                                       pattern = "pseudotime")]
+  if (is.null(dim(pseudotime))) pseudotime <- matrix(pseudotime, ncol = 1)
+
+  nCurves <- length(grep(x = colnames(dm), pattern = "t[1-9]"))
+  betaMat <- rowData(models)$tradeSeq$beta[[1]]
+  beta <- betaMat[id,]
+
+  #construct time variable based on cell assignments.
+  lcol <- timeAll <- rep(0, nrow(dm))
+  for (jj in seq_len(nCurves)) {
+    for (ii in seq_len(nrow(dm))) {
+      if (dm[ii, paste0("l", jj)] == 1) {
+        timeAll[ii] <- dm[ii, paste0("t", jj)]
+        lcol[ii] <- jj
+      } else {
+        next
+      }
+    }
+  }
+
+  # plot expression data
+  df <- data.frame("time" = timeAll,
+                   "gene_count" = y,
+                   "pCol" = as.character(lcol),
+                   "lineage" = as.character(lcol))
+  rows <- sample(seq_len(nrow(df)), nrow(df) * sample, replace = FALSE)
+  df <- df[rows, ]
+  if(!is.null(lineagesToPlot)){
+    df <- df[df$lineage %in% lineagesToPlot,]
+  }
+
+  p <- ggplot(df, aes(x = time, y = log1p(gene_count))) +
+    labs(x = xlab, y = ylab) +
+    theme_classic()
+
+  p <- p +
+    geom_point(size = size, aes(col = lineage)) +
+    scale_color_viridis_d(alpha = alpha)
+
+  # predict and plot smoothers across the range
+  curvesCols <- viridis::viridis(nCurves)
+  if(is.null(lineagesToPlot)){
+    lineagesToPlot <- seq_len(nCurves)
+  }
+  for (jj in lineagesToPlot) {
+    df <- tradeSeq:::.getPredictRangeDf(dm, jj, nPoints = nPoints)
+    Xdf <- tradeSeq:::predictGAM(lpmatrix = X,
+                      df = df,
+                      pseudotime = pseudotime)
+    yhat <- c(exp(t(Xdf %*% t(beta)) + df$offset))
+    p <- p +
+      geom_line(data = data.frame("time" = df[, paste0("t", jj)],
+                                  "gene_count" = yhat,
+                                  "lineage" = as.character(jj),
+                                  "pCol" = as.character(jj)),
+                lwd = lwd, col = curvesCols[jj])
+  }
+  
+  
+  p
+}
+
+plotPseudotimeExpression(tradeSce_os_all, "TraesCS3D02G305300")
+```
+
+Plot Z-score expression directly:
+
+```{r fig.height=13, fig.width=7}
+p6 <- local({
+  genedf <- data.frame(
+    cluster = yhatkm$cluster,
+    gene = names(yhatkm$km$cluster)
+  )
+
+  exprdf <- yhatkm$mtx |>
+    as.data.frame() |>
+    tibble::rownames_to_column("gene") |>
+    tidyr::pivot_longer(cols = !gene,
+                        names_pattern = "lineage(\\d+)_(\\d+)",
+                        names_to = c("lineage", "pseudotime"),
+                        values_to = "expression") |>
+    dplyr::mutate(pseudotime = as.numeric(pseudotime),
+                  lineage = paste("Branch", lineage))
+
+  df_to_plot <- dplyr::left_join(exprdf, genedf, by = "gene") |>
+    dplyr::select(gene, cluster, dplyr::everything()) |>
+    dplyr::mutate(group = paste(gene, lineage))
+
+  df_to_plot |>
+    dplyr::filter(gene %in% c("TraesCS5A02G386000", "TraesCS3D02G305300",
+                            "TraesCS5D02G050100", "TraesCS6D02G048300")) |>
+    ggplot2::ggplot(ggplot2::aes(
+      x = pseudotime, y = expression)) +
+    ggplot2::geom_line(
+      mapping = ggplot2::aes(
+        group = group, color = lineage),
+      linewidth = 1.5) +
+    ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+    ggplot2::facet_wrap(~ gene, ncol = 1, scales = "free_y") +
+    ggplot2::labs(x = "Pseudotime", y = "Normalized Expression", color = "Branch") +
+    ggplot2::theme_bw(base_size = 22) +
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(
+        size = 16, vjust = 0.2, margin = ggplot2::margin(t = 4, b = 4)),
+      axis.text.x = ggplot2::element_text(
+        size = 16, angle = 0, hjust = 0.5, vjust = 0.5, color = "black"),
+      axis.text.y = ggplot2::element_text(size = 16, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+      strip.background = ggplot2::element_rect(linewidth = 1.5 * PT),
+      panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
+      legend.position = c(0.25, 0.13),
+      legend.background = ggplot2::element_blank(),
+      legend.title = ggplot2::element_blank())
+})
+
+p6
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p6, "../data/Figure.pptx",
+  location = grid::unit(c(2.91, 38.17, 10.74, 18.91), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### ISH Gene Expression
+
+```{r fig.height=7, fig.width=7}
+p7 <- local({
+  scater::plotReducedDim(
+      sce_os_all, "PHATE",
+      colour_by = "TraesCS3D02G305300",
+      order_by = "TraesCS3D02G305300",
+      point_alpha = 1, point_size = 0.5,
+      rasterise = TRUE) +
+    ggplot2::scale_color_gradient(low = "grey", high = "blue") +
+    ggplot2::coord_fixed() +
+    ggplot2::ggtitle("TraesCS3D02G305300") +
+    ggplot2::labs(x = "PHATE_1", y = "PHATE_2") +
+    ggplot2::guides(color = ggplot2::guide_colorbar(
+      title = "Expression Level", title.position = "top")) +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(
+      axis.title = ggplot2::element_text(size = 22),
+      plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5),
+      legend.title = ggplot2::element_text(size = 20),
+      legend.text = ggplot2::element_text(size = 18),
+      legend.key.width = grid::unit(1.2, "cm"),
+      legend.key.height = grid::unit(0.7, "cm"),
+      legend.direction = "horizontal",
+      legend.title.align = 0.5,
+      legend.position = c(0.55, 0))
+})
+
+p7
+```
+
+```{r}
+plotpowerpoint(p7, "../data/Figure.pptx",
+  location = grid::unit(c(13.95, 38.17, 18.79, 18.91), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+## SuppFigure 6 Cell-level Analysis
+
+### PAGA Connectivity
+
+```{r}
+p1_adata <- runPAGA(
+  sce, group_key = "tissue",
+  assay.X = "logcounts", use.dimred = "HARMONY"
+)
+
+p1_adata$obsm$update(list(
+  X_umap = reducedDim(sce, "UMAP")
+))
+```
+
+```{r fig.height=7, fig.width=7}
+p1 <- local({
+  adata <- p1_adata
+  basis <- "umap"
+  threshold <- 0
+  colour_by <- "group"
+  edge_cex = 16
+  node_cex = 4
+  point_alpha = 0.1
+  
+  paga <- createPagaObject(adata, basis = basis)
+  
+  # Inspired by https://romanhaa.github.io/blog/paga_to_r/
+  paga_edges <- tibble::tibble(
+    group1 = rownames(paga$connectivities)[row(paga$connectivities)[upper.tri(paga$connectivities)]],
+    group2 = colnames(paga$connectivities)[col(paga$connectivities)[upper.tri(paga$connectivities)]],
+    weight = paga$connectivities[upper.tri(paga$connectivities)]
+  ) %>%
+    dplyr::mutate(
+      x1 = paga$position$x[match(.$group1, rownames(paga$position))],
+      y1 = paga$position$y[match(.$group1, rownames(paga$position))],
+      x2 = paga$position$x[match(.$group2, rownames(paga$position))],
+      y2 = paga$position$y[match(.$group2, rownames(paga$position))]
+    )
+
+  paga_edges_sig <- dplyr::filter(paga_edges, weight >= threshold)
+  paga_edges_und <- dplyr::filter(paga_edges, weight < threshold)
+
+  p <- ggplot2::ggplot(
+      paga$position, ggplot2::aes(x, y))
+
+  if (colour_by != "group")
+    paga$embeddings[[colour_by]] <- adata$obs[[colour_by]]
+
+  p <- p +
+    ggplot2::geom_point(
+      data = paga$embeddings,
+      mapping = ggplot2::aes_string(
+        x = "Dim_1", y = "Dim_2", color = colour_by),
+      shape = 19,
+      alpha = point_alpha,
+      show.legend = FALSE)
+
+  if (colour_by == "group")
+    p <- p + ggplot2::scale_color_manual(values = all_tissues_colors)
+
+  p <- p +
+    ggplot2::geom_segment(
+      data = paga_edges_und,
+      mapping = ggplot2::aes(
+        x = x1, y = y1, xend = x2, yend = y2),
+      linetype = "dashed",
+      color = "grey",
+      linewidth = paga_edges_und$weight*edge_cex,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_segment(
+      data = paga_edges_sig,
+      mapping = ggplot2::aes(
+        x = x1, y = y1, xend = x2, yend = y2),
+      linetype = "solid",
+      color = "black",
+      linewidth = paga_edges_sig$weight*edge_cex,
+      show.legend = FALSE
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(fill = group), shape = 21,
+      size = 3*node_cex, alpha = 1, show.legend = FALSE) +
+    ggplot2::scale_fill_manual(values = all_tissues_colors) +
+    # shadowtext::geom_shadowtext(
+    #   ggplot2::aes(label = group), color = "black",
+    #   size = 16 * FT, fontface = "bold", bg.color = "white") +
+    ggrepel::geom_text_repel(ggplot2::aes(label = group),
+                             color = "black", size = 16 * FT) +
+    ggplot2::coord_fixed() +
+    ggplot2::labs(x = "UMAP_1", y = "UMAP_2", fill = "Cell Types") +
+    legend_override("fill", list(size = 6)) +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(
+      axis.title = ggplot2::element_text(size = 22),
+      legend.text = ggplot2::element_text(size = 18))
+
+  ggrastr::rasterise(p)
+})
+```
+
+### RNA Velocity on DA Measure
+
+```{r}
+p2data <- local({
+  scv <- reticulate::import("scvelo")
+
+  adata_all_pnr2 <- readPickle(Sys.glob(
+    "../results/ObjectCache/TrajectoryInference/unitvelo_adata_pnr2_*.pickle"))
+  adata_all_tr4 <- readPickle(Sys.glob(
+    "../results/ObjectCache/TrajectoryInference/unitvelo_adata_tr4_*.pickle"))
+
+  sce_sub_list <- lapply(
+    X = list(
+      PNR2 = adata_all_pnr2,
+      TR4  = adata_all_tr4),
+    FUN = function(adata) {
+      sce_sub <- sce[, adata$obs_names$to_list()]
+      adata$obsm$update(list(X_umap = reducedDim(sce_sub, "UMAP")))
+      scv$tl$velocity_embedding(adata, basis = "umap")
+      reducedDim(sce_sub, "velocity_umap") <- adata$obsm["velocity_umap"]
+      sce_sub
+    })
+
+  sce_sub_list
+})
+
+p2da <- local({
+  da_ctr_all <- readRDS(Sys.glob(
+    "../results/ObjectCache/DifferentialAbundance/da_ctr_all_*.rds"))
+  list(
+    PNR2 = da_ctr_all[["PNR2 vs. MOCK"]],
+    TR4 = da_ctr_all[["TR4 vs. MOCK"]]
+  )
+})
+```
+
+```{r fig.height=7, fig.width=12}
+p2 <- local({
+  plist <- purrr::pmap(list(names(p2data), p2data, p2da), function(name, sce_sub, da) {
+    # Plot DA measure
+    embedding <- da$embeddings[["umap"]][da$cells$cell.idx, ]
+    data_to_plot <- data.frame(
+      Dim1 = embedding[, 1],
+      Dim2 = embedding[, 2],
+      clusters = da$info$ident[da$cells$cell.idx],
+      score = da$cells$da.pred)
+
+    p <-  ggplot2::ggplot(data_to_plot) +
+      ggplot2::geom_point(
+        mapping = ggplot2::aes(x = Dim1, y = Dim2, col = score),
+        size = 0.2) +
+      ggplot2::scale_color_gradientn(colours = c("blue", "white", "red"))
+
+    p <- ggrastr::rasterise(p)
+
+    # Plot RNA Velocity
+    colnames(reducedDim(sce_sub, "UMAP")) <- NULL
+    vector_df <- velociraptor::gridVectors(
+        reducedDim(sce_sub, "UMAP"),
+        reducedDim(sce_sub, "velocity_umap"),
+        resolution = 20)
+    p <- p +
+      ggplot2::geom_segment(
+        data = vector_df,
+        mapping = ggplot2::aes_string(
+          x = "start.1",
+          y = "start.2", 
+          xend = "end.1",
+          yend = "end.2"),
+        arrow = grid::arrow(
+          length = grid::unit(7, "pt"),
+          angle = 30,
+          type = "open"),
+        linewidth = 0.7) +
+      ggplot2::coord_fixed() +
+      ggplot2::ggtitle(paste0(name, " vs. MOCK")) +
+      ggplot2::labs(x = "UMAP_1", y = "UMAP_2", color = "DA Score") +
+      cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+      theme_dimred(linesize = 1.5 * PT) +
+      ggplot2::theme(
+        axis.title = ggplot2::element_text(size = 22),
+        plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5),
+        legend.title = ggplot2::element_text(size = 20),
+        legend.text = ggplot2::element_text(size = 18))
+
+    p
+  })
+
+  plist
+})
+```
+
+```{r fig.height=7, fig.width=19}
+(p12 <- p1 + p2)
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p12, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 18.07), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```

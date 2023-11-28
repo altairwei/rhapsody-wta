@@ -1,0 +1,304 @@
+---
+title: "Figure 2 Experiment Layout"
+author: "Altair Wei"
+date: "2023-11-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(ggtree, include.only = "%<+%")
+source("../scripts/LoadUtils.R", chdir = TRUE)
+
+options(ggrastr.default.dpi=300)
+PT = 1/2.13
+FT = 6/17.1
+```
+
+## Load Data Objects
+
+### Seurat Objects
+
+#### MOCK samples
+
+```{r}
+obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
+sce_mock <- muscat::prepSCE(sce_mock,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+mock_celltypes <- c(
+  "Gu", "Ep_α", "Ep_β",
+  "Me_α", "Me_β", "Me_ε", "Me_γ", "Va_δ", "Me_δ",
+  "Va_β", "BS", "CC", "MPV", "Va_α", "Va_γ")
+
+mock_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(mock_celltypes))
+names(mock_celltype_colors) <- mock_celltypes
+```
+
+```{r}
+mock_body_layers <- c(
+  "Gu"   = "L1",
+  "Ep_α" = "L1",
+  "Ep_β" = "L1",
+  "Me_α" = "L2",
+  "Me_β" = "L2",
+  "Me_γ" = "L2",
+  "Me_δ" = "L2",
+  "Me_ε" = "L2",
+  "BS"   = "L3",
+  "CC"   = "L3",
+  "Va_α" = "L3",
+  "Va_β" = "L3",
+  "Va_γ" = "L3",
+  "Va_δ" = "L3",
+  "MPV"  = "L3"
+)
+```
+
+```{r}
+sce_mock$cluster_id <- forcats::fct_relevel(sce_mock$cluster_id, mock_celltypes)
+sce_mock$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce_mock$cluster_id), as.list(mock_body_layers)))
+Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_celltypes)
+```
+
+#### All samples
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+sce <- muscat::prepSCE(sce,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+all_celltypes <- c(
+   "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
+names(all_celltype_colors) <- all_celltypes
+scales::show_col(all_celltype_colors)
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+
+all_tissues_colors <- structure(
+  names = c("Stomata",      "Epidermis",    "Chlorenchyma", "Parenchyma",
+            "Outer sheath", "Inner sheath", "Phloem",       "Procambium"),
+  .Data = c("#4e79a7",      "#f28e2b",      "#8cd17d",      "#b6992d",
+            "#86bcb6",      "#e15759",      "#ff9d9a",      "#79706e")
+)
+
+
+obj$tissue <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_tissues)))
+```
+
+```{r}
+sce$cluster_id <- forcats::fct_relevel(sce$cluster_id, all_celltypes)
+Seurat::Idents(obj) <- forcats::fct_relevel(Seurat::Idents(obj), all_celltypes)
+sce$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_body_layers)))
+sce$tissue <- do.call(
+  dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_tissues)))
+```
+
+## Figure 2 Experiment Layout
+
+### Sample correlation
+
+```{r}
+pb <- rhapsodykit::calculate_pseudo_bulk(
+  sce, "logcounts", fun = "mean", by = "sample_id")
+
+pb_int <- assay(pb, 1)
+pb_cormat <- cor(pb_int, method = "pearson", use = "complete.obs")
+pb_dist <- as.dist(sqrt(1 - pb_cormat^2))
+pb_hc <- hclust(pb_dist)
+```
+
+```{r}
+p1 <- pb_hc |>
+  ggtree::ggtree(hang = -1, size = 1.5 * PT) +
+  ggtree::geom_tiplab(size = 18 * FT, offset = .01)
+
+p1df <- local({
+  matched <- stringr::str_match(
+    names(pb_dist), "(\\dDPI)-(MOCK|PNR2|TR4)-(\\d)")
+  data.frame(
+    label = matched[, 1],
+    Time = matched[, 2],
+    Treatment = matched[, 3],
+    Rep = matched[, 4]
+  )
+})
+
+p1 <- ggtree::gheatmap(p1,
+  data = as.matrix(
+    tibble::column_to_rownames(
+      p1df[, c("label", "Time")], "label")),
+  offset = 0.3, width = 0.4, font.size = 18 * FT,
+  colnames_position = "top") +
+  ggplot2::scale_fill_brewer(palette = "YlGn", guide = "none") +
+  ggnewscale::new_scale_fill()
+
+p1 <- ggtree::gheatmap(p1,
+    data = as.matrix(
+    tibble::column_to_rownames(
+      p1df[, c("label", "Treatment")], "label")),
+    offset = 0.6, width = 0.4, font.size = 18 * FT,
+    colnames_position = "top") +
+  ggplot2::scale_fill_brewer(type = "qual", palette = "Dark2", guide = "none")
+
+p1
+```
+
+```{r}
+p1 <- pb_hc |>
+  ggtree::ggtree(hang = -1, size = 1.5 * PT) +
+  ggtree::geom_tiplab(size = 18 * FT, offset = 0.12, vjust = 0.6)
+
+p1df <- local({
+  matched <- stringr::str_match(
+    names(pb_dist), "(\\dDPI)-(MOCK|PNR2|TR4)-(\\d)")
+  data.frame(
+    label = matched[, 1],
+    Time = matched[, 2],
+    Treatment = matched[, 3],
+    Rep = matched[, 4]
+  )
+})
+
+p1 <- p1 %<+% p1df +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(shape = Time),
+    x = 0.7, size = 6, stroke = 2 * PT) +
+    ggplot2::scale_shape_manual(values = c(
+      "0DPI" = 22, "1DPI" = 21, "2DPI" = 23, "3DPI" = 24), guide = "none") +
+  ggtree::geom_tippoint(
+    mapping = ggplot2::aes(color = Treatment),
+    x = 0.75, size = 6) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2", guide = "none") +
+  ggtree::hexpand(0.2) +
+  # ggplot2::annotate("text", x = 0.7, y = 0, size = 18 * FT,
+  #                   label = "Time", angle = 35, hjust = 1, vjust = 0.5) +
+  # ggplot2::annotate("text", x = 0.75, y = 0, size = 18 * FT,
+  #                   label = "Treatment", angle = 35, hjust = 1, vjust = 0.5) +
+  # ggplot2::coord_cartesian(clip = "off") +
+  NULL
+
+p1
+```
+
+
+### Density Morph
+
+```{r}
+morph <- calculateDensityMorph(obj, reduction = "harmony")
+```
+
+```{r}
+p2 <- local({
+  sample_info <- stringr::str_match(rownames(morph$LS$latent_space), "^(.*)-(.*)-(.*)$")
+  
+  data_to_plot <- morph$LS$latent_space[, 1:2]
+  data_to_plot$Sample <- sample_info[, 1]
+  data_to_plot$Time <- sample_info[, 2]
+  data_to_plot$Treatment <- sample_info[, 3]
+  
+  ggplot2::ggplot(data_to_plot, ggplot2::aes(
+      x = A1, y = A2,
+      fill = Treatment, color = Treatment,
+      shape = Time, label = Sample
+    )) +
+    ggplot2::geom_point(size = 6) +
+    ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+    ggplot2::scale_fill_brewer(type = "qual", palette = "Dark2") +
+    ggplot2::scale_shape_manual(values = c(
+      "0DPI" = 22, "1DPI" = 21, "2DPI" = 23, "3DPI" = 24),
+      guide = ggplot2::guide_legend(override.aes = list(stroke = 2 * PT))) +
+    ggplot2::xlab("LSC1") +
+    ggplot2::ylab("LSC2") +
+    ggplot2::ggtitle("Latent space of scRNA-seq samples") +
+    ggplot2::coord_fixed() +
+    ggplot2::theme_bw(base_size = 22) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(size = 22),
+      axis.text.x = ggplot2::element_blank(),
+      axis.text.y = ggplot2::element_blank(),
+      axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+      panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
+      legend.key.height = grid::unit(1, "cm")) +
+    center_plot_title() +
+    NULL
+})
+
+p2
+```
+
+### Combine Two Plots
+
+```{r fig.height=7, fig.width=18}
+(p3 <- p1 + p2 + patchwork::plot_layout(widths = c(1, 1)))
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 32.16, 49.01, 18.94), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```

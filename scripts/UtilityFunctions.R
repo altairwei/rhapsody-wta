@@ -1,5 +1,6 @@
-# Make {renv} records pkg {R.utils}
+# Make {renv} records indirect packages
 loadNamespace("R.utils")
+loadNamespace("batchtools")
 
 #' Display cluster markers in a html table
 #'

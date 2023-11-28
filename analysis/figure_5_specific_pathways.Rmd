@@ -1,0 +1,670 @@
+---
+title: "Figure 5 Specific pathways"
+author: "Altair Wei"
+date: "2023-11-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(ggtree, include.only = "%<+%")
+source("../scripts/LoadUtils.R", chdir = TRUE)
+
+options(ggrastr.default.dpi=300)
+PT = 1/2.13
+FT = 6/17.1
+```
+
+## Load Data Objects
+
+### Seurat Objects
+
+#### MOCK samples
+
+```{r}
+obj_mock <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_mock_annotated_*.rds"))
+sce_mock <- Seurat::as.SingleCellExperiment(obj_mock, assay = "RNA")
+sce_mock <- muscat::prepSCE(sce_mock,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+mock_celltypes <- c(
+  "Gu", "Ep_α", "Ep_β",
+  "Me_α", "Me_β", "Me_ε", "Me_γ", "Va_δ", "Me_δ",
+  "Va_β", "BS", "CC", "MPV", "Va_α", "Va_γ")
+
+mock_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(mock_celltypes))
+names(mock_celltype_colors) <- mock_celltypes
+```
+
+```{r}
+mock_body_layers <- c(
+  "Gu"   = "L1",
+  "Ep_α" = "L1",
+  "Ep_β" = "L1",
+  "Me_α" = "L2",
+  "Me_β" = "L2",
+  "Me_γ" = "L2",
+  "Me_δ" = "L2",
+  "Me_ε" = "L2",
+  "BS"   = "L3",
+  "CC"   = "L3",
+  "Va_α" = "L3",
+  "Va_β" = "L3",
+  "Va_γ" = "L3",
+  "Va_δ" = "L3",
+  "MPV"  = "L3"
+)
+```
+
+```{r}
+sce_mock$cluster_id <- forcats::fct_relevel(sce_mock$cluster_id, mock_celltypes)
+sce_mock$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce_mock$cluster_id), as.list(mock_body_layers)))
+Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_celltypes)
+```
+
+#### All samples
+
+```{r}
+obj <- readRDS(Sys.glob("../results/ObjectCache/IntegrationAndAnnotation/obj_annotated_*.rds"))
+sce <- Seurat::as.SingleCellExperiment(obj, assay = "RNA")
+sce <- muscat::prepSCE(sce,
+  kid = "ident", # subpopulation assignments
+  gid = "group", # group IDs (ctrl/stim)
+  sid = "sample", # sample IDs (ctrl/stim.1234)
+  drop = FALSE
+)
+```
+
+```{r}
+all_celltypes <- c(
+   "Gu", "Ep_1", "Ep_2",
+  "Me_1", "Me_2", "Me_3", "Me_4", "Me_5", "Me_6",
+  "Va_1", "Va_2", "Va_3", "Va_4",
+  "BS", "CC", "MPV_1", "MPV_2")
+
+all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
+#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
+names(all_celltype_colors) <- all_celltypes
+scales::show_col(all_celltype_colors)
+```
+
+```{r}
+all_body_layers <- c(
+  "Gu"    = "L1",
+  "Ep_1"  = "L1",
+  "Ep_2"  = "L1",
+  "Me_1"  = "L2",
+  "Me_2"  = "L2",
+  "Me_3"  = "L2",
+  "Me_4"  = "L2",
+  "Me_5"  = "L2",
+  "Me_6"  = "L2",
+  "Va_1"  = "L2",
+  "Va_2"  = "L2",
+  "Va_3"  = "L2",
+  "Va_4"  = "L2",
+  "BS"    = "L3",
+  "CC"    = "L3",
+  "MPV_1" = "L3",
+  "MPV_2" = "L3"
+)
+
+all_tissues <- c(
+  Gu   = "Stomata",
+  Ep_1 = "Epidermis",
+  Ep_2 = "Epidermis",
+  Me_1 = "Chlorenchyma",
+  Me_2 = "Chlorenchyma",
+  Me_3 = "Chlorenchyma",
+  Me_4 = "Parenchyma",
+  Me_5 = "Parenchyma",
+  Me_6 = "Parenchyma",
+  Va_1 = "Chlorenchyma",
+  Va_2 = "Outer sheath",
+  Va_3 = "Outer sheath",
+  Va_4 = "Outer sheath",
+  BS = "Inner sheath",
+  CC = "Phloem",
+  MPV_1 = "Procambium",
+  MPV_2 = "Procambium"
+)
+
+all_tissues_colors <- structure(
+  names = c("Stomata",      "Epidermis",    "Chlorenchyma", "Parenchyma",
+            "Outer sheath", "Inner sheath", "Phloem",       "Procambium"),
+  .Data = c("#4e79a7",      "#f28e2b",      "#8cd17d",      "#b6992d",
+            "#86bcb6",      "#e15759",      "#ff9d9a",      "#79706e")
+)
+
+
+obj$tissue <- do.call(
+  dplyr::recode, c(list(.x = Seurat::Idents(obj)), as.list(all_tissues)))
+```
+
+```{r}
+sce$cluster_id <- forcats::fct_relevel(sce$cluster_id, all_celltypes)
+Seurat::Idents(obj) <- forcats::fct_relevel(Seurat::Idents(obj), all_celltypes)
+sce$body_layer <- do.call(
+  dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_body_layers)))
+sce$tissue <- do.call(
+  dplyr::recode, c(list(.x = sce$cluster_id), as.list(all_tissues)))
+```
+
+### DS Results
+
+```{r}
+logfc_data <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_deg_logfc_data_*.rds"))
+
+ds_res <- readRDS(Sys.glob("../results/ObjectCache/DifferentialState/ds_res_*.rds"))
+
+ds_sig <- ds_res$DESeq2 %>%
+  rhapsodykit::diff_state_significant(fdr_limit = 0.05, logfc_limit = 0)
+```
+
+### Gene List
+
+```{r}
+filelist <- Sys.glob("../data/pathways/*.txt")
+names(filelist) <- basename(filelist) |> stringr::str_remove(stringr::fixed(".txt"))
+
+pathways <- lapply(filelist, function(filename) {
+  genes <- stringr::str_trim(readLines(filename))
+  genes[genes != ""]
+})
+```
+
+### Pseudobulk CPM
+
+```{r}
+pseudobulk_cpm_mean <- readRDS(Sys.glob(
+  "../results/ObjectCache/Pseudobulk/pseudobulk_cpm_mean_*.rds"))
+```
+
+```{r}
+cpm_se <- local({
+  cpm_df <- as.data.frame(pseudobulk_cpm_mean) |>
+      tibble::rownames_to_column("Gene") |>
+      tidyr::pivot_longer(-Gene, names_to = "bulk", values_to = "cpm") |>
+      tidyr::separate(bulk, sep = "\\.", into = c("treatment", "time", "cellType"))
+  
+  cpm_df_0 <- dplyr::filter(cpm_df, time == "0DPI")
+  
+  cpm_df <- cpm_df |>
+    dplyr::add_row(dplyr::mutate(cpm_df_0, treatment = "PNR2")) |>
+    dplyr::add_row(dplyr::mutate(cpm_df_0, treatment = "TR4"))
+  
+  cpm_df$cellType <- factor(cpm_df$cellType, levels = TISSUE_TYPES)
+  cpm_df$treatment <- factor(cpm_df$treatment, levels = c("MOCK", "PNR2", "TR4"))
+  cpm_df$time <- factor(cpm_df$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI"))
+  
+  cpm_df <- cpm_df |>
+    dplyr::select(cellType, treatment, time, Gene, cpm) |>
+    dplyr::arrange(cellType, treatment, time)
+  
+  cpm_coldata <- cpm_df |>
+    dplyr::group_by(cellType, treatment, time) |>
+    dplyr::summarise(.groups = "drop")
+  
+  cpm_mtx <- cpm_df |>
+    tidyr::pivot_wider(names_from = c(cellType, treatment, time),
+                       values_from = cpm, names_sep = "#") |>
+    tibble::column_to_rownames("Gene") |>
+    as.matrix()
+  
+  SummarizedExperiment(
+    assays = list(
+      raw = cpm_mtx,
+      scaled = t(scale(t(cpm_mtx)))),
+    colData = cpm_coldata)
+})
+```
+
+## Figure 5 Specific pathways
+
+### Dirigent proteins
+
+```{r fig.height=7, fig.width=14}
+lapply(
+  X = c(
+    "TraesCS7D02G053100",
+    "TraesCS3D02G080700",
+    "TraesCS4A02G430200",
+    "TraesCS5A02G386000",
+    "TraesCS3A02G080800",
+    "TraesCS3D02G486600",
+    "TraesCS5D02G179200",
+    "TraesCS5D02G395800",
+    "TraesCS5D02G395900"
+  ),
+  function(g) {
+    p1 <- Seurat::FeaturePlot(obj, features = g, reduction = "umap",
+                              order = TRUE, combine = FALSE)[[1]] +
+      ggplot2::coord_fixed() +
+      theme_dimred()
+    
+    p2 <- Seurat::VlnPlot(obj, features = g, combine = FALSE)[[1]] +
+      Seurat::NoLegend()
+    
+    p1 + p2
+  }
+)
+```
+
+### NLRs Expression
+
+```{r}
+#' Plot Heatmap for NLR Genes
+#'
+#' @param cpm A SummarizedExperiment object containing pseudo-bulk expression.
+#' @param xlsx The file path to a xlsx file.
+plotNLRsExprHeatmap <- function(
+    cpm, xlsx, assay_use = "raw", sheet_use = "NLR",
+    rowname_fontsize = 8) {
+
+  # Read genes and annotations
+  NLR <- readxl::read_excel(path = xlsx,  sheet = sheet_use)
+
+  # Prepare expression matrix
+  cpm_sesub <- cpm[NLR$Gene, ]
+  rowData(cpm_sesub) <- NLR
+  mtx <- SummarizedExperiment::assay(cpm_sesub, assay_use)
+
+  # Create column annotations
+  fontsize <- 16
+  fontfamily <- "Arial"
+  mtx_coldata <- colData(cpm_sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "right",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(mtx_coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        direction = "vertical",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+
+  rowHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "row",
+    annotation_name_side = "top",
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    df = rowData(cpm_sesub)[, c("DEG", "Type", "CatB", "ID"), drop = FALSE],
+    annotation_label = c("DEG", "Type", "CatB", "ID"),
+    col = list(
+      DEG = c(D = "black"),
+      Type = c(NLR = "#c1f062", `Partial-NLR` = "#e164ce"),
+      CatB = structure(
+        ggthemes::tableau_color_pal("Tableau 20")(
+          length(na.omit(unique(rowData(cpm_sesub)$CatB)))),
+        names = na.omit(unique(rowData(cpm_sesub)$CatB))),
+      ID = structure(
+        ggthemes::gdocs_pal()(length(na.omit(unique(rowData(cpm_sesub)$ID)))),
+        names = na.omit(unique(rowData(cpm_sesub)$ID)))
+    ),
+    annotation_legend_param = list(
+      direction = "vertical",
+      nrow = 5,
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      grid_height = grid::unit(6, "mm"),
+      grid_width = grid::unit(6, "mm")
+    )
+  )
+  
+  # Determine colorbar
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+
+  if (all(mtx_uni >= 0))
+    bks <- seq(0, q, length.out = 9)
+  else
+    bks <- seq(-q, q, length.out = 9)
+
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), "BuPu")
+  )
+
+  # Create heatmap
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = col_fun,
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+
+    row_labels = rowData(cpm_sesub)[["RankName"]],
+    show_row_names = TRUE,
+    row_names_gp = grid::gpar(fontsize = rowname_fontsize),
+    cluster_row_slices = FALSE,
+    cluster_row = TRUE,
+    row_dend_width = unit(30, "mm"),
+    row_title_rot = 0,
+    row_title_side = "left",
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    left_annotation = rowHA,
+
+    top_annotation = colHA,
+    column_split = colData(cpm_sesub)[["cellType"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+
+    heatmap_legend_param = list(
+      title = switch(assay_use, raw = "CPM", scaled = "Z-score"),
+      direction = "vertical",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  # Wrap drawing function
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
+  }
+}
+```
+
+```{r fig.height=14, fig.width=14, eval=FALSE, include=FALSE}
+pFun <- plotNLRsExprHeatmap(
+  cpm_se, xlsx = "../data/TaNLR-for-heatmap.xlsx",
+  assay_use = "raw", sheet_use = "NLR-DEG-low", rowname_fontsize = 8)
+p <- pFun()
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 76.01), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+
+plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+  location = grid::unit(c(2.5, 1.49, 49.01, 40), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r eval=FALSE, include=FALSE}
+wb <- openxlsx::createWorkbook()
+
+lapply(
+  readxl::excel_sheets("../data/TaNLR-for-heatmap.xlsx"),
+  function(sheet) {
+    pFun <- plotNLRsExprHeatmap(
+      cpm_se, xlsx = "../data/TaNLR-for-heatmap.xlsx",
+      assay_use = "raw", sheet_use = sheet, rowname_fontsize = 12)
+    p <- pFun()
+
+    df <- readxl::read_excel("../data/TaNLR-for-heatmap.xlsx", sheet) |>
+      dplyr::arrange(match(Gene, labels(ComplexHeatmap::row_dend(p))))
+
+    openxlsx::addWorksheet(wb, sheet)
+    openxlsx::writeData(wb, sheet, df)
+  }
+) |> invisible()
+
+openxlsx::saveWorkbook(wb, "../tmp/TaNLR-for-heatmap-reorder.xlsx", overwrite = TRUE)
+```
+
+### RLKs Expression
+
+```{r}
+readRLKsAnnoData <- function(xlsx, sheet_use = "RLK") {
+  # Read genes and annotations
+  readxl::read_excel(path = xlsx, sheet = sheet_use) |>
+    tidyr::pivot_longer(cols = !c(Gene, RankName, DEG),
+                        names_to = "Domain",
+                        values_to = "Exist",
+                        values_drop_na = TRUE) |>
+    dplyr::group_by(Gene) |>
+    dplyr::summarise(RankName = unique(RankName),
+                     DEG = unique(ifelse(is.na(DEG), FALSE, TRUE)),
+                     Domain = paste(Domain, collapse = "-"))
+}
+
+#' Plot Heatmap for RLK Genes
+#'
+#' @param cpm A SummarizedExperiment object containing pseudo-bulk expression.
+#' @param xlsx The file path to a xlsx file.
+plotRLKsExprHeatmap <- function(
+    cpm, xlsx, assay_use = "raw", sheet_use = "RLK",
+    rowname_fontsize = 8) {
+
+  RLK <- readRLKsAnnoData(xlsx, sheet_use)
+
+  # Prepare expression matrix
+  cpm_sesub <- cpm[RLK$Gene, ]
+  rowData(cpm_sesub) <- RLK
+  mtx <- SummarizedExperiment::assay(cpm_sesub, assay_use)
+
+  # Create column annotations
+  fontsize <- 16
+  fontfamily <- "Arial"
+  mtx_coldata <- colData(cpm_sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "right",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(mtx_coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        direction = "vertical",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+
+  rowHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "row",
+    annotation_name_side = "top",
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    df = rowData(cpm_sesub)[, c("DEG", "Domain"), drop = FALSE],
+    annotation_label = c("DEG", "Domain"),
+    col = list(
+      DEG = c(`TRUE` = "red", `FALSE` = "grey"),
+      Domain = structure(
+        ggthemes::tableau_color_pal("Tableau 10")(
+          length(na.omit(unique(rowData(cpm_sesub)$Domain)))),
+        names = na.omit(unique(rowData(cpm_sesub)$Domain)))
+    ),
+    annotation_legend_param = list(
+      direction = "vertical",
+      nrow = 5,
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      grid_height = grid::unit(6, "mm"),
+      grid_width = grid::unit(6, "mm")
+    )
+  )
+  
+  # Determine colorbar
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+
+  if (all(mtx_uni >= 0))
+    bks <- seq(0, q, length.out = 9)
+  else
+    bks <- seq(-q, q, length.out = 9)
+
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), "BuPu")
+  )
+
+  # Create heatmap
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = col_fun,
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+
+    row_labels = rowData(cpm_sesub)[["RankName"]],
+    show_row_names = TRUE,
+    row_names_gp = grid::gpar(fontsize = rowname_fontsize),
+    cluster_row_slices = FALSE,
+    cluster_row = TRUE,
+    row_dend_width = unit(30, "mm"),
+    row_title_rot = 0,
+    row_title_side = "left",
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    left_annotation = rowHA,
+
+    top_annotation = colHA,
+    column_split = colData(cpm_sesub)[["cellType"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+
+    heatmap_legend_param = list(
+      title = switch(assay_use, raw = "CPM", scaled = "Z-score"),
+      direction = "vertical",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  # Wrap drawing function
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
+  }
+}
+```
+
+```{r fig.height=14, fig.width=14, eval=FALSE, include=FALSE}
+pFun <- plotRLKsExprHeatmap(
+  cpm_se, xlsx = "../data/TaRLK-for-heatmap-1.xlsx",
+  assay_use = "raw", sheet_use = "RLKDEGmed", rowname_fontsize = 12)
+p <- pFun()
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 76.01), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 50), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r eval=FALSE, include=FALSE}
+sheets <- c("RLK", "RLKhigh", "RLKmed", "RLKlow",
+            "RLKDEG", "RLKDEGhigh", "RLKDEGmed")
+names(sheets) <- sheets
+
+wb <- openxlsx::createWorkbook()
+
+lapply(
+  sheets,
+  function(sheet) {
+    pFun <- plotRLKsExprHeatmap(
+      cpm_se, xlsx = "../data/TaRLK-for-heatmap-1.xlsx",
+      assay_use = "raw", sheet_use = sheet, rowname_fontsize = 12)
+    p <- pFun()
+
+    df <- readRLKsAnnoData("../data/TaRLK-for-heatmap-1.xlsx", sheet) |>
+      dplyr::arrange(match(Gene, labels(ComplexHeatmap::row_dend(p))))
+
+    openxlsx::addWorksheet(wb, sheet)
+    openxlsx::writeData(wb, sheet, df)
+  }
+) |> invisible()
+
+openxlsx::saveWorkbook(wb, "../tmp/TaRLK-for-heatmap-reorder.xlsx", overwrite = TRUE)
+```
