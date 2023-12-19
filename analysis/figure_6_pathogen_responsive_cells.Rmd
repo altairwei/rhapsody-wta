@@ -7,6 +7,13 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(ggtree, include.only = "%<+%")
+source("../scripts/LoadUtils.R", chdir = TRUE)
+
+options(ggrastr.default.dpi=300)
+PT = 1/2.13
+FT = 6/17.1
 ```
 
 ## Load Data Objects
@@ -84,9 +91,7 @@ all_celltypes <- c(
   "BS", "CC", "MPV_1", "MPV_2")
 
 all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
-#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
 names(all_celltype_colors) <- all_celltypes
-scales::show_col(all_celltype_colors)
 ```
 
 ```{r}
@@ -656,7 +661,7 @@ p7 <- local({
 p7
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 plotpowerpoint(p7, "../data/Figure.pptx",
   location = grid::unit(c(13.95, 38.17, 18.79, 18.91), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))

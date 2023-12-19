@@ -228,7 +228,7 @@ cpm_se <- local({
 })
 ```
 
-## Figure 5 Specific pathways
+## Generate Expression Heatmaps
 
 ### Dirigent proteins
 
@@ -643,28 +643,729 @@ p <- pFun()
 #   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
-```{r eval=FALSE, include=FALSE}
-sheets <- c("RLK", "RLKhigh", "RLKmed", "RLKlow",
-            "RLKDEG", "RLKDEGhigh", "RLKDEGmed")
-names(sheets) <- sheets
+## Auto Generation
 
-wb <- openxlsx::createWorkbook()
+### Functions
 
-lapply(
-  sheets,
-  function(sheet) {
-    pFun <- plotRLKsExprHeatmap(
-      cpm_se, xlsx = "../data/TaRLK-for-heatmap-1.xlsx",
-      assay_use = "raw", sheet_use = sheet, rowname_fontsize = 12)
-    p <- pFun()
+```{r}
+readAnnoData <- function(xlsx, sheet_use = "NHPsyn") {
+  readxl::read_excel(path = xlsx, sheet = sheet_use) |>
+    dplyr::mutate(DEG = ifelse(is.na(DEG), FALSE, TRUE))
+}
 
-    df <- readRLKsAnnoData("../data/TaRLK-for-heatmap-1.xlsx", sheet) |>
-      dplyr::arrange(match(Gene, labels(ComplexHeatmap::row_dend(p))))
+plotExprHeatmap <- function(
+    cpm, xlsx, assay_use = "raw", sheet_use = "NHPsyn",
+    rowname_fontsize = 8) {
 
-    openxlsx::addWorksheet(wb, sheet)
-    openxlsx::writeData(wb, sheet, df)
+  df_anno <- readAnnoData(xlsx, sheet_use)
+
+  # Prepare expression matrix
+  cpm_sesub <- cpm[df_anno$Gene, ]
+  rowData(cpm_sesub) <- df_anno
+  mtx <- SummarizedExperiment::assay(cpm_sesub, assay_use)
+
+  # Create column annotations
+  fontsize <- 16
+  fontfamily <- "Arial"
+  mtx_coldata <- colData(cpm_sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "right",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(mtx_coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        direction = "vertical",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+
+  rowHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "row",
+    annotation_name_side = "top",
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    df = rowData(cpm_sesub)[, c("DEG"), drop = FALSE],
+    annotation_label = c("DEG"),
+    col = list(
+      DEG = c(`TRUE` = "red", `FALSE` = "grey")
+    ),
+    annotation_legend_param = list(
+      direction = "vertical",
+      nrow = 5,
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      grid_height = grid::unit(6, "mm"),
+      grid_width = grid::unit(6, "mm")
+    )
+  )
+  
+  # Determine colorbar
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+
+  if (all(mtx_uni >= 0))
+    bks <- seq(0, q, length.out = 9)
+  else
+    bks <- seq(-q, q, length.out = 9)
+
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), "BuPu")
+  )
+
+  # Create heatmap
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = col_fun,
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+
+    row_labels = rowData(cpm_sesub)[["RankName"]],
+    show_row_names = TRUE,
+    row_names_gp = grid::gpar(fontsize = rowname_fontsize),
+    cluster_row_slices = FALSE,
+    cluster_row = TRUE,
+    row_dend_width = unit(30, "mm"),
+    row_title_rot = 0,
+    row_title_side = "left",
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    left_annotation = rowHA,
+
+    top_annotation = colHA,
+    column_split = colData(cpm_sesub)[["cellType"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+
+    heatmap_legend_param = list(
+      title = switch(assay_use, raw = "CPM", scaled = "Z-score"),
+      direction = "vertical",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  # Wrap drawing function
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
   }
-) |> invisible()
+}
 
-openxlsx::saveWorkbook(wb, "../tmp/TaRLK-for-heatmap-reorder.xlsx", overwrite = TRUE)
+genHeatmapInPPTX <- function(xlsx_file, rowname_fontsize = 12, height_cex = 0.8, FUNX = plotExprHeatmap) {
+  sheets <- openxlsx::getSheetNames(xlsx_file)
+
+  plotFuns <- mapply(
+    sheets,
+    rowname_fontsize,
+    FUN = function(sheet, fontsize) {
+      FUNX(
+        cpm_se, xlsx = xlsx_file,
+        assay_use = "raw", sheet_use = sheet,
+        rowname_fontsize = fontsize)
+    }
+  )
+
+  heights <- lapply(sheets, function(sheet) {
+    nrow(readxl::read_excel(xlsx_file, sheet))
+  })
+
+  target.file <- paste0(tempfile(), ".pptx")
+  file.copy("../data/Figure.pptx", target.file, overwrite = TRUE)
+
+  doc <- officer::read_pptx(path = target.file)
+  mapply(plotFuns, heights, sheets, height_cex,
+    FUN = function(pFun, height, sheet, hcex) {
+      doc <- officer::add_slide(doc, layout = "Blank", master = "Office Theme")
+      location <- grid::unit(c(2.5, 1.49, 49.01, height*hcex), "cm")
+      location <- grid::convertUnit(location, "inches")
+      phloc <- officer::ph_location(
+        left = location[[1]], top = location[[2]],
+        width = location[[3]], height = location[[4]]
+      )
+      doc <- officer::ph_with(
+        x = doc,
+        value = rvg::dml(code = pFun()),
+        location = phloc)
+
+      doc <- officer::ph_with(
+        x = doc, value = sheet,
+        location = officer::ph_location(
+          left = 0, top = 0, width = 8, height = 3))
+      
+      print(doc, target = target.file)
+    })
+
+  utils::browseURL(target.file)
+}
 ```
+
+### NHP Biosynthesis
+
+```{r fig.height=14, fig.width=14, eval=FALSE, include=FALSE}
+pFun <- plotNHPsExprHeatmap(
+  cpm_se, xlsx = "../data/heatmap/NHPbiosyn-forHeatmap.xlsx",
+  assay_use = "raw", sheet_use = "NHPsynMed", rowname_fontsize = 12)
+p <- pFun()
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 76.01), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+
+plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+  location = grid::unit(c(2.5, 1.49, 49.01, 15), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### NPRs and PRs
+
+```{r fig.height=14, fig.width=14, eval=FALSE, include=FALSE}
+pFun <- plotNHPsExprHeatmap(
+  cpm_se, xlsx = "../data/heatmap/PRNPRfor-heatmap.xlsx",
+  assay_use = "raw", sheet_use = "PRNPRlow", rowname_fontsize = 12)
+p <- pFun()
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 76.01), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+
+plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+  location = grid::unit(c(2.5, 1.49, 49.01, 20), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### RBOHs Expression
+
+```{r fig.height=14, fig.width=14, eval=FALSE, include=FALSE}
+pFun <- plotNHPsExprHeatmap(
+  cpm_se, xlsx = "../data/heatmap/RBOH-for-heatmap.xlsx",
+  assay_use = "raw", sheet_use = "DEGRboH-Low", rowname_fontsize = 12)
+p <- pFun()
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 76.01), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+
+plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+  location = grid::unit(c(2.5, 1.49, 49.01, 15), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### MAPKs Expression
+
+```{r fig.height=14, fig.width=14, eval=FALSE, include=FALSE}
+pFun <- plotNHPsExprHeatmap(
+  cpm_se, xlsx = "../data/heatmap/MAPK-for-heatmap.xlsx",
+  assay_use = "raw", sheet_use = "MAPK-low", rowname_fontsize = 12)
+p <- pFun()
+
+# plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+#   location = grid::unit(c(2.5, 1.49, 49.01, 76.01), "cm"),
+#   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+
+plotpowerpoint(p, "../data/Figure.pptx", fun = pFun,
+  location = grid::unit(c(2.5, 1.49, 49.01, 25), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### WRKYs
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/WRKY-for-heatmap.xlsx",
+                 height_cex = c(0.33, 0.6, 0.6, 0.6, 0.8),
+                 rowname_fontsize = c(8, 12, 12, 12, 12))
+```
+
+### MYBs
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/TaMyb-for-Heatmap.xlsx",
+                 height_cex = c(0.14, 0.5, 0.6, 0.6),
+                 rowname_fontsize = c(3, 12, 12, 12))
+```
+
+### NACs
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/TaNAC-for-Heatmap.xlsx",
+                 height_cex = c(0.3, 0.6, 0.6, 0.6, 0.8),
+                 rowname_fontsize = c(7, 12, 12, 12, 12))
+```
+
+### PAL-related
+
+```{r}
+plotPALsExprHeatmap <- function(
+    cpm, xlsx, assay_use = "raw", sheet_use = "NHPsyn",
+    rowname_fontsize = 8) {
+
+  df_anno <- readAnnoData(xlsx, sheet_use)
+
+  # Prepare expression matrix
+  cpm_sesub <- cpm[df_anno$Gene, ]
+  rowData(cpm_sesub) <- df_anno
+  mtx <- SummarizedExperiment::assay(cpm_sesub, assay_use)
+
+  # Create column annotations
+  fontsize <- 16
+  fontfamily <- "Arial"
+  mtx_coldata <- colData(cpm_sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "right",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(mtx_coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        direction = "vertical",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+
+  rowHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "row",
+    annotation_name_side = "top",
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    df = rowData(cpm_sesub)[, c("DEG", "branch"), drop = FALSE],
+    annotation_label = c("DEG", "Branch"),
+    col = list(
+      DEG = c(`TRUE` = "red", `FALSE` = "grey"),
+      branch = structure(
+        ggthemes::tableau_color_pal("Tableau 20")(
+          length(na.omit(unique(rowData(cpm_sesub)$branch)))),
+        names = na.omit(unique(rowData(cpm_sesub)$branch)))
+    ),
+    annotation_legend_param = list(
+      direction = "vertical",
+      nrow = 5,
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      grid_height = grid::unit(6, "mm"),
+      grid_width = grid::unit(6, "mm")
+    )
+  )
+  
+  # Determine colorbar
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+
+  if (all(mtx_uni >= 0))
+    bks <- seq(0, q, length.out = 9)
+  else
+    bks <- seq(-q, q, length.out = 9)
+
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), "BuPu")
+  )
+
+  # Create heatmap
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = col_fun,
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+
+    row_labels = rowData(cpm_sesub)[["RankName"]],
+    show_row_names = TRUE,
+    row_names_gp = grid::gpar(fontsize = rowname_fontsize),
+    cluster_row_slices = FALSE,
+    cluster_row = TRUE,
+    row_dend_width = unit(30, "mm"),
+    row_title_rot = 0,
+    row_title_side = "left",
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+    left_annotation = rowHA,
+
+    top_annotation = colHA,
+    column_split = colData(cpm_sesub)[["cellType"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+
+    heatmap_legend_param = list(
+      title = switch(assay_use, raw = "CPM", scaled = "Z-score"),
+      direction = "vertical",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  # Wrap drawing function
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
+  }
+}
+```
+
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/PALrelated-for-Heatmap.xlsx",
+                 height_cex = c(0.2, 0.4, 0.4, 0.5, 0.7, 0.8),
+                 rowname_fontsize = c(5, 10, 10, 12, 12, 12),
+                 FUNX = plotPALsExprHeatmap)
+```
+
+### Auxin Signaling
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/TaAuxinSignaling-for-Heatmap.xlsx",
+                 height_cex = c(0.6, 0.6, 0.8, 0.8, 0.8),
+                 rowname_fontsize = c(12, 10, 10, 12, 12))
+```
+
+### SugarTransporter
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/SugarTransporter-for-Heatmap.xlsx",
+                 height_cex = c(0.8, 0.8, 1, 1.2),
+                 rowname_fontsize = c(12, 12, 12, 12))
+```
+
+### GSTs
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/TaGST-for-Heatmap.xlsx",
+                 height_cex = c(0.25, 0.25, 0.4, 0.5, 0.6, 0.8),
+                 rowname_fontsize = c(6, 6, 10, 12, 12, 12))
+```
+
+### CaSignaling
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/CaSignaling-for-Heatmap.xlsx",
+                 height_cex = c(0.8, 0.8, 1, 1.2),
+                 rowname_fontsize = c(12, 12, 12, 12))
+```
+
+### Benzox
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/Benzox-for-Heatmap.xlsx",
+                 height_cex = c(0.8, 0.8, 1, 1.2),
+                 rowname_fontsize = c(12, 12, 12, 12))
+```
+
+### PCD related
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/PCD-related-for-Heatmap.xlsx",
+                 height_cex = c(0.6, 0.8, 0.7, 0.8, 0.8),
+                 rowname_fontsize = c(12, 10, 10, 12, 12))
+```
+
+### FAup
+
+```{r}
+plotSimpleExprHeatmap <- function(
+    cpm, xlsx, assay_use = "raw", sheet_use = "NHPsyn",
+    rowname_fontsize = 8) {
+
+  df_anno <- readxl::read_excel(path = xlsx, sheet = sheet_use)
+
+  # Prepare expression matrix
+  cpm_sesub <- cpm[df_anno$Gene, ]
+  rowData(cpm_sesub) <- df_anno
+  mtx <- SummarizedExperiment::assay(cpm_sesub, assay_use)
+
+  # Create column annotations
+  fontsize <- 16
+  fontfamily <- "Arial"
+  mtx_coldata <- colData(cpm_sesub)
+  colHA <- ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = mtx_coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "right",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(mtx_coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(mtx_coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        direction = "vertical",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = 20,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    )
+  )
+  
+  # Determine colorbar
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+
+  if (all(mtx_uni >= 0))
+    bks <- seq(0, q, length.out = 9)
+  else
+    bks <- seq(-q, q, length.out = 9)
+
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = RColorBrewer::brewer.pal(length(bks), "BuPu")
+  )
+
+  # Create heatmap
+  p <- ComplexHeatmap::Heatmap(
+    matrix = mtx,
+    col = col_fun,
+    use_raster = TRUE,
+    border = TRUE,
+    na_col = "grey",
+
+    row_labels = rowData(cpm_sesub)[["RankName"]],
+    show_row_names = TRUE,
+    row_names_gp = grid::gpar(fontsize = rowname_fontsize),
+    cluster_row_slices = FALSE,
+    cluster_row = TRUE,
+    row_dend_width = unit(30, "mm"),
+    row_title_rot = 0,
+    row_title_side = "left",
+    row_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+
+    top_annotation = colHA,
+    column_split = colData(cpm_sesub)[["cellType"]],
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    column_title_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+
+    heatmap_legend_param = list(
+      title = switch(assay_use, raw = "CPM", scaled = "Z-score"),
+      direction = "vertical",
+      title_position = "topleft",
+      title_gp = grid::gpar(fontsize = 20,
+                            fontfamily = fontfamily),
+      labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+      legend_width = unit(8, "cm"))
+  )
+
+  # Wrap drawing function
+  function(...) {
+    suppressWarnings(
+      ComplexHeatmap::draw(p,
+        merge_legend = TRUE,
+        heatmap_legend_side = "top", 
+        annotation_legend_side = "top",
+        legend_gap = grid::unit(1.5, "cm"),
+        align_heatmap_legend = "heatmap_left",
+        align_annotation_legend = "heatmap_left",
+        ...
+      )
+    )
+  }
+}
+```
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/FAup-for-Heatmap.xlsx",
+                 height_cex = c(0.25, 0.8, 0.7, 0.8),
+                 rowname_fontsize = c(6, 10, 10, 12),
+                 FUNX = plotSimpleExprHeatmap)
+```
+
+### glycolysis-gluconeo
+
+```{r eval=FALSE, include=FALSE}
+genHeatmapInPPTX("../data/heatmap/glycolysis-gluconeo-heatmap.xlsx",
+                 height_cex = c(0.8, 0.8, 0.8),
+                 rowname_fontsize = c(12, 12, 12),
+                 FUNX = plotSimpleExprHeatmap)
+```
+
+### DEG list with annotation
+
+```{r}
+df_deg <- ds_sig |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    comparison = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2 vs. \\4")) |>
+  dplyr::filter(comparison != "PNR2 vs. TR4")
+
+str(df_deg)
+```
+
+```{r}
+ranknames <- Sys.glob("../data/heatmap/*.xlsx") |>
+  lapply(function(xlsx_file) {
+    lapply(
+      openxlsx::getSheetNames(xlsx_file),
+      FUN = function(sheet) {
+        readxl::read_excel(xlsx_file, sheet) |>
+          dplyr::select(Gene, RankName)
+      }
+    ) |>
+      dplyr::bind_rows() |>
+      dplyr::distinct()
+  }) |>
+  dplyr::bind_rows() |>
+  dplyr::distinct() |>
+  dplyr::group_by(Gene) |>
+  dplyr::summarise(RankName = paste(RankName, collapse = " | "))
+
+str(ranknames)
+```
+
+```{r}
+df_deg <- dplyr::left_join(df_deg, ranknames, by = c("gene" = "Gene"))
+
+str(df_deg)
+```
+
+```{r}
+anno <- brookite::pull_annotation(
+  unique(df_deg$gene),
+  mart_info = list(
+    mart = "plants_mart",
+    dataset = "taestivum_eg_gene",
+    host = "https://plants.ensembl.org"
+  ),
+  dest_attrs = c(
+    Description = "description",
+    GO_ID = "go_id",
+    GO_Name = "name_1006",
+    GO_Level = "namespace_1003"
+  ))
+
+df_deg <- dplyr::left_join(df_deg, anno, by = c("gene" = "ensembl_gene_id"))
+
+str(df_deg)
+```
+
+```{r}
+df_deg <- df_deg |>
+  dplyr::group_by(gene) |>
+  dplyr::mutate(hits = dplyr::n()) |>
+  dplyr::ungroup() |>
+  dplyr::select(gene, RankName, hits, cluster_id, time, comparison, contrast, dplyr::everything())
+```
+
+```{r}
+openxlsx::write.xlsx(df_deg, "../tmp/df_deg_significant.xlsx")
+```
+
+## Figure 5 Specific pathways
+
+
+
+
+

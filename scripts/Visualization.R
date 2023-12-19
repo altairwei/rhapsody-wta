@@ -23,14 +23,14 @@ plotpowerpoint <- function(ggobj, template, fun = NULL, file = NULL, location = 
   target.file <- file
   if (is.null(file))
     target.file <- paste0(tempfile(), ".pptx")
-  
+
   if (!is.null(template))
     file.copy(template, target.file, overwrite = TRUE)
-  
+
   # TODO: allow create pptx with given size using internal function of {officer}.
   # Refer to: https://learn.microsoft.com/en-us/office/open-xml/open-xml-sdk
   doc <- officer::read_pptx(path = target.file)
-  doc = officer::add_slide(doc, layout = "Blank", master = "Office Theme")
+  doc <- officer::add_slide(doc, layout = "Blank", master = "Office Theme")
   pagesize = export:::get.slide.size(doc)
   pagesize["width"] = pagesize["width"] - (margins["left"] + margins["right"])
   pagesize["height"] = pagesize["height"] - (margins["top"] + margins["bottom"])
@@ -52,7 +52,7 @@ plotpowerpoint <- function(ggobj, template, fun = NULL, file = NULL, location = 
     function(pl = ggobj) print(pl) 
   } else {
     fun
-  } 
+  }
 
   doc = officer::ph_with(
     x = doc,

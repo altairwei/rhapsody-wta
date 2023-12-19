@@ -12,7 +12,6 @@ library(ggtree, include.only = "%<+%")
 source("../scripts/LoadUtils.R", chdir = TRUE)
 
 options(ggrastr.default.dpi=300)
-#ggplot2::theme_set(cowplot::theme_cowplot(font_size = 22, font_family = "Arial"))
 PT = 1/2.13
 FT = 6/17.1
 ```
@@ -92,9 +91,7 @@ all_celltypes <- c(
   "BS", "CC", "MPV_1", "MPV_2")
 
 all_celltype_colors <- ggthemes::tableau_color_pal("Tableau 20")(length(all_celltypes))
-#mock_celltype_colors <- scater:::.get_palette("tableau20")[seq_along(mock_celltypes)]
 names(all_celltype_colors) <- all_celltypes
-scales::show_col(all_celltype_colors)
 ```
 
 ```{r}
@@ -266,7 +263,7 @@ patchwork::wrap_plots(p2)
 (p12 <- p1 + p2)
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 plotpowerpoint(p12, "../data/Figure.pptx",
   location = grid::unit(c(2.5, 4.49, 49.01, 13.5), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
@@ -502,7 +499,7 @@ p5 <- local({
 p5
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 plotpowerpoint(p5, "../data/Figure.pptx",
   location = grid::unit(c(40.75, 18.32, 10.75, 15.63), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
@@ -541,7 +538,7 @@ p6 <- local({
 p6
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 plotpowerpoint(p6, "../data/Figure.pptx",
   location = grid::unit(c(2.5, 34.6, 15.05, 15.63), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
