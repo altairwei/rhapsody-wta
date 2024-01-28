@@ -61,12 +61,39 @@ mock_body_layers <- c(
   "Va_δ" = "L3",
   "MPV"  = "L3"
 )
+
+
+mock_tissues <- c(
+  Gu   = "Stomata",
+  Ep_α = "Epidermis",
+  Ep_β = "Epidermis",
+  Me_α = "Chlorenchyma",
+  Me_β = "Chlorenchyma",
+  Me_ε = "Chlorenchyma",
+  Me_γ = "Parenchyma",
+  Me_δ = "Undefined mesophyll",
+  Va_δ = "Undefined mesophyll",
+  Va_β = "Outer sheath",
+  BS   = "Inner sheath",
+  CC   = "Phloem",
+  MPV  = "Procambium",
+  Va_α = "Undefined vascular cells",
+  Va_γ = "Undefined vascular cells"
+)
+
+mock_tissues_colors <- structure(
+  names = c("Stomata",      "Epidermis",    "Chlorenchyma", "Parenchyma", "Undefined mesophyll",
+            "Outer sheath", "Inner sheath", "Phloem",       "Procambium", "Undefined vascular cells"),
+  .Data = c("#4e79a7",      "#f28e2b",      "#8cd17d",      "#b6992d",    "#a6a6a6",
+            "#86bcb6",      "#e15759",      "#ff9d9a",      "#79706e",    "#a6a6a6")
+)
 ```
 
 ```{r}
 sce_mock$cluster_id <- forcats::fct_relevel(sce_mock$cluster_id, mock_celltypes)
 sce_mock$body_layer <- do.call(
   dplyr::recode, c(list(.x = sce_mock$cluster_id), as.list(mock_body_layers)))
+sce_mock$tissue <- dplyr::recode(sce_mock$cluster_id, !!!mock_tissues)
 Seurat::Idents(obj_mock) <- forcats::fct_relevel(Seurat::Idents(obj_mock), mock_celltypes)
 ```
 
@@ -347,100 +374,32 @@ plotpowerpoint(p3, "../data/Figure.pptx",
 knitr::knit_exit()
 ```
 
-## Supp Figure X
+## Supplementary Figure 2
 
-### Cluster stability
+### Resolution tree
 
-```{r}
-silhouette_scores <- scclusteval::CalculateSilhouette(
-  obj_mock, dims = 1:20, reduction = "harmony")
-
-scclusteval::SilhouetteRainCloudPlot(silhouette_scores) +
-  ggplot2::scale_color_manual(values = mock_celltype_colors) +
-  ggplot2::scale_fill_manual(values = mock_celltype_colors)
-```
-
-```{r}
-subsample <- readRDS("../results/ClustEval-2nd/gather_subsample.rds")
-fullsample <- readRDS("../results/ClustEval-2nd/gather_fullsample.rds")
-```
-
-```{r}
-scclusteval::JaccardRainCloudPlot(
-    #rep(list(Seurat::Idents(obj_mock)), 100),
-  dplyr::filter(subsample, pc == 20, k_param == 20, resolution == 0.6)$original_ident,
-    dplyr::filter(subsample, pc == 20, k_param == 20, resolution == 0.6)$recluster_ident) + 
-  ggplot2::geom_hline(yintercept = c(0.6, 0.75), linetype = 2) +
-  ggplot2::xlab("cluster id w/ pc=20 k=20 res=0.6") +
-  # ggplot2::scale_x_discrete(limits = mock_celltypes) +
-  # ggplot2::scale_color_manual(values = mock_celltype_colors) +
-  # ggplot2::scale_fill_manual(values = mock_celltype_colors) +
-  NULL
-```
-
-```{r}
-scclusteval::JaccardRainCloudPlot(
-    rep(list(Seurat::Idents(obj_mock)), 100),
-    dplyr::filter(subsample, pc == 20, k_param == 20, resolution == 0.6)$recluster_ident) + 
-  ggplot2::geom_hline(yintercept = c(0.6, 0.75), linetype = 2) +
-  ggplot2::xlab("cluster id w/ pc=20 k=20 res=0.6") +
-  ggplot2::scale_x_discrete(limits = mock_celltypes) +
-  ggplot2::scale_color_manual(values = mock_celltype_colors) +
-  ggplot2::scale_fill_manual(values = mock_celltype_colors) +
-  NULL
-```
-
-```{r}
-rm(subsample, fullsample)
-gc()
-```
-
-### Labels transfer
-
-```{r}
-Seurat::Idents(obj_mock)
-obj_all_mock <- subset(obj, treatment == "MOCK")
-```
-
-```{r}
-all(colnames(obj_mock) == colnames(obj_all_mock))
-```
-
-```{r}
-Seurat::Idents(obj_all_mock) <- Seurat::Idents(obj_mock)
-```
-
-```{r}
-p1 <- Seurat::DimPlot(
-    obj_all_mock, reduction = "umap") +
-  ggplot2::coord_fixed() +
-  ggplot2::scale_color_manual(values = mock_celltype_colors) +
-  ggplot2::ggtitle("original MOCK labels") +
-  center_plot_title() +
-  theme_dimred()
+```{r fig.height=10, fig.width=7}
+p1 <- local({
+  library(clustree)
+  clustree::clustree(
+      obj_mock, prefix = "RNA_snn_res.",
+      edge_width = 1,
+      node_text_size = 16 * FT) +
+    ggplot2::scale_size_continuous(range = c(4, 15), breaks = c(500, 1000, 5000)) +
+    legend_override("color", list(size = 4), title = "resolution") +
+    ggplot2::theme(
+      legend.title = ggplot2::element_text(size = 20),
+      legend.text = ggplot2::element_text(size = 18)
+    )
+})
 
 p1
 ```
 
-
-```{r}
-p2 <- Seurat::DimPlot(
-    obj, reduction = "umap",
-    group.by = "predicted.id") +
-  ggplot2::coord_fixed() +
-  ggplot2::scale_color_manual(values = mock_celltype_colors) +
-  theme_dimred()
-
-p2
-```
-
-```{r fig.height=7, fig.width=14}
-p1 + p2 + patchwork::plot_layout(guides = "collect")
-```
-
-```{r}
-rm(obj_all_mock)
-gc()
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p1, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 24, 24.5), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
 ### Cell Cluster Tree
@@ -494,20 +453,486 @@ cor_dist |>
 title("Variable features")
 ```
 
+#### Correlation Heatmap
+
 ```{r fig.height=7, fig.width=7, message=FALSE, warning=FALSE}
-p <- ComplexHeatmap::Heatmap(
+avg_expr <- log1p(Seurat::AverageExpression(
+  obj_mock, features = Seurat::VariableFeatures(obj_mock),
+  slot = "data", group.by = "RNA_snn_res.0.6")$RNA)
+avg_expr_cor <- cor(avg_expr)
+
+p2 <- ComplexHeatmap::Heatmap(
   matrix = avg_expr_cor,
   col = viridis::viridis(256),
-  column_names_rot = 45,
+  column_names_rot = 0,
+  column_names_centered = TRUE,
   clustering_distance_rows = \(x) as.dist(sqrt(1 - x^2)),
   clustering_distance_columns = \(x) as.dist(sqrt(1 - x^2)),
+  row_dend_reorder = FALSE,
+  column_dend_reorder = FALSE,
+  row_dend_width = grid::unit(30, "mm"),
+  column_dend_height = grid::unit(30, "mm"),
+  row_names_gp = grid::gpar(fontsize = 20),
+  column_names_gp = grid::gpar(fontsize = 20),
+  row_dend_gp = grid::gpar(lwd = 2),
+  column_dend_gp = grid::gpar(lwd = 2),
+
   heatmap_legend_param = list(
     title = "Pearson's R",
+    title_gp = grid::gpar(fontsize = 20),
     title_position = "topcenter",
+    labels_gp = grid::gpar(fontsize = 16),
     legend_direction = "horizontal",
-    legend_width = grid::unit(4, "cm")
+    legend_width = grid::unit(8, "cm"),
+    grid_height = grid::unit(0.6, "cm")
   )
 )
 
-p <- ComplexHeatmap::draw(p, heatmap_legend_side = "top")
+ComplexHeatmap::draw(p2, heatmap_legend_side = "top")
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p2, "../data/Figure.pptx",
+               fun = \() {ComplexHeatmap::draw(p2, heatmap_legend_side = "top")},
+  location = grid::unit(c(27.13, 4.49, 24.37, 24.5), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Marker Genes Expression
+
+```{r fig.height=7, fig.width=7}
+p3 <- local({
+  scater::plotReducedDim(
+      sce_mock, "UMAP",
+      colour_by = "TraesCS1B02G406200",
+      order_by = "TraesCS1B02G406200",
+      point_alpha = 1, point_size = 0.5,
+      rasterise = TRUE) +
+    ggplot2::scale_color_gradient(low = "grey", high = "blue") +
+    ggplot2::coord_fixed() +
+    ggplot2::ggtitle("TraesCS1B02G406200") +
+    ggplot2::labs(x = "UMAP_1", y = "UMAP_2") +
+    ggplot2::guides(color = ggplot2::guide_colorbar(
+      title = "Expression Level", title.position = "top")) +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(
+      axis.title = ggplot2::element_text(size = 22),
+      plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5),
+      legend.title = ggplot2::element_text(size = 20),
+      legend.text = ggplot2::element_text(size = 18),
+      legend.key.width = grid::unit(1.2, "cm"),
+      legend.key.height = grid::unit(0.7, "cm"),
+      legend.direction = "horizontal",
+      legend.title.align = 0.5,
+      legend.position = c(0.55, 0))
+})
+
+p3
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(3.75, 29.84, 15.83, 13.64), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r fig.height=7, fig.width=7}
+p4 <- local({
+  scater::plotReducedDim(
+      sce_mock, "UMAP",
+      colour_by = "TraesCS2A02G350900",
+      order_by = "TraesCS2A02G350900",
+      point_alpha = 1, point_size = 0.5,
+      rasterise = TRUE) +
+    ggplot2::scale_color_gradient(low = "grey", high = "blue") +
+    ggplot2::coord_fixed() +
+    ggplot2::ggtitle("TraesCS2A02G350900") +
+    ggplot2::labs(x = "UMAP_1", y = "UMAP_2") +
+    ggplot2::guides(color = ggplot2::guide_colorbar(
+      title = "Expression Level", title.position = "top")) +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(
+      axis.title = ggplot2::element_text(size = 22),
+      plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5),
+      legend.title = ggplot2::element_text(size = 20),
+      legend.text = ggplot2::element_text(size = 18),
+      legend.key.width = grid::unit(1.2, "cm"),
+      legend.key.height = grid::unit(0.7, "cm"),
+      legend.direction = "horizontal",
+      legend.title.align = 0.5,
+      legend.position = c(0.55, 0))
+})
+
+p4
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p4, "../data/Figure.pptx",
+  location = grid::unit(c(3.75, 44.72, 15.83, 13.64), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Cluster stability
+
+```{r}
+silhouette_scores <- scclusteval::CalculateSilhouette(
+  obj_mock, dims = 1:20, reduction = "harmony")
+
+scclusteval::SilhouetteRainCloudPlot(silhouette_scores) +
+  ggplot2::scale_color_manual(values = mock_celltype_colors) +
+  ggplot2::scale_fill_manual(values = mock_celltype_colors)
+```
+
+```{r}
+subsample <- readRDS("../results/ClustEval-2nd/gather_subsample.rds")
+fullsample <- readRDS("../results/ClustEval-2nd/gather_fullsample.rds")
+```
+
+```{r}
+scclusteval::JaccardRainCloudPlot(
+    #rep(list(Seurat::Idents(obj_mock)), 100),
+  dplyr::filter(subsample, pc == 20, k_param == 20, resolution == 0.6)$original_ident,
+    dplyr::filter(subsample, pc == 20, k_param == 20, resolution == 0.6)$recluster_ident) + 
+  ggplot2::geom_hline(yintercept = c(0.6, 0.75), linetype = 2) +
+  ggplot2::xlab("cluster id w/ pc=20 k=20 res=0.6") +
+  # ggplot2::scale_x_discrete(limits = mock_celltypes) +
+  # ggplot2::scale_color_manual(values = mock_celltype_colors) +
+  # ggplot2::scale_fill_manual(values = mock_celltype_colors) +
+  NULL
+```
+
+```{r}
+scclusteval::JaccardRainCloudPlot(
+    rep(list(Seurat::Idents(obj_mock)), 100),
+    dplyr::filter(subsample, pc == 20, k_param == 20, resolution == 0.6)$recluster_ident) + 
+  ggplot2::geom_hline(yintercept = c(0.6, 0.75), linetype = 2) +
+  ggplot2::xlab("cluster id w/ pc=20 k=20 res=0.6") +
+  ggplot2::scale_x_discrete(limits = mock_celltypes) +
+  ggplot2::scale_color_manual(values = mock_celltype_colors) +
+  ggplot2::scale_fill_manual(values = mock_celltype_colors) +
+  NULL
+```
+
+```{r}
+rm(subsample, fullsample)
+gc()
+```
+
+
+## Supplementary Figure 3
+
+### Cell Proportion
+
+```{r}
+ca_res_mock <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialAbundance/ca_res_nonclust_objmock_*.rds"))
+ca_res_mock$results$cellTypes <- forcats::fct_relevel(ca_res_mock$results$cellTypes, mock_celltypes)
+```
+
+```{r fig.height=10, fig.width=14}
+ca_res_mock$results$cellTypes <- dplyr::recode(as.character(ca_res_mock$results$cellTypes), !!!cluster_num)
+ca_res_mock$results$cellTypes <- factor(ca_res_mock$results$cellTypes, levels = cluster_num[mock_celltypes])
+
+p1 <- local({
+  df_to_plot <- ca_res_mock$results %>%
+    tibble::as_tibble() %>%
+    dplyr::filter(method == "BCa") %>%
+    dplyr::mutate(
+      time = sapply(strsplit(cond, split = "-"), "[", 1),
+      rep = sapply(strsplit(as.character(subject), split = "-"),
+                   function(x) paste(x[2:3], collapse = "-")),
+      treatment = sapply(strsplit(cond, split = "-"), "[", 2)
+    )
+
+  prop_df <- ca_res_mock$thetastar %>%
+    as.data.frame()
+
+  colnames(prop_df) <- paste("BS_", seq_len(ncol(ca_res_mock$thetastar)), sep = "")
+
+  df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
+    tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
+
+  ggplot2::ggplot(df_to_plot, ggplot2::aes(x = time, y = prop, fill = cellTypes)) +
+    ggplot2::geom_boxplot(
+      width = 0.2, outlier.shape = NA,
+      position = ggplot2::position_dodge(width = 0.4)) +
+    ggplot2::geom_line(
+      mapping = ggplot2::aes(group = treatment),
+      stat = "summary", fun = median,
+      position = ggplot2::position_dodge(width = 0.4)) +
+    ggplot2::scale_y_continuous(labels = scales::percent) +
+    ggplot2::facet_wrap(~ cellTypes, scales = "free_y", ncol = 3, drop = FALSE,
+      labeller = ggplot2::labeller(cellTypes = \(x) paste("cluster:", x))) +
+    ggplot2::scale_fill_manual(values = setNames(mock_celltype_colors, cluster_num[mock_celltypes])) +
+    ggplot2::guides(fill = "none") +
+    ggplot2::labs(x = "Time", y = "Proportion") +
+    ggplot2::theme_bw(base_size = 22) +
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(
+        size = 18, vjust = 0.2, margin = ggplot2::margin(t = 4, b = 4)),
+      axis.text.x = ggplot2::element_text(
+        size = 16, angle = 0, hjust = 0.5, vjust = 1, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+      strip.background = ggplot2::element_blank(),
+      panel.border = ggplot2::element_rect(linewidth = 1.5 * PT)
+    ) + rotate_x_labels()
+})
+
+p2 <- rhapsodykit::calculateClusterProportion(
+  sce_mock$body_layer, sce_mock$sample_id, sce_mock$group_id) |>
+  dplyr::mutate(percent = scales::label_percent(accuracy = 0.1)(frequency)) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = sample_id, y = frequency, fill = cluster_id)) +
+  ggplot2::facet_wrap(~group_id, nrow = 1, scales = "free_x") +
+  ggplot2::geom_bar(
+    stat = "identity", col = "white",
+    width = 1, size = 0.2, position = "stack") +
+  ggplot2::geom_text(
+    mapping = ggplot2::aes(label = percent),
+    stat = "identity", size = 16 * FT, angle = 90,
+    position = ggplot2::position_fill(vjust = 0.5)) +
+  ggplot2::scale_y_continuous(breaks = seq(0, 1, 0.2), expand = c(0, 0)) +
+  ggplot2::scale_x_discrete(expand = c(0, 0)) +
+  ggplot2::scale_fill_manual(values = c(L1 = "#a0cbe8", L2 = "#8cd17d", L3 = "#ff9d9a")) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "Body Layer")) +
+  ggplot2::ylab("Proportion") +
+  ggplot2::theme_grey() +
+  ggplot2::theme(
+    aspect.ratio = NULL,
+    axis.title.x = ggplot2::element_blank(),
+    axis.title.y = ggplot2::element_text(family = "Arial", size = 20, color = "black"),
+    axis.text = ggplot2::element_text(family = "Arial", size = 16, color = "black"),
+    axis.text.x = ggplot2::element_text(angle = 45, vjust = 1, hjust = 1),
+    axis.text.y = ggplot2::element_blank(),
+    axis.ticks.y = ggplot2::element_blank(),
+    panel.grid = ggplot2::element_blank(),
+    panel.spacing = grid::unit(2, "mm"),
+    strip.background = ggplot2::element_blank(),
+    strip.text = ggplot2::element_blank(),
+    legend.title = ggplot2::element_text(family = "Arial", size = 20),
+    legend.text = ggplot2::element_text(family = "Arial", size = 18),
+    legend.key.size = grid::unit(0.8, "cm"),
+    legend.position = "bottom",
+    legend.justification = "left",
+    legend.direction = "horizontal",
+    plot.margin = ggplot2::margin(l = 24)
+  ) +
+  rotate_x_labels()
+
+(p12 <- p2 + p1 + patchwork::plot_layout(widths = c(1, 1.5)))
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p12, "../data/Figure.pptx",
+  location = grid::unit(c(2.69, 4.68, 30, 28.43), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### CNA Results
+
+```{r}
+sce_mock$time_val <- as.numeric(factor(
+  sce_mock$time, levels = c("0DPI", "1DPI", "2DPI", "3DPI")))
+sce_mock$sample <- as.character(sce_mock$sample_id)
+
+sce_mock <- association.SingleCellExperiment(
+  sce_mock, test_var = "time_val", samplem_key = "sample_id", dimred = "HARMONY")
+```
+
+```{r fig.height=6, fig.width=14}
+p3 <- scater::plotReducedDim(
+    sce_mock,
+    dimred = "UMAP",
+    point_size = 0.5,
+    point_alpha = 1,
+    colour_by = "cna_ncorrs",
+    order_by = I(sample(seq_len(ncol(sce_mock)))),
+    theme_size = 14) +
+  ggplot2::scale_color_gradientn(colours = rev(ggthemes::ggthemes_data[[
+    c("tableau", "color-palettes", "ordered-diverging", "Orange-Blue Diverging")]][["value"]])) +
+  ggplot2::guides(color = ggplot2::guide_colorbar(
+    title = "Coefficient", title.position = "top")) +
+  ggplot2::coord_fixed() +
+  center_plot_title() +
+  cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+  theme_dimred(linesize = 1.5 * PT) +
+  remove_legend_title() +
+  theme(
+    legend.title = ggplot2::element_text(size = 20),
+    legend.text = ggplot2::element_text(size = 18),
+    legend.key.width = grid::unit(1.2, "cm"),
+    legend.key.height = grid::unit(0.7, "cm"),
+    legend.direction = "horizontal",
+    legend.title.align = 0.5,
+    legend.position = c(0.55, 0)
+  )
+
+p3 <- ggrastr::rasterise(p3)
+
+p4 <- plotNcorrRidges(sce_mock, theme_size = 14, group_by = "tissue",
+                      y_expand = ggplot2::expansion(mult = c(0, 0.4))) +
+  ggplot2::scale_fill_manual(values = mock_tissues_colors) +
+  ggplot2::xlab("Neighborhood coefficient") +
+  ggplot2::ylab("Cell cluster") +
+  ggplot2::guides(fill = "none") +
+  ggplot2::theme(
+    axis.text = ggplot2::element_text(size = 16),
+    axis.title = ggplot2::element_text(size = 20)
+  )
+
+(p <- p3 + p4 +
+    patchwork::plot_annotation(tag_levels = "A") &
+    font_plot_tag(size = 16))
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(33.23, 4.68, 18.2, 14.52), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p4, "../data/Figure.pptx",
+  location = grid::unit(c(33.23, 19.3, 18.2, 11), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Module Scores
+
+```{r}
+ncorrs <- as(matrix(metadata(sce_mock)$cnaRes$ncorrs, ncol = 1), "dgCMatrix")
+genes <- qlcMatrix::corSparse(ncorrs, t(logcounts(sce_mock)))
+genes <- structure(as.numeric(genes), names = rownames(logcounts(sce_mock)))
+genes <- sort(genes, decreasing = TRUE)
+```
+
+```{r}
+gsea <- clusterProfiler::gseGO(
+  genes,
+  ont = "BP",
+  OrgDb = "org.Taestivum.iwgsc.db",
+  keyType = "GID"
+)
+```
+
+```{r fig.height=10, fig.width=10, eval=FALSE}
+p <- gsea |>
+  enrichplot::pairwise_termsim(showCategory = 600) |>
+  enrichplot::treeplot(
+    showCategory = 600,
+    cluster.params = list(
+      n = 12, label_words_n = 0, label_format = 5),
+    color = "NES",
+    geneClusterPanel = "dotplot") +
+  ggplot2::scale_color_gradient2(low = "blue", mid = "white", high = "red", name = "NES") +
+  NULL
+
+plotpowerpoint(
+  ggobj = p, template = "../data/60x120.pptx")
+```
+
+```{r}
+GO_DATA <- clusterProfiler:::get_GO_data("org.Taestivum.iwgsc.db", "BP", "GID")
+
+pathways <- GO_DATA$PATHID2EXTID |>
+  tibble::enframe(name = "GO", value = "Gene") |>
+  tidyr::unnest(Gene) |>
+  dplyr::filter(Gene %in% rownames(sce_mock)) |>
+  dplyr::group_by(GO) |>
+  dplyr::summarise(Gene = list(Gene)) |>
+  tibble::deframe()
+```
+
+```{r}
+negcorr <- c(
+  "autophagy",
+  "cell wall organization",
+  "negative regulation of abscisic acid-activated signaling pathway",
+  "positive regulation of post-embryonic development",
+  "plant-type cell wall organization",
+  "microtubule-based movement",
+  "positive regulation of growth",
+  "spindle organization",
+  "phospholipid transport"
+)
+
+names(negcorr) <- names(GO_DATA$PATHID2NAME)[match(negcorr, GO_DATA$PATHID2NAME)]
+
+poscorr <- c(
+  "ribosome biogenesis",
+  "chlorophyll biosynthetic process",
+  "photosynthesis, light reaction",
+  "cytoplasmic translation",
+  "negative regulation of developmental growth",
+  "response to cytokinin",
+  "photosynthetic electron transport chain",
+  "response to sucrose",
+  "positive regulation of translation",
+  "abscisic acid biosynthetic process"
+)
+
+names(poscorr) <- names(GO_DATA$PATHID2NAME)[match(poscorr, GO_DATA$PATHID2NAME)]
+```
+
+```{r}
+pathway_summed <- calcPathwayActivity(
+  sce_mock, pathways[c(names(negcorr), names(poscorr))],
+  method = "seuratModuleScore",
+  annotation = gsea@result)
+```
+
+```{r}
+modcor <- cor(x = metadata(sce_mock)$cnaRes$ncorrs,
+    y = t(assay(pathway_summed, "activity")),
+    use = "complete.obs", method = "pearson")
+modcor <- drop(modcor)
+
+names(modcor) <- c(negcorr, poscorr)[names(modcor)]
+
+sort(modcor)
+```
+
+```{r}
+selected_go <- data.frame(
+  Term = c("positive regulation of post-embryonic development",
+           "autophagy", "plant-type cell wall organization",
+           "negative regulation of developmental growth",
+           "ribosome biogenesis", "abscisic acid biosynthetic process"),
+  Type = rep(c("Negative", "Positive"), each = 3)
+)
+
+selected_go$ID <- names(c(negcorr, poscorr))[match(selected_go$Term, c(negcorr, poscorr))]
+selected_go$R <- modcor[selected_go$Term]
+```
+
+```{r fig.height=7, fig.width=14.7}
+p5 <- selected_go |>
+  purrr::pmap(function(Term, Type, ID, R) {
+    p <- plotPathwayActivation(
+        pathway_summed, ID,
+        dimred = "UMAP", point_size = 0.5,
+        theme_size = 12) +
+      ggplot2::annotate("text", label = paste("r =", round(R, 2), collapse = ""),
+                        x = -10, y = 15, size = 16 * FT) +
+      ggplot2::coord_fixed() +
+      cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+      theme_dimred(linesize = 1.5 * PT) +
+      remove_legend_title() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 16, face = "plain")
+      )
+    ggrastr::rasterise(p)
+  }) |>
+  patchwork::wrap_plots(ncol = 3)
+
+p5
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p5, "../data/Figure.pptx",
+  location = grid::unit(c(2.57, 30.75, 48.86, 23.32), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
