@@ -1323,3 +1323,56 @@ plotpowerpoint(p3, "../data/Figure.pptx",
   location = grid::unit(c(2.5, 44.83, 49.01, 19.14), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
+
+## Supplementary Table 2
+
+### Generate annotation data frame
+
+```{r}
+df_deg <- ds_sig |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    comparison = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2 vs. \\4")) |>
+  dplyr::filter(comparison != "PNR2 vs. TR4")
+```
+
+```{r}
+anno <- brookite::pull_annotation(
+  unique(df_deg$gene),
+  mart_info = list(
+    mart = "plants_mart",
+    dataset = "taestivum_eg_gene",
+    host = "https://plants.ensembl.org"
+  ),
+  dest_attrs = c(
+    description = "description",
+    GO_ID = "go_id",
+    GO_Name = "name_1006",
+    GO_Level = "namespace_1003"
+  ))
+
+df_deg <- dplyr::left_join(df_deg, anno, by = c("gene" = "ensembl_gene_id"))
+```
+
+```{r}
+df_deg <- df_deg |>
+  dplyr::group_by(gene) |>
+  dplyr::mutate(hits = dplyr::n(), regu_score = sum(logFC / abs(logFC))) |>
+  dplyr::ungroup() |>
+  dplyr::select(
+    gene, description, hits, regu_score,
+    cluster_id, time, comparison, contrast,
+    dplyr::everything())
+```
+
+Example:
+
+```{r}
+dplyr::sample_n(df_deg, 20)
+```
+
+```{r eval=FALSE}
+openxlsx::write.xlsx(df_deg, "../results/DataPlots/SupplementaryTable_2_DEGs.xlsx")
+```

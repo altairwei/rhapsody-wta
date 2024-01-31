@@ -2524,3 +2524,63 @@ plotpowerpoint(p, "../data/Figure.pptx", fun = \() pFun(show_heatmap_legend = FA
 
 经过测试，不能使用 hlist，只有手动合并 data frames 然后手动切片。
 
+## Supplementary Table 4
+
+### Generate a Curated Gene List
+
+```{r}
+df_deg <- ds_sig |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::mutate(
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    comparison = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2 vs. \\4")) |>
+  dplyr::filter(comparison != "PNR2 vs. TR4")
+```
+
+```{r eval=FALSE}
+ranknames <- Sys.glob("../data/heatmap/*.xlsx") |>
+  lapply(function(xlsx_file) {
+    category <- stringr::str_extract(
+      basename(xlsx_file), ".*(?=-for)")
+    lapply(
+      openxlsx::getSheetNames(xlsx_file),
+      FUN = function(sheet) {
+        readxl::read_excel(xlsx_file, sheet) |>
+          dplyr::select(Gene, RankName)
+      }) |>
+      dplyr::bind_rows() |>
+      dplyr::distinct() |>
+      dplyr::mutate(category = category)
+  }) |>
+  dplyr::bind_rows() |>
+  dplyr::distinct() |>
+  dplyr::filter(category != "FAup") |>
+  dplyr::group_by(Gene) |>
+  dplyr::summarise(RankName = paste(unique(RankName), collapse = " | "),
+                   Category = sample(category, 1))
+
+ranknames
+```
+
+```{r}
+df_annolist <- dplyr::left_join(df_deg, ranknames, by = c("gene" = "Gene")) |>
+  dplyr::filter(!is.na(RankName)) |>
+  dplyr::select(gene, RankName, Category, time, comparison, cluster_id, baseMean, logFC)
+```
+
+```{r}
+dplyr::sample_n(df_annolist, 20)
+```
+
+```{r eval=FALSE}
+openxlsx::write.xlsx(df_annolist, "../results/DataPlots/SupplementaryTable_4_Curated.xlsx")
+```
+
+### Query Information
+
+```{r}
+df_annolist |>
+  dplyr::filter(Category == "CaSignaling")
+```
+
