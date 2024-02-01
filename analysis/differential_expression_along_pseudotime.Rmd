@@ -292,6 +292,29 @@ comp_enr |>
     by = "count", label_format = 50)
 ```
 
+### Condition Specific Genes
+
+#### Fit Model with Conditions
+
+```{r}
+tradeSce_os_cond <- xfun::cache_rds(
+  file = "tradeseq_gam_os_condition.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::fitGAM(
+    # fitGAM needs counts rather than logcounts, see
+    # the source code of SCE-version fitGAM.
+    counts = sce_os_all,
+    conditions = factor(sce_os_all$treatment),
+    genes = patternGenes,
+    nknots = 8,
+    sce = TRUE,
+    verbose = TRUE,
+    parallel = TRUE,
+    BPPARAM = BiocParallel::MulticoreParam(workers = 1)
+  )
+)
+```
+
 ## Chlorenchyma
 
 ### Load Trajectory Data
