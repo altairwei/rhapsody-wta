@@ -1,0 +1,32 @@
+#!/bin/bash
+<%
+## Check some resources and set sane defaults
+resources$walltime = asInt(resources$walltime, lower = 60L, upper = 3600L * 672L)
+resources$memory = asInt(resources$memory, lower = 100L, upper = 64L * 1024L)
+resources$ncpus = if (is.null(resources$ncpus)) 1L else asInt(resources$ncpus, lower = 1L)
+resources$modules = if (is.null(resources$modules)) character(0L) else assertCharacter(resources$modules, any.missing = FALSE)
+resources$R = if (is.null(resources$R)) "R/3.4.1-gcc49-base" else assertString(resources$R)
+resources$omp.threads = if (is.null(resources$omp.threads)) 1L else asInt(resources$omp.threads, lower = 1L)
+resources$blas.threads = if (is.null(resources$blas.threads)) 1L else asInt(resources$blas.threads, lower = 1L)
+
+if (!is.null(resources$type)) assertString(resources$type)
+if (resources$memory > 15000)
+    resources$type = "quad"
+
+log.file = fs::path_expand(log.file)
+-%>
+
+#PBS -N <%= job.name %>
+#PBS -o <%= log.file %>
+#PBS -l walltime=<%= resources$walltime %>,nodes=1:ppn=<%= resources$ncpus %>,mem=<%= resources$memory %>mb
+#PBS -q batch
+#PBS -j oe
+<%= if (array.jobs) sprintf("#PBS -t 1-%i", nrow(jobs)) else "" %>
+
+## setup Conda env
+cd $PBS_O_WORKDIR
+cd ..
+source activate rdev
+
+## run R
+Rscript -e 'batchtools::doJobCollection("<%= uri %>")'
