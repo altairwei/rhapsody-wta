@@ -929,6 +929,239 @@ plotPseudotimeHeatmap <- function(
   }
 }
 
+#' Reimplementation of tradeSeq::plotSmoothers
+#' ... without conditions
+plotPseudotimeExpression <- function(
+    models, gene, nPoints = 100, 
+    size = 2/3, xlab = "Pseudotime",
+    ylab = "Log(expression + 1)",
+    alpha = 2/3,
+    shape = 21,
+    lwd = 2,
+    bwd = 0.5,
+    color_by = curve) {
+  id <- gene
+  sample <- 1
+  lineagesToPlot <- NULL
+  pointCol <- NULL
+  counts <- counts(models)
+
+  isCond <- "conditions" %in% colnames(models$tradeSeq)
+
+  # Design matrix
+  dm <- colData(models)$tradeSeq$dm
+
+  # Expression value
+  y <- unname(counts[names(models),][id,])
+
+  # Linear predictor
+  X <- colData(models)$tradeSeq$X
+
+  slingshotColData <- colData(models)$crv
+
+  # Pseudotime value of each lineage
+  pseudotime <- slingshotColData[,grep(x = colnames(slingshotColData),
+                                       pattern = "pseudotime")]
+  if (is.null(dim(pseudotime))) pseudotime <- matrix(pseudotime, ncol = 1)
+
+  nCurves <- length(grep(x = colnames(dm), pattern = "t[1-9]"))
+  betaMat <- rowData(models)$tradeSeq$beta[[1]]
+  beta <- betaMat[id,]
+
+  if (isCond) {
+    conditions <- colData(models)$tradeSeq$conditions
+    nConditions <- nlevels(conditions)
+  }
+
+  # Construct time variable based on cell assignments.
+  lcol <- timeAll <- rep(0, nrow(dm))
+  for (jj in seq_len(nCurves)) {
+    if (isCond) {
+      for (kk in seq_len(nConditions)){
+        for (ii in seq_len(nrow(dm))) {
+          if (dm[ii, paste0("l", jj, "_", kk)] == 1) {
+            timeAll[ii] <- dm[ii, paste0("t", jj)]
+            lcol[ii] <- paste0("Lineage ", jj, "_", levels(conditions)[kk])
+          } else {
+            next
+          }
+        }
+      }
+    } else {
+      for (ii in seq_len(nrow(dm))) {
+        # Is Cell belong to this lineage?
+        if (dm[ii, paste0("l", jj)] == 1) {
+          # Record pseudotime
+          timeAll[ii] <- dm[ii, paste0("t", jj)]
+          # Record lineage
+          lcol[ii] <- jj
+        } else {
+          next
+        }
+      }
+    }
+
+  }
+
+  # Construct plot data
+  df <- data.frame("time" = timeAll,
+                   "gene_count" = y,
+                   "curve" = as.character(lcol),
+                   "lineage" = as.character(lcol))
+
+  if (isCond) {
+    df <- tidyr::separate(df, lineage, sep = "(?<=Lineage [1-9])_",
+                    into = c("lineage", "condition"))
+  }
+
+  # Randomization
+  rows <- sample(seq_len(nrow(df)), nrow(df) * sample, replace = FALSE)
+  df <- df[rows, ]
+
+  # Checkout specified lineage
+  if(!is.null(lineagesToPlot)){
+    df <- df[df$lineage %in% lineagesToPlot,]
+  }
+
+  # Plot cell's expression value
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = time, y = log1p(gene_count))) +
+    ggplot2::labs(x = xlab, y = ylab) +
+    ggplot2::geom_point(ggplot2::aes(col = {{ color_by }}),
+                        size = size, shape = shape, alpha = alpha)
+
+  # Predict and plot smoothers across the range
+  if(is.null(lineagesToPlot)){
+    lineagesToPlot <- seq_len(nCurves)
+  }
+
+  # Plot curves one by one
+  for (jj in lineagesToPlot) {
+    if (isCond) {
+      for(kk in seq_len(nConditions)){
+        df <- tradeSeq:::.getPredictRangeDf(dm, lineageId = jj, conditionId = kk,
+                                 nPoints = nPoints)
+        Xdf <- tradeSeq:::predictGAM(lpmatrix = X,
+                                    df = df,
+                                    pseudotime = pseudotime,
+                                    conditions = conditions)
+        yhat <-  c(exp(t(Xdf %*% t(beta)) + df$offset))
+
+        p <- p +
+          ggborderline::geom_borderline(
+            data = data.frame(
+              "time" = df[, paste0("t", jj)],
+              "gene_count" = yhat,
+              "curve" = paste0("Lineage ", jj, "_", levels(conditions)[kk]),
+              "lineage" = paste0("Lineage ", jj),
+              "condition" = levels(conditions)[kk]
+            ),
+            mapping = ggplot2::aes(color = {{ color_by }}),
+            borderwidth = bwd, linewidth = lwd)
+      }
+    } else {
+      df <- tradeSeq:::.getPredictRangeDf(dm, jj, nPoints = nPoints)
+      Xdf <- tradeSeq:::predictGAM(lpmatrix = X,
+                                   df = df,
+                                   pseudotime = pseudotime)
+      yhat <- c(exp(t(Xdf %*% t(beta)) + df$offset))
+      lineage_df <- data.frame("time" = df[, paste0("t", jj)],
+                               "gene_count" = yhat,
+                               "curve" = as.character(jj),
+                               "lineage" = as.character(jj))
+      p <- p +
+        ggborderline::geom_borderline(
+          data = lineage_df, mapping = ggplot2::aes(color = {{ color_by }}),
+          borderwidth = bwd, linewidth = lwd)
+    }
+  }
+
+  p
+}
+
+clustExpressionPatterns <- function(models, genes, k, nPoints = 100, seed = 1) {
+  isCond <- "conditions" %in% colnames(models$tradeSeq)
+
+  columns <- c("gene", "lineage")
+  if (isCond) columns <- c(columns, "condition")
+  columns <- rlang::syms(columns)
+
+  yhatSmoothDf <- tradeSeq::predictSmooth(
+    models, gene = genes, nPoints = nPoints, tidy = TRUE)
+  
+  yhatSmoothDf <- yhatSmoothDf |>
+    dplyr::group_by(gene) |>
+    dplyr::mutate(yhatScaled = scale(yhat)) |>
+    dplyr::group_by(!!!columns) |>
+    dplyr::mutate(point = order(time)) |>
+    dplyr::ungroup()
+
+  names_vars <- c("lineage")
+  if (isCond) names_vars <- c(names_vars, "condition")
+  names_vars <- rlang::syms(names_vars)
+  names_glues <- "lineage{lineage}_point{point}"
+  if (isCond) names_glues <- "lineage{lineage}_condition{condition}_point{point}"
+
+  yhatSmoothDfMtx <- yhatSmoothDf |>
+    dplyr::select(!!!columns, point, yhatScaled) |>
+    tidyr::pivot_wider(names_from = c(!!!names_vars, point),
+                       names_glue = names_glues,
+                       values_from = yhatScaled) |>
+    tibble::column_to_rownames("gene") |>
+    as.matrix.data.frame()
+
+  set.seed(seed)
+  fit_km <- kmeans(yhatSmoothDfMtx, k, nstart = 25)
+
+  pattern_text <- if (isCond) "(lineage\\d_condition.*)_" else "(lineage\\d)_"
+  
+  avgtime <- split(
+    x = as.data.frame(t(fit_km$centers)),
+    f = stringr::str_match(
+      colnames(fit_km$centers), pattern_text)[, 2]) |>
+    vapply(
+      FUN.VALUE = numeric(nrow(fit_km$centers)),
+      FUN = function(df) apply(df, 2, which.max)) |>
+    base::rowMeans()
+  
+  clustdf <- data.frame(
+    cluster = factor(
+      x = paste0("G", fit_km$cluster),
+      levels = paste0("G", names(sort(avgtime)))),
+    gene = names(fit_km$cluster)
+  )
+  
+  yhatSmoothDfClust <- dplyr::left_join(yhatSmoothDf, clustdf, by = "gene") |>
+    dplyr::select(gene, cluster, !!!names_vars, time, point, yhat, yhatScaled)
+
+  yhatSmoothDfClust
+}
+
+makeYhatSmoothMatrix <- function(yhatSmoothDf) {
+  yhatSmoothDf |>
+    dplyr::select(gene, lineage, condition, point, yhatScaled) |>
+    tidyr::pivot_wider(names_from = c(lineage, condition, point),
+                       names_glue = "lineage{lineage}_condition{condition}_point{point}",
+                       values_from = yhatScaled) |>
+    tibble::column_to_rownames("gene") |>
+    as.matrix.data.frame()
+}
+
+plotExpressionPatterns <- function(
+    yhatSmoothDf, value = yhatScaled) {
+  isCond <- "condition" %in% yhatSmoothDf
+  yhatSmoothDf |>
+    dplyr::mutate(
+      group = if (isCond) paste(gene, lineage, condition)
+                  else paste(gene, lineage)) |>
+    dplyr::sample_frac() |>
+    ggplot2::ggplot(ggplot2::aes(
+      x = point, y = {{ value }})) +
+    ggplot2::geom_line(
+      mapping = ggplot2::aes(
+        group = group, color = if (isCond) condition else as.character(lineage))) +
+    ggplot2::labs(color = if (isCond) "condition" else "lineage")
+}
+
 calculateDiffusionMap <- function(
   x, ...,
   exprs_values="logcounts", dimred=NULL, n_dimred=NULL,
@@ -1504,3 +1737,4 @@ plotPagaArrow <- function(
 
   plot
 }
+

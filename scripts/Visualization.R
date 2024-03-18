@@ -188,6 +188,53 @@ theme_upset <- function(...) {
   )
 }
 
+#' Fixed ggplot2::theme_bw for figures
+theme_bwfix <- function(
+  base_size = 11,
+  base_family = "",
+  base_line_size = base_size/22,
+  base_rect_size = base_size/22,
+  ...
+) {
+  ggplot2::theme_bw(
+    base_size = base_size,
+    base_family = base_family,
+    base_line_size = base_line_size,
+    base_rect_size = base_rect_size) +
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(
+      size = 16, vjust = 0.2, margin = ggplot2::margin(t = 4, b = 4)),
+    axis.title = ggplot2::element_text(size = 20),
+    axis.text.x = ggplot2::element_text(
+      size = 16, angle = 0, hjust = 0.5, vjust = 0.5, color = "black"),
+    axis.text.y = ggplot2::element_text(size = 16, color = "black"),
+    axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+    strip.background = ggplot2::element_rect(linewidth = 1.5 * PT),
+    panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
+    ...
+  )
+}
+
+#' Customized theme for plotSmoothers
+theme_smoothers <- function(
+  base_size = 11,
+  base_family = "",
+  base_line_size = base_size/22,
+  base_rect_size = base_size/22,
+  ...
+) {
+  theme_bwfix(
+    base_size = base_size,
+    base_family = base_family,
+    base_line_size = base_line_size,
+    base_rect_size = base_rect_size) +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(size = 20, face = "italic"),
+    ...
+  )
+}
+
 #' Generate Radar Plot From GSVA Data Frame 
 plotRadarGSVA <- function(gsva, pathws) {
   dplyr::filter(gsva,
@@ -570,4 +617,103 @@ plotExpressionHeatmap <- function(
     ComplexHeatmap::draw(p, merge_legend = TRUE)
   else
     p
+}
+
+
+makeColumnAnnotation <- function(
+    coldata, fontsize = 16, titlesize = 20, fontfamily = "Arial", ...) {
+  ComplexHeatmap::HeatmapAnnotation(
+    which = "column",
+    df = coldata[, c("treatment", "time"), drop = FALSE],
+    annotation_label = c("Treatment", "Time"),
+    annotation_name_side = "right",
+    col = list(
+      treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = levels(coldata$treatment)
+      ),
+      time = structure(
+        RColorBrewer::brewer.pal(4, "YlGn"),
+        names = levels(coldata$time)
+      )
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      treatment = list(
+        nrow = 1,
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Treatment",
+        title_gp = grid::gpar(fontsize = titlesize,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      ),
+      time = list(
+        nrow = 1,
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Time",
+        title_gp = grid::gpar(fontsize = titlesize,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        grid_height = grid::unit(6, "mm"),
+        grid_width = grid::unit(6, "mm")
+      )
+    ),
+    ...
+  )
+}
+
+makeRowAnnotation <- function(
+    rowdata, fontsize = 16, titlesize = 20, fontfamily = "Arial", ...) {
+  ComplexHeatmap::HeatmapAnnotation(
+    which = "row",
+    df = rowdata[, "regu_score", drop = FALSE],
+    annotation_label = "Regulation Score",
+    annotation_name_side = "top",
+    show_annotation_name = FALSE,
+    col = list(
+      regu_score = circlize::colorRamp2(
+        c(-10, 0, 10), c("blue", "white", "red"))
+    ),
+    annotation_name_gp = grid::gpar(fontsize = fontsize,
+                                    fontfamily = fontfamily),
+    annotation_legend_param = list(
+      regu_score = list(
+        nrow = 1,
+        at = c(-10, -5, 0, 5, 10), 
+        labels = c("≤ -10", "-5", "0", "5", "≥ 10"),
+        direction = "horizontal",
+        title_position = "topleft",
+        title = "Regulation Score",
+        title_gp = grid::gpar(fontsize = titlesize,
+                              fontfamily = fontfamily),
+        labels_gp = grid::gpar(fontsize = fontsize, fontfamily = fontfamily),
+        legend_width = unit(8, "cm")
+      )
+    ),
+    ...
+  )
+}
+
+makeColorFunction <- function(
+    mtx, palette = function(n) RColorBrewer::brewer.pal(n, "BuPu")) {
+  mtx_uni <- unique(mtx)
+  if (length(mtx_uni) < 100)
+    q <- max(abs(mtx))
+  else
+    q <- stats::quantile(abs(mtx), probs = .99)
+  
+  if (all(mtx_uni >= 0))
+    bks <- seq(0, q, length.out = 9)
+  else
+    bks <- seq(-q, q, length.out = 9)
+  
+  col_fun <- circlize::colorRamp2(
+    breaks = bks,
+    colors = palette(length(bks))
+  )
 }

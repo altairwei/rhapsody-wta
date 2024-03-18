@@ -14,6 +14,8 @@ source("../scripts/LoadUtils.R", chdir = TRUE)
 library(org.Taestivum.iwgsc.db)
 ```
 
+## Functions
+
 ```{r}
 evaluateOptimalK <- function(data, nc = 15, seed = 1234) {
   wss <- vapply(
@@ -32,6 +34,13 @@ evaluateOptimalK <- function(data, nc = 15, seed = 1234) {
 }
 ```
 
+```{r}
+yhatSmoothDf |>
+  dplyr::group_by(gene, lineage, condition) |>
+  dplyr::summarise(
+    maxTime = max(time),
+    progression = paste(time, collapse = ", "))
+```
 
 ## Parenchyma to Outer sheath
 
@@ -133,7 +142,7 @@ tradeSce_os_all <- xfun::cache_rds(
 
 ### Differential Expression
 
-#### Run Test
+#### Pattern Test
 
 > In large datasets with thousands of single cells, small fold changes can become statistically significant due to the very high sample size. However, these differences may not always be biologically meaningful. To tackle this problem, all DE tests in tradeSeq have an `l2fc` argument which specifies the absolute value of the log2 fold-change cut-off to test against. For example, setting `l2fc=log2(2)` will test which genes have a fold change that is significantly higher than 2 or significantly lower than 1/2 within or between the lineages of interest.
 
@@ -294,7 +303,7 @@ comp_enr |>
 
 ### Condition Specific Genes
 
-#### Fit Model with Conditions
+#### Fit with Conditions
 
 ```{r}
 tradeSce_os_cond <- xfun::cache_rds(
@@ -313,6 +322,228 @@ tradeSce_os_cond <- xfun::cache_rds(
     BPPARAM = BiocParallel::MulticoreParam(workers = 1)
   )
 )
+```
+
+#### Condition Test
+
+> `global` - If TRUE, test for all pairwise comparisons simultaneously, i.e. test for DE between all conditions in all lineages.
+> `pairwise` - If TRUE, return output for all comparisons **between pairs of conditions**. Both global and pairwise can be TRUE.
+> `lineages` - If TRUE, return output for all comparisons **within each lineage**. Both global and lineages can be TRUE. 
+> If both lineages and pairwise are TRUE, the function returns output for **all pairs of conditions within each lineage**.
+
+```{r}
+conditionRes_os_all <- xfun::cache_rds(
+  file = "tradeseq_conditionRes_os_all.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::conditionTest(
+    tradeSce_os_cond, global = TRUE, pairwise = FALSE, l2fc = log2(2))
+)
+```
+
+```{r}
+str(conditionRes_os_all)
+```
+
+```{r}
+conditionRes_os_pairwise <- xfun::cache_rds(
+  file = "tradeseq_conditionRes_os_pairwise.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::conditionTest(
+    tradeSce_os_cond, global = TRUE, pairwise = TRUE, l2fc = log2(2))
+)
+```
+
+```{r}
+str(conditionRes_os_pairwise)
+```
+
+```{r}
+conditionRes_os_lineages <- xfun::cache_rds(
+  file = "tradeseq_conditionRes_os_lineages.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::conditionTest(
+    tradeSce_os_cond, global = TRUE, lineages = TRUE, l2fc = log2(2))
+)
+```
+
+```{r}
+str(conditionRes_os_lineages)
+```
+
+```{r}
+conditionRes_os_pairlineages <- xfun::cache_rds(
+  file = "tradeseq_conditionRes_os_pairlineages.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::conditionTest(
+    tradeSce_os_cond, global = TRUE, pairwise = TRUE, lineages = TRUE, l2fc = log2(2))
+)
+```
+
+```{r}
+str(conditionRes_os_pairlineages)
+```
+
+#### Filter Results
+
+```{r}
+conditionRes_df <- conditionRes_os_all |>
+  tibble::rownames_to_column("gene") |>
+  dplyr::mutate(fdr = p.adjust(pvalue, "fdr"))
+
+str(conditionRes_df)
+```
+
+```{r}
+conditionRes_df |>
+  dplyr::arrange(fdr) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = waldStat, y = -log(pvalue), color = fdr < 0.01)) +
+  ggplot2::geom_point() +
+  #ggplot2::scale_x_log10() +
+  NULL
+```
+
+#### Gene Clustering
+
+```{r}
+conditionGenes <- conditionRes_df |>
+  dplyr::filter(fdr <= 0.01) |>
+  dplyr::pull(gene) |>
+  unique()
+
+length(conditionGenes)
+```
+
+```{r}
+yhatSmooth <- tradeSeq::predictSmooth(
+  tradeSce_os_cond, gene = conditionGenes, nPoints = 100, tidy = FALSE)
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+```
+
+```{r}
+evaluateOptimalK(yhatSmoothScaled)
+```
+
+```{r}
+yhatSmoothDf <- clustExpressionPatterns(
+  tradeSce_os_cond, conditionGenes, k = 6, seed = 240203)
+```
+
+```{r}
+set.seed(240203)
+fit_km <- kmeans(yhatSmoothScaled, 6, nstart = 25)
+```
+
+```{r}
+avgtime <- split(
+    x = as.data.frame(t(fit_km$centers)),
+    f = stringr::str_match(
+      colnames(fit_km$centers), "(lineage\\d_condition.*)_")[, 2]) |>
+  vapply(
+    FUN.VALUE = numeric(nrow(fit_km$centers)),
+    FUN = function(df) apply(df, 2, which.max)) |>
+  base::rowMeans()
+
+avgtime
+```
+
+```{r}
+row_split <- factor(
+  x = paste0("G", fit_km$cluster),
+  levels = paste0("G", names(sort(avgtime))))
+```
+
+#### Heatmap
+
+```{r}
+columndata <- stringr::str_match(
+    colnames(yhatSmoothScaled),
+    "lineage(\\d)_condition(.*)_") |>
+  as.data.frame() |>
+  dplyr::rename(Group = V1, Branch = V2, Treatment = V3) |>
+  dplyr::mutate(
+    Branch = factor(paste("Branch", Branch),
+                    levels = c("Branch 1", "Branch 2", "Branch 3")),
+    Treatment = factor(Treatment, levels = c("MOCK", "PNR2", "TR4"))
+  )
+
+head(columndata)
+```
+
+```{r fig.height=10, fig.width=16}
+ph_res <- plotPseudotimeHeatmap(
+  yhatSmoothScaled,
+  palette = colorRamps::matlab.like,
+  row_split = row_split,
+  row_title_rot = 0,
+  show_row_dend = FALSE,
+  column_split = columndata$Group,
+  cluster_row_slices = FALSE,
+
+  column_title = NULL,
+  top_annotation = ComplexHeatmap::columnAnnotation(
+    df = columndata[, c("Branch", "Treatment")],
+    col = list(
+      Branch = structure(
+        c("#76b7b2", "#ff9da7", "#edc948"),
+        names = c("Branch 1", "Branch 2", "Branch 3")
+      ),
+      Treatment = structure(
+        c("darkgreen", "#E41A1C", "#377EB8"),
+        names = c("MOCK", "PNR2", "TR4")
+      )
+    )
+  )
+)
+
+ComplexHeatmap::draw(ph_res, merge_legend = TRUE)
+```
+
+```{r}
+df_pst <- split(names(fit_km$cluster), paste0("G", fit_km$cluster)) |>
+  tibble::enframe("Module", "Gene") |>
+  tidyr::unnest(cols = Gene)
+
+download_table(df_pst, "Outersheath_trajectory_condition_genes")
+```
+
+#### Line Plots
+
+```{r fig.height=12, fig.width=7}
+yhatSmoothDf |>
+  plotExpressionPatterns(yhatScaled) +
+  ggplot2::facet_grid(cluster ~ lineage)
+```
+
+#### Visualize Significants
+
+理论上任何基因都可以用这种方式来展示了，不仅仅是显著基因。
+
+```{r}
+conditionRes_df |>
+  dplyr::arrange(dplyr::desc(waldStat))
+```
+
+只有想办法把 tradeSeq 的数据 tidyverse 化，才能画出好看的图。
+
+```{r}
+# most significant gene
+tradeSeq::plotSmoothers(
+    tradeSce_os_cond,
+    counts(tradeSce_os_cond),
+    gene = "TraesCS4D02G296200",
+    alpha = 1, border = TRUE
+)
+```
+
+```{r fig.height=7, fig.width=7}
+yhatSmoothDf |>
+  dplyr::filter(gene %in% c(
+    "TraesCS5D02G050200", "TraesCS4D02G296200",
+    "TraesCS5D02G049200", "TraesCSU02G031600")) |>
+  plotExpressionPatterns(yhatScaled) +
+  ggplot2::ggtitle("TraesCS5D02G050200") +
+  ggplot2::facet_grid(gene ~ lineage)
 ```
 
 ## Chlorenchyma
@@ -368,7 +599,7 @@ tradeSce_chl_all <- xfun::cache_rds(
 
 ### Differential Expression
 
-#### Run Test
+#### Pattern Test
 
 ```{r}
 patternRes_chl_all <- xfun::cache_rds(
@@ -506,4 +737,42 @@ comp_enr |>
   enrichplot::dotplot(
     showCategory = NULL,
     by = "count", label_format = 50)
+```
+
+### Condition Specific Genes
+
+#### Fit with Conditions
+
+```{r}
+tradeSce_chl_cond <- xfun::cache_rds(
+  file = "tradeseq_gam_chl_condition.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::fitGAM(
+    # fitGAM needs counts rather than logcounts, see
+    # the source code of SCE-version fitGAM.
+    counts = sce_chl_all,
+    conditions = factor(sce_chl_all$treatment),
+    genes = patternGenes,
+    nknots = 8,
+    sce = TRUE,
+    verbose = TRUE,
+    parallel = TRUE,
+    BPPARAM = BiocParallel::MulticoreParam(workers = 1)
+  )
+)
+```
+
+#### Condition Test
+
+```{r}
+conditionRes_chl_pairlineages <- xfun::cache_rds(
+  file = "tradeseq_conditionRes_chl_pairlineages.rds",
+  dir = "../results/ObjectCache/TrajectoryInference/",
+  expr = tradeSeq::conditionTest(
+    tradeSce_chl_cond, global = TRUE, pairwise = TRUE, lineages = TRUE, l2fc = log2(2))
+)
+```
+
+```{r}
+str(conditionRes_chl_pairlineages)
 ```

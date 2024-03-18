@@ -124,12 +124,45 @@ all_cluster_num
 
 ## Figure 7 Chloroplast-bearing cells
 
-### DA Measure
+### Trajectories
 
 ```{r}
 sce_chl_all <- readRDS(Sys.glob(
   "../results/ObjectCache/TrajectoryInference/sce_all_slingshot_chl_all_*.rds"))
 ```
+
+```{r fig.height=7, fig.width=12.9}
+p1 <- local({
+  lapply(1:2, function(i) {
+    plotLineageCurveOnReduc(
+        sce_chl_all, i, dimred = "PHATE",
+        linewidth = 1, point_size = 0.5,
+        rasterise = TRUE, point_alpha = 1) +
+      ggplot2::scale_color_viridis_c(labels = scales::number_format(accuracy = 0.1)) +
+      ggplot2::coord_fixed() +
+      ggplot2::labs(x = "PHATE_1", y = "PHATE_2") +
+      ggplot2::ggtitle(paste("Branch", i)) +
+      ggplot2::guides(color = ggplot2::guide_colorbar(
+        title = "Pseudotime", title.position = "top")) +
+      cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+      theme_dimred(linesize = 1.5 * PT) +
+      ggplot2::theme(
+        axis.title = ggplot2::element_text(size = 22),
+        plot.title = ggplot2::element_text(size = 22, hjust = 0.5, face = "plain"),
+        legend.key.width = grid::unit(1.2, "cm"),
+        legend.key.height = grid::unit(0.7, "cm"),
+        legend.text = ggplot2::element_text(size = 18),
+        legend.title = ggplot2::element_text(size = 20),
+        legend.direction = "horizontal",
+        legend.title.align = 0.5,
+        legend.position = c(0.5, 0.1))
+  })
+})
+
+patchwork::wrap_plots(p1)
+```
+
+### DA Measure
 
 ```{r}
 da_chl_all <- rhapsodykit::findDiffAbundantCells(
@@ -142,7 +175,7 @@ da_chl_all <- rhapsodykit::findDiffAbundantCells(
 ```
 
 ```{r fig.height=7, fig.width=8.9}
-p1 <- local({
+p2 <- local({
   df_to_plot <- reducedDim(sce_chl_all, "PHATE") |>
     as.data.frame() |>
     tibble::rownames_to_column("cell")
@@ -184,50 +217,11 @@ p1 <- local({
   p
 })
 
-p1
-```
-
-```{r eval=FALSE, include=FALSE}
-plotpowerpoint(p1, "../data/Figure.pptx",
-  location = grid::unit(c(2.5, 4.49, 19.89, 15.63), "cm"),
-  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
-```
-
-### Trajectories
-
-```{r fig.height=7, fig.width=12.9}
-p2 <- local({
-  lapply(1:2, function(i) {
-    plotLineageCurveOnReduc(
-        sce_chl_all, i, dimred = "PHATE",
-        linewidth = 1, point_size = 0.5,
-        rasterise = TRUE, point_alpha = 1) +
-      ggplot2::scale_color_viridis_c(labels = scales::number_format(accuracy = 0.1)) +
-      ggplot2::coord_fixed() +
-      ggplot2::labs(x = "PHATE_1", y = "PHATE_2") +
-      ggplot2::ggtitle(paste("Branch", i)) +
-      ggplot2::guides(color = ggplot2::guide_colorbar(
-        title = "Pseudotime", title.position = "top")) +
-      cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
-      theme_dimred(linesize = 1.5 * PT) +
-      ggplot2::theme(
-        axis.title = ggplot2::element_text(size = 22),
-        plot.title = ggplot2::element_text(size = 22, hjust = 0.5, face = "plain"),
-        legend.key.width = grid::unit(1.2, "cm"),
-        legend.key.height = grid::unit(0.7, "cm"),
-        legend.text = ggplot2::element_text(size = 18),
-        legend.title = ggplot2::element_text(size = 20),
-        legend.direction = "horizontal",
-        legend.title.align = 0.5,
-        legend.position = c(0.5, 0.1))
-  })
-})
-
-patchwork::wrap_plots(p2)
+p2
 ```
 
 ```{r fig.height=6, fig.width=22}
-(p12 <- p1 + p2)
+(p12 <- p1[[1]] + p1[[2]] + p2)
 ```
 
 ```{r eval=FALSE, include=FALSE}
@@ -364,13 +358,6 @@ plotpowerpoint(p3, "../data/Figure.pptx", fun = p3fun,
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
-```{r eval=FALSE, include=FALSE}
-split(names(yhatkm$km$cluster), paste0("G", yhatkm$km$cluster)) |>
-  tibble::enframe("Module", "Gene") |>
-  tidyr::unnest(cols = Gene) |>
-  openxlsx::write.xlsx("../results/DataPlots/chlorenchyma_pseudotime_deg.xlsx")
-```
-
 ### Enrichment of Gene Cluster
 
 ```{r}
@@ -479,9 +466,16 @@ p5 <- local({
     dplyr::select(gene, cluster, dplyr::everything()) |>
     dplyr::mutate(group = paste(gene, lineage))
 
+  selected <- c(
+    "TraesCS7A02G558500" = "TaTLP32-A",
+    "TraesCS1D02G355100" = "Wheatwin-1-like",
+    "TraesCS5B02G045100" = "WIR1A",
+    "TraesCS2D02G200700" = "Chlorophyll a-b binding protein"
+  )
+
   df_to_plot |>
-    dplyr::filter(gene %in% c("TraesCS5A02G257700", "TraesCS2B02G549600",
-                              "TraesCS2D02G200700", "TraesCS5B02G039000")) |>
+    dplyr::filter(gene %in% names(selected)) |>
+    dplyr::mutate(name = factor(selected[gene], levels = selected)) |>
     ggplot2::ggplot(ggplot2::aes(
       x = pseudotime, y = expression)) +
     ggplot2::geom_line(
@@ -490,20 +484,21 @@ p5 <- local({
       linewidth = 1.5) +
     ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
     ggplot2::scale_y_continuous(breaks = scales::breaks_extended(n = 4)) +
-    ggplot2::facet_wrap(~ gene, ncol = 1, scales = "free_y") +
+    ggplot2::facet_wrap(~ name, ncol = 1, scales = "free_y") +
     ggplot2::labs(x = "Pseudotime", y = "Normalized Expression", color = "Branch") +
     ggplot2::theme_bw(base_size = 22) +
     ggplot2::theme(
       panel.grid = ggplot2::element_blank(),
       strip.text = ggplot2::element_text(
-        size = 16, vjust = 0.2, margin = ggplot2::margin(t = 4, b = 4)),
+        size = 16, vjust = 0.2, margin = ggplot2::margin(t = 4, b = 4),
+        face = "italic"),
       axis.text.x = ggplot2::element_text(
         size = 16, angle = 0, hjust = 0.5, vjust = 0.5, color = "black"),
       axis.text.y = ggplot2::element_text(size = 16, color = "black"),
       axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
       strip.background = ggplot2::element_rect(linewidth = 1.5 * PT),
       panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
-      legend.position = c(0.25, 0.13),
+      legend.position = c(0.25, 0.95),
       legend.background = ggplot2::element_blank(),
       legend.title = ggplot2::element_blank())
 })
@@ -846,8 +841,9 @@ plotpowerpoint(p, "../data/Figure.pptx",
 
 ### Leaf Senescence Genes
 
-> Li, J., Qiao, H., Yin, P., Liu, M., Yang, Y., Li, K., Yang, L., Yang, C., Zhao, L., Zhou, S., et al. (2023). Increasingly amplified stimulation mediated by TaNAC69-B is crucial for the leaf senescence in wheat. The Plant Journal 114, 570–590. 10.1111/tpj.16154.
+#### NACs
 
+> Li, J., Qiao, H., Yin, P., Liu, M., Yang, Y., Li, K., Yang, L., Yang, C., Zhao, L., Zhou, S., et al. (2023). Increasingly amplified stimulation mediated by TaNAC69-B is crucial for the leaf senescence in wheat. The Plant Journal 114, 570–590. 10.1111/tpj.16154.
 
 ```{r}
 local({
@@ -878,6 +874,93 @@ local({
 })
 ```
 
+> Evans, C., Mogg, S. L., Soraru, C., Wallington, E., Coates, J. C., & Borrill, P. (2024). Wheat NAC transcription factor NAC5-1 is a positive regulator of senescence (p. 2024.02.02.578592). bioRxiv. https://doi.org/10.1101/2024.02.02.578592
+
+```{r}
+local({
+  scater::plotReducedDim(
+      sce_chl_all, "PHATE",
+      colour_by = "TraesCS4A02G219700",
+      order_by = "TraesCS4A02G219700",
+      point_alpha = 1, point_size = 0.5,
+      rasterise = TRUE) +
+    ggplot2::scale_color_gradient(low = "grey", high = "blue") +
+    ggplot2::coord_fixed() +
+    ggplot2::ggtitle("NAC5-A1") +
+    ggplot2::labs(x = "PHATE_1", y = "PHATE_2") +
+    ggplot2::guides(color = ggplot2::guide_colorbar(
+      title = "Expression Level", title.position = "top")) +
+    cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+    theme_dimred(linesize = 1.5 * PT) +
+    ggplot2::theme(
+      axis.title = ggplot2::element_text(size = 22),
+      plot.title = ggplot2::element_text(size = 22, face = "plain", hjust = 0.5),
+      legend.title = ggplot2::element_text(size = 20),
+      legend.text = ggplot2::element_text(size = 18),
+      legend.key.width = grid::unit(1.2, "cm"),
+      legend.key.height = grid::unit(0.7, "cm"),
+      legend.direction = "horizontal",
+      legend.title.align = 0.5,
+      legend.position = c(0.5, 0.1))
+})
+```
+
+```{r}
+local({
+  genedf <- data.frame(
+    cluster = yhatkm$cluster,
+    gene = names(yhatkm$km$cluster)
+  )
+
+  exprdf <- yhatkm$mtx |>
+    as.data.frame() |>
+    tibble::rownames_to_column("gene") |>
+    tidyr::pivot_longer(cols = !gene,
+                        names_pattern = "lineage(\\d+)_(\\d+)",
+                        names_to = c("lineage", "pseudotime"),
+                        values_to = "expression") |>
+    dplyr::mutate(pseudotime = as.numeric(pseudotime),
+                  lineage = paste("Branch", lineage))
+
+  df_to_plot <- dplyr::left_join(exprdf, genedf, by = "gene") |>
+    dplyr::select(gene, cluster, dplyr::everything()) |>
+    dplyr::mutate(group = paste(gene, lineage))
+
+  df_to_plot |>
+    dplyr::filter(gene %in% c(
+      "TraesCS4A02G219700",
+      "TraesCS4B02G098200",
+      "TraesCS4D02G094400"
+    )) |>
+    ggplot2::ggplot(ggplot2::aes(
+      x = pseudotime, y = expression)) +
+    ggplot2::geom_line(
+      mapping = ggplot2::aes(
+        group = group, color = lineage),
+      linewidth = 1.5) +
+    ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+    ggplot2::scale_y_continuous(breaks = scales::breaks_extended(n = 4)) +
+    #ggplot2::facet_wrap(~ gene, ncol = 1, scales = "free_y") +
+    ggplot2::labs(x = "Pseudotime", y = "Normalized Expression", color = "Branch") +
+    ggplot2::theme_bw(base_size = 22) +
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(
+        size = 16, vjust = 0.2, margin = ggplot2::margin(t = 4, b = 4)),
+      axis.text.x = ggplot2::element_text(
+        size = 16, angle = 0, hjust = 0.5, vjust = 0.5, color = "black"),
+      axis.text.y = ggplot2::element_text(size = 16, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+      strip.background = ggplot2::element_rect(linewidth = 1.5 * PT),
+      panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
+      legend.position = c(0.25, 0.13),
+      legend.background = ggplot2::element_blank(),
+      legend.title = ggplot2::element_blank())
+})
+```
+
+#### TaAO3
+
 ```{r}
 local({
   scater::plotReducedDim(
@@ -906,6 +989,8 @@ local({
       legend.position = c(0.5, 0.1))
 })
 ```
+
+#### Others
 
 ```{r}
 list(
@@ -1037,68 +1122,69 @@ local({
 })
 ```
 
-## Supplementary Figure 9
+## Supplementary Figure 10 SEID Protein Family
 
-### SERN family
+### SEID family
 
 ```{r}
-SERNs <- c(
-  "TraesCS7D02G124000",
-  "TraesCS7D02G256100",
-  "TraesCS1D02G178700",
-  "TraesCS2B02G002300",
-  "TraesCS3B02G189500",
-  "TraesCS4D02G150400",
-  "TraesCS3A02G405700",
-  "TraesCS4A02G155200",
-  "TraesCS5B02G423500",
-  "TraesCS1D02G212600",
-  "TraesCS5D02G345900",
-  "TraesCS7D02G255100",
-  "TraesCS1A02G343500",
-  "TraesCS5D02G345100",
-  "TraesCS5B02G096700",
-  "TraesCS3A02G485300",
-  "TraesCS1B02G413100",
-  "TraesCS2B02G521400",
-  "TraesCS1D02G183600",
-  "TraesCSU02G243900",
-  "TraesCS5B02G040100",
-  "TraesCS2B02G331800",
-  "TraesCS2A02G240700",
-  "TraesCS2A02G240400",
-  "TraesCS2B02G601100",
-  "TraesCS5D02G221000",
-  "TraesCS1B02G406200",
-  "TraesCS1D02G387400",
-  "TraesCS3A02G430500",
-  "TraesCS2B02G252400",
-  "TraesCS7B02G396300",
-  "TraesCS7A02G289000",
-  "TraesCS4A02G155900",
-  "TraesCS5B02G039000",
-  "TraesCS5D02G488100",
-  "TraesCS2A02G242400",
-  "TraesCS6B02G402800",
-  "TraesCS4A02G272300",
-  "TraesCS3B02G066800"
+SEIDs <- c(
+  "SEID1"  = "TraesCS5B02G039000",
+  "SEID2"  = "TraesCS1B02G413100",
+  "SEID3"  = "TraesCS7D02G255100",
+  "SEID4"  = "TraesCS1B02G406200",
+  "SEID6"  = "TraesCS1D02G183600",
+  "SEID5"  = "TraesCS6B02G402800",
+  "SEID7"  = "TraesCS4A02G272300",
+  "SEID8"  = "TraesCS2A02G242400",
+  "SEID9"  = "TraesCS2B02G331800",
+  "SEID10" = "TraesCS5B02G423500",
+  "SEID11" = "TraesCS3A02G430500",
+  "SEID12" = "TraesCS3A02G405700",
+  "SEID13" = "TraesCSU02G243900",
+  "SEID14" = "TraesCS1D02G387400",
+  "SEID15" = "TraesCS7D02G256100",
+  "SEID16" = "TraesCS2B02G521400",
+  "SEID17" = "TraesCS5B02G096700",
+  "SEID18" = "TraesCS4A02G155900",
+  "SEID19" = "TraesCS3B02G066800",
+  "SEID20" = "TraesCS7B02G396300",
+  "SEID21" = "TraesCS3A02G458800",
+  "SEID22" = "TraesCS2A02G240700",
+  "SEID23" = "TraesCS2A02G240400",
+  "SEID24" = "TraesCS5B02G040100",
+  "SEID25" = "TraesCS1D02G178700",
+  "SEID26" = "TraesCS5D02G345900",
+  "SEID27" = "TraesCS2B02G252400",
+  "SEID28" = "TraesCS3B02G189500",
+  "SEID29" = "TraesCS3A02G485300",
+  "SEID30" = "TraesCS1A02G343500",
+  "SEID31" = "TraesCS5D02G488100",
+  "SEID32" = "TraesCS7D02G124000",
+  "SEID33" = "TraesCS2B02G002300",
+  "SEID34" = "TraesCS1D02G212600",
+  "SEID35" = "TraesCS5D02G345100",
+  "SEID36" = "TraesCS4D02G150400",
+  "SEID37" = "TraesCS2B02G601100",
+  "SEID38" = "TraesCS5D02G221000",
+  "SEID39" = "TraesCS7A02G289000",
+  "SEID40" = "TraesCS4A02G155200"
 )
 
-length(SERNs)
+length(SEIDs)
 ```
 
 ```{r}
-sum(SERNs %in% names(yhatkm$km$cluster))
+sum(SEIDs %in% names(yhatkm$km$cluster))
 ```
 
 ```{r}
-yhatkm$km$cluster[SERNs] |> unique()
+yhatkm$km$cluster[SEIDs] |> unique()
 ```
 
 ### Pseudotime Expression
 
 ```{r}
-local({
+p1 <- local({
   genedf <- data.frame(
     cluster = yhatkm$cluster,
     gene = names(yhatkm$km$cluster)
@@ -1119,7 +1205,7 @@ local({
     dplyr::mutate(group = paste(gene, lineage))
 
   df_to_plot |>
-    dplyr::filter(gene %in% SERNs) |>
+    dplyr::filter(gene %in% SEIDs) |>
     ggplot2::ggplot(ggplot2::aes(
       x = pseudotime, y = expression)) +
     ggplot2::geom_line(
@@ -1145,8 +1231,622 @@ local({
       legend.background = ggplot2::element_blank(),
       legend.title = ggplot2::element_blank())
 })
+
+p1
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p1, "../data/Figure.pptx",
+  location = grid::unit(c(2.99, 5.17, 17.29, 10.68), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
 ### Average Expression Pct
 
+```{r fig.height=12, fig.width=7}
+p2 <- Seurat::DotPlot(obj, features = unname(SEIDs), group.by = "tissue") +
+  ggplot2::scale_x_discrete(limits = rev(SEIDs), labels = rev(names(SEIDs))) +
+  ggplot2::scale_y_discrete(limits = TISSUE_TYPES) +
+  ggplot2::coord_flip() +
+  ggplot2::guides(
+    size = ggplot2::guide_legend(title.position = "left", title = "Pct. Expr."),
+    color = ggplot2::guide_colorbar(title.position = "left", title = "Avg. Expr.")
+  ) +
+  ggthemes::scale_colour_gradient_tableau('Red') +
+  cowplot::theme_cowplot(font_size = 22, font_family = "Arial") +
+  rotate_x_labels(angle = 25) +
+  ggplot2::theme(
+    axis.title = ggplot2::element_blank(),
+    axis.text = ggplot2::element_text(size = 16),
+    axis.text.y = ggplot2::element_text(face = "italic"),
+    axis.ticks = ggplot2::element_line(linewidth = 1.5/2.13),
+    axis.line = ggplot2::element_line(linewidth = 1.5/2.13),
+    legend.title = ggplot2::element_text(angle = 90, hjust = 0.5, size = 20),
+    legend.box.spacing = grid::unit(1, "mm"),
+    plot.margin = ggplot2::margin(t = 9, r = 9, b = 0, l = 9, unit = "pt"),
+  )
 
+
+p2
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p2, "../data/Figure.pptx",
+  location = grid::unit(c(2.99, 16.39, 17.29, 25.71), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+## Supplementary Figure X
+
+### Condition-specific Genes
+
+```{r}
+tradeSce_chl_cond <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/tradeseq_gam_chl_condition_*.rds"))
+```
+
+```{r}
+conditionRes_chl_all <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/tradeseq_conditionRes_chl_pairlineages_*.rds"))
+```
+
+```{r}
+levels(colData(tradeSce_chl_cond)$tradeSeq$conditions)
+```
+
+```{r}
+str(conditionRes_chl_all)
+```
+
+### Branch 1 - PNR2 vs. TR4
+
+```{r}
+conditionRes_chl_branch1 <- conditionRes_chl_all[, c(
+    "waldStat_lineage1_conds2vs3", "df_lineage1_conds2vs3",
+    "pvalue_lineage1_conds2vs3")] |>
+  dplyr::rename_with(\(x) stringr::str_remove(x, "_lineage1_conds2vs3")) |>
+  tibble::rownames_to_column("gene") |>
+  dplyr::filter(!is.na(waldStat)) |>
+  dplyr::mutate(fdr = p.adjust(pvalue, "fdr"))
+```
+
+```{r}
+conditionRes_chl_branch1 |>
+  dplyr::arrange(fdr) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = waldStat, y = -log(pvalue), color = fdr < 0.01)) +
+  ggplot2::geom_point() +
+  NULL
+```
+
+```{r}
+conditionRes_chl_branch1 <- conditionRes_chl_branch1 |>
+  dplyr::filter(fdr <= 0.5) |>
+  dplyr::arrange(dplyr::desc(waldStat))
+
+conditionRes_chl_branch1
+```
+
+```{r}
+length(conditionGenes_branch1 <- unique(dplyr::pull(conditionRes_chl_branch1, gene)))
+```
+
+```{r}
+yhatSmoothDf <- clustExpressionPatterns(
+  tradeSce_chl_cond, conditionGenes_branch1, k = 6, seed = 240203)
+
+str(yhatSmoothDf)
+```
+
+```{r}
+conditionGenes_branch1[27:31]
+```
+
+```{r fig.height=10, fig.width=7}
+yhatSmoothDf |>
+  dplyr::filter(gene %in% conditionGenes_branch1[27:31]) |>
+  dplyr::mutate(gene = factor(gene, conditionGenes_branch1[27:31])) |>
+  plotExpressionPatterns(yhatScaled) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::facet_grid(gene ~ lineage)
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS5D02G008300",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("Photosystem II protein D1") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "ENSRNA050019909",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("Large subunit ribosomal RNA") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS5B02G039000",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("SEID1") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS4A02G272300",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("SEID7") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS1B02G406200",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("SEID4") +
+  theme_smoothers()
+
+p
+```
+
+### Branch 2 - PNR2 vs. TR4
+
+```{r}
+conditionRes_chl_branch2 <- conditionRes_chl_all[, c(
+    "waldStat_lineage2_conds2vs3", "df_lineage2_conds2vs3",
+    "pvalue_lineage2_conds2vs3")] |>
+  dplyr::rename_with(\(x) stringr::str_remove(x, "_lineage2_conds2vs3")) |>
+  tibble::rownames_to_column("gene") |>
+  dplyr::filter(!is.na(waldStat)) |>
+  dplyr::mutate(fdr = p.adjust(pvalue, "fdr"))
+```
+
+```{r}
+conditionRes_chl_branch2 |>
+  dplyr::arrange(fdr) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = waldStat, y = -log(pvalue), color = fdr < 0.8)) +
+  ggplot2::geom_point() +
+  NULL
+```
+
+```{r}
+conditionRes_chl_branch2 <- conditionRes_chl_branch2 |>
+  #dplyr::filter(fdr <= 0.5) |>
+  dplyr::arrange(dplyr::desc(waldStat))
+
+conditionRes_chl_branch2
+```
+
+```{r}
+length(conditionGenes_branch2 <- unique(dplyr::pull(conditionRes_chl_branch2, gene))[1:30])
+```
+
+```{r}
+yhatSmoothDf <- clustExpressionPatterns(
+  tradeSce_chl_cond, conditionGenes_branch2, k = 6, seed = 240203)
+
+str(yhatSmoothDf)
+```
+
+```{r}
+conditionGenes_branch2[26:30]
+```
+
+```{r fig.height=10, fig.width=7}
+yhatSmoothDf |>
+  dplyr::filter(gene %in% conditionGenes_branch2[26:30]) |>
+  dplyr::mutate(gene = factor(gene, conditionGenes_branch2[26:30])) |>
+  plotExpressionPatterns(yhatScaled) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::facet_grid(gene ~ lineage)
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS6B02G354600",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("Peroxidase") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS4A02G099000",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TraesCS4A02G099000") +
+  theme_smoothers()
+
+p
+```
+
+### Branch 1 - PNR2 vs. MOCK
+
+### Branch 1 - TR4 vs. MOCK
+
+```{r}
+conditionRes_chl_branch1 <- conditionRes_chl_all[, c(
+    "waldStat_lineage1_conds1vs3", "df_lineage1_conds1vs3",
+    "pvalue_lineage1_conds1vs3")] |>
+  dplyr::rename_with(\(x) stringr::str_remove(x, "_lineage1_conds1vs3")) |>
+  tibble::rownames_to_column("gene") |>
+  dplyr::filter(!is.na(waldStat)) |>
+  dplyr::mutate(fdr = p.adjust(pvalue, "fdr"))
+```
+
+```{r}
+conditionRes_chl_branch1 |>
+  dplyr::arrange(fdr) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = waldStat, y = -log(pvalue), color = fdr < 0.01)) +
+  ggplot2::geom_point() +
+  NULL
+```
+
+```{r}
+conditionRes_chl_branch1 <- conditionRes_chl_branch1 |>
+  dplyr::filter(fdr <= 0.01) |>
+  dplyr::arrange(dplyr::desc(waldStat))
+
+conditionRes_chl_branch1
+```
+
+```{r}
+conditionRes_chl_branch1 <- conditionRes_chl_branch1 |>
+  dplyr::filter(fdr <= 0.5) |>
+  dplyr::arrange(dplyr::desc(waldStat))
+
+conditionRes_chl_branch1
+```
+
+```{r}
+length(conditionGenes_branch1 <- unique(dplyr::pull(conditionRes_chl_branch1, gene)))
+```
+
+```{r}
+yhatSmoothDf <- clustExpressionPatterns(
+  tradeSce_chl_cond, conditionGenes_branch1, k = 6, seed = 240203)
+
+str(yhatSmoothDf)
+```
+
+#### Screening
+
+```{r}
+conditionGenes_branch1[61:65]
+```
+
+```{r fig.height=10, fig.width=7}
+yhatSmoothDf |>
+  dplyr::filter(gene %in% conditionGenes_branch1[61:65]) |>
+  dplyr::mutate(gene = factor(gene, conditionGenes_branch1[61:65])) |>
+  plotExpressionPatterns(yhatScaled) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::facet_grid(gene ~ lineage)
+```
+
+#### Check
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS2B02G553800",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TraesCS2B02G553800") +
+  theme_smoothers()
+
+p
+```
+
+### Branch 2 - TR4 vs. MOCK
+
+基本都是 pathogen 比 mock 低
+
+### Branch 2 - PNR2 vs. MOCK
+
+```{r}
+conditionRes_chl_branch2 <- conditionRes_chl_all[, c(
+    "waldStat_lineage2_conds1vs2", "df_lineage2_conds1vs2",
+    "pvalue_lineage2_conds1vs2")] |>
+  dplyr::rename_with(\(x) stringr::str_remove(x, "_lineage2_conds1vs2")) |>
+  tibble::rownames_to_column("gene") |>
+  dplyr::filter(!is.na(waldStat)) |>
+  dplyr::mutate(fdr = p.adjust(pvalue, "fdr"))
+```
+
+```{r}
+conditionRes_chl_branch2 |>
+  dplyr::arrange(fdr) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = waldStat, y = -log(pvalue), color = fdr < 0.01)) +
+  ggplot2::geom_point() +
+  NULL
+```
+
+```{r}
+conditionRes_chl_branch2 <- conditionRes_chl_branch2 |>
+  dplyr::filter(fdr <= 0.5) |>
+  dplyr::arrange(dplyr::desc(waldStat))
+
+conditionRes_chl_branch2
+```
+
+```{r}
+length(conditionGenes_branch2 <- unique(dplyr::pull(conditionRes_chl_branch2, gene)))
+```
+
+```{r}
+yhatSmoothDf <- clustExpressionPatterns(
+  tradeSce_chl_cond, conditionGenes_branch2, k = 6, seed = 240203)
+
+str(yhatSmoothDf)
+```
+
+#### Screening
+
+```{r}
+conditionGenes_branch2[61:65]
+```
+
+```{r fig.height=10, fig.width=7}
+yhatSmoothDf |>
+  dplyr::filter(gene %in% conditionGenes_branch2[61:65]) |>
+  dplyr::mutate(gene = factor(gene, conditionGenes_branch2[61:65])) |>
+  plotExpressionPatterns(yhatScaled) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::facet_grid(gene ~ lineage)
+```
+
+#### Check
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_cond, "TraesCS2D02G150500",
+    color_by = condition, lwd = 1, bwd = 0.5) +
+  ggplot2::facet_wrap(
+    ~ sub("Lineage", "Branch", lineage, fixed = TRUE),
+    scales = "free_x") +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TraesCS2D02G150500") +
+  theme_smoothers()
+
+p
+```
+
+### Branch Different
+
+```{r}
+patternRes_chl_all |> str()
+```
+
+```{r}
+patternRes_chl_df <- patternRes_chl_all |>
+  tibble::rownames_to_column("gene") |>
+  dplyr::filter(!is.na(waldStat)) |>
+  dplyr::mutate(fdr = p.adjust(pvalue, "fdr"))
+```
+
+```{r}
+patternRes_chl_df |>
+  dplyr::arrange(fdr) |>
+  ggplot2::ggplot(ggplot2::aes(
+    x = waldStat, y = -log(pvalue), color = fdr < 0.01)) +
+  ggplot2::geom_point() +
+  NULL
+```
+
+```{r}
+patternRes_chl_df <- patternRes_chl_df |>
+  dplyr::filter(fdr <= 0.5) |>
+  dplyr::arrange(dplyr::desc(waldStat))
+
+patternRes_chl_df
+```
+
+```{r}
+length(patternGenes_chl <- unique(dplyr::pull(patternRes_chl_df, gene)))
+```
+
+```{r}
+yhatSmoothDf <- clustExpressionPatterns(
+  tradeSce_chl_all, patternGenes_chl, k = 6, seed = 240203)
+
+str(yhatSmoothDf)
+```
+
+#### Screening
+
+```{r}
+patternGenes_chl[91:100]
+```
+
+```{r fig.height=7, fig.width=7}
+yhatSmoothDf |>
+  dplyr::filter(gene %in% patternGenes_chl[91:100]) |>
+  dplyr::mutate(gene = factor(gene, patternGenes_chl[91:100])) |>
+  plotExpressionPatterns(yhatScaled) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::facet_wrap(~ gene, ncol = 2)
+```
+
+#### Check
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS2B02G600200",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TraesCS2B02G600200") +
+  theme_smoothers()
+
+p
+```
+
+### Selected Defense Genes
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS2D02G150500",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("Plastid-lipid-associated protein") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS7A02G558500",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TaTLP32-A") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS5B02G045100",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("WIR1A") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS1D02G355100",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("Wheatwin-1-like protein") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS3A02G298800",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TaNPR3-A") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS4A02G294400",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TaNPR4-A") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS4B02G018900",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TaNPR4-B") +
+  theme_smoothers()
+
+p
+```
+
+```{r fig.height=3, fig.width=7}
+p <- plotPseudotimeExpression(
+    tradeSce_chl_all, "TraesCS4D02G017500",
+    color_by = lineage, lwd = 1, bwd = 0.5) +
+  ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+  ggplot2::ggtitle("TaNPR4-D") +
+  theme_smoothers()
+
+p
+```
+
+## Supplementary Table 6
+
+```{r}
+df_pst <- split(names(yhatkm$km$cluster), paste0("G", yhatkm$km$cluster)) |>
+  tibble::enframe("Module", "Gene") |>
+  tidyr::unnest(cols = Gene)
+```
+
+```{r}
+anno <- brookite::pull_annotation(
+  unique(df_pst$Gene),
+  mart_info = list(
+    mart = "plants_mart",
+    dataset = "taestivum_eg_gene",
+    host = "https://plants.ensembl.org"
+  ),
+  dest_attrs = c(
+    Description = "description",
+    GO_ID = "go_id",
+    GO_Name = "name_1006",
+    GO_Level = "namespace_1003"
+  ))
+
+df_pst <- dplyr::left_join(df_pst, anno, by = c("Gene" = "ensembl_gene_id"))
+```
+
+```{r}
+dplyr::sample_n(df_pst, 20)
+```
+
+```{r}
+openxlsx::write.xlsx(df_pst, "../results/DataPlots/SupplementaryTable_6_CHL_PST.xlsx")
+```
