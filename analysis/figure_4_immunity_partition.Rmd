@@ -1153,11 +1153,97 @@ p4 <- ggplot2::ggplot(df, ggplot2::aes(
 p4
 ```
 
+### Proportion of Cell Types
+
+```{r}
+ca_res_nonclust_8ct <- xfun::cache_rds(
+  file = "ca_res_nonclust_8celltypes.rds",
+  dir = "../results/ObjectCache/DifferentialAbundance/",
+  expr = local({
+    res <- scDC::scDC_noClustering(
+      obj$tissue,
+      obj$sample,
+      nboot = 500,
+      calCI = TRUE,
+      calCI_method = c("percentile", "BCa", "multinom"),
+      ncores = 4
+    )
+
+    res$results$cond <- obj$group[match(res$results$subject, obj$sample)]
+    res$info$cond <- obj$group[match(res$info$subject, obj$sample)]
+
+    res
+  })
+)
+```
+
+```{r}
+ca_res_nonclust_8ct$results$cellTypes <- forcats::fct_relevel(ca_res_nonclust_8ct$results$cellTypes, TISSUE_TYPES)
+```
+
+```{r}
+p5 <- local({
+  df_to_plot <- ca_res_nonclust_8ct$results %>%
+    tibble::as_tibble() %>%
+    dplyr::filter(method == "BCa") %>%
+    dplyr::mutate(
+      time = sapply(strsplit(cond, split = "-"), "[", 1),
+      rep = sapply(strsplit(as.character(subject), split = "-"),
+                   function(x) paste(x[2:3], collapse = "-")),
+      treatment = sapply(strsplit(cond, split = "-"), "[", 2)
+    )
+  
+  prop_df <- ca_res_nonclust_8ct$thetastar %>%
+    as.data.frame()
+  
+  colnames(prop_df) <- paste("BS_", seq_len(ncol(ca_res_nonclust_8ct$thetastar)), sep = "")
+  
+  df_to_plot <- dplyr::bind_cols(df_to_plot, prop_df) %>%
+    tidyr::pivot_longer(tidyr::starts_with("BS_"), names_to = "bootstrap", values_to = "prop")
+  
+  df_to_plot <- dplyr::bind_rows(
+    df_to_plot,
+    df_to_plot %>%
+      dplyr::filter(time == "0DPI") %>%
+      dplyr::mutate(treatment = "PNR2"),
+    df_to_plot %>%
+      dplyr::filter(time == "0DPI") %>%
+      dplyr::mutate(treatment = "TR4")
+  )
+
+  ggplot2::ggplot(df_to_plot, ggplot2::aes(x = time, y = prop, color = treatment)) +
+    ggplot2::geom_boxplot(
+      width = 0.2, outlier.shape = NA, linewidth = 1.5 * PT,
+      position = ggplot2::position_dodge(width = 0.4)) +
+    ggplot2::geom_line(
+      mapping = ggplot2::aes(group = treatment),
+      stat = "summary", fun = median, linewidth = 1.5 * PT,
+      position = ggplot2::position_dodge(width = 0.4)) +
+    ggplot2::scale_y_continuous(labels = scales::percent) +
+    ggplot2::facet_wrap(~ cellTypes, scales = "free_y", nrow = 2, drop = FALSE) +
+    ggplot2::scale_color_brewer(type = "qual", palette = "Dark2") +
+    ggplot2::guides(fill = "none") +
+    ggplot2::labs(x = "Time", y = "Proportion", color = "Treatment") +
+    ggplot2::theme_bw(base_size = 22) +
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(
+        size = 18, vjust = 0.2, margin = ggplot2::margin(t = 4, b = 4)),
+      axis.text.x = ggplot2::element_text(
+        size = 16, angle = 0, hjust = 0.5, vjust = 1, color = "black"),
+      axis.ticks = ggplot2::element_line(linewidth = 1.5 * PT),
+      strip.background = ggplot2::element_blank(),
+      panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
+      legend.box.spacing = grid::unit(1, "mm")
+    ) + rotate_x_labels()
+})
+```
+
 ### Combine Plots
 
-```{r fig.height=16, fig.width=14}
-p <- (p1 + p2) / p3 / p4 +
-  patchwork::plot_layout(heights = c(0.8, 1.2, 0.5)) &
+```{r fig.height=18, fig.width=14}
+p <- (p1 + p2) / p3 / p4 / p5 +
+  patchwork::plot_layout(heights = c(0.8, 1.2, 0.4, 0.6)) &
   ggplot2::theme(legend.box.spacing = grid::unit(1, "mm"))
 
 p
@@ -1165,7 +1251,7 @@ p
 
 ```{r eval=FALSE, include=FALSE}
 plotpowerpoint(p, "../data/Figure.pptx",
-  location = grid::unit(c(2.5, 4.53, 49.01, 55.59), "cm"),
+  location = grid::unit(c(2.5, 4.53, 49.01, 63), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
@@ -1197,12 +1283,12 @@ p1 <- ora_comp_1dpi$BP |>
   dplyr::filter(ID %in% reprterms) |>
   enrichplot::dotplot(
     x = "treatment",
-    showCategory = NULL,
+    showCategory = 8,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
   ggplot2::ggtitle("Biological process - 1DPI") +
   ggplot2::facet_grid(regu ~ cluster_id, scales = "free", space = "free") +
-  rotate_x_labels() +
+  #rotate_x_labels() +
   ggplot2::theme(
     plot.title = ggplot2::element_text(size = 20),
     axis.text.x = ggplot2::element_text(size = 16),
@@ -1248,12 +1334,12 @@ p2 <- ora_comp_2dpi$BP |>
   dplyr::filter(ID %in% reprterms) |>
   enrichplot::dotplot(
     x = "treatment",
-    showCategory = 5,
+    showCategory = 4,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
   ggplot2::ggtitle("Biological process - 2DPI") +
   ggplot2::facet_grid(regu ~ cluster_id, scales = "free", space = "free") +
-  rotate_x_labels() +
+  #rotate_x_labels() +
   ggplot2::theme(
     plot.title = ggplot2::element_text(size = 20),
     axis.text.x = ggplot2::element_text(size = 16),
@@ -1299,12 +1385,12 @@ p3 <- ora_comp_3dpi$BP |>
   dplyr::filter(ID %in% reprterms) |>
   enrichplot::dotplot(
     x = "treatment",
-    showCategory = 5,
+    showCategory = 4,
     size = "count", label_format = 50) +
   ggplot2::xlab("DEG Sets") +
   ggplot2::ggtitle("Biological process - 3DPI") +
   ggplot2::facet_grid(regu ~ cluster_id, scales = "free", space = "free") +
-  rotate_x_labels() +
+  #rotate_x_labels() +
   ggplot2::theme(
     plot.title = ggplot2::element_text(size = 20),
     axis.text.x = ggplot2::element_text(size = 16),

@@ -552,22 +552,6 @@ plotDEGsHeatmap(
   logfc_data$heatanno, column_split = logfc_data$coldata$cell_types)
 ```
 
-#### TIR
-
-```{r fig.height=4, fig.width=14}
-plotRadarGSVA(gsva_df, "TIR")
-```
-
-```{r fig.height=4, fig.width=14}
-plotLineFacetGSVA(gsva_df, "TIR")
-```
-
-```{r fig.height=4, fig.width=14}
-detected <- intersect(rownames(logfc_data$mtx), pathways[["TIR"]])
-print(detected)
-logfc_data$mtx[detected,][!is.na(logfc_data$mtx[detected,])]
-```
-
 #### PR
 
 ```{r fig.height=4, fig.width=14}
