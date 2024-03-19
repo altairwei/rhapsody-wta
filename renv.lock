@@ -1393,16 +1393,6 @@
         "shiny"
       ]
     },
-    "TSP": {
-      "Package": "TSP",
-      "Version": "1.2-1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ecd45bbf66cdc3bd4554154de9d253ab",
-      "Requirements": [
-        "foreach"
-      ]
-    },
     "TTR": {
       "Package": "TTR",
       "Version": "0.24.3",
@@ -1689,6 +1679,16 @@
       "Hash": "543776ae6848fde2f48ff3816d0628bc",
       "Requirements": []
     },
+    "base64url": {
+      "Package": "base64url",
+      "Version": "1.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "0c54cf3a08cc0e550fbd64ad33166143",
+      "Requirements": [
+        "backports"
+      ]
+    },
     "basilisk": {
       "Package": "basilisk",
       "Version": "1.10.2",
@@ -1743,6 +1743,27 @@
         "beachmat",
         "igraph",
         "scuttle"
+      ]
+    },
+    "batchtools": {
+      "Package": "batchtools",
+      "Version": "0.9.17",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c21ca34590a8dd80fccec5bf1b2d26d7",
+      "Requirements": [
+        "R6",
+        "backports",
+        "base64url",
+        "brew",
+        "checkmate",
+        "data.table",
+        "digest",
+        "fs",
+        "progress",
+        "rappdirs",
+        "stringi",
+        "withr"
       ]
     },
     "bayesbio": {
@@ -1967,14 +1988,6 @@
         "rlang",
         "sass"
       ]
-    },
-    "ca": {
-      "Package": "ca",
-      "Version": "0.71.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "392f13bb4dfd3c07259ecdeba6aa71f9",
-      "Requirements": []
     },
     "caTools": {
       "Package": "caTools",
@@ -2972,10 +2985,15 @@
     },
     "eulerr": {
       "Package": "eulerr",
-      "Version": "7.0.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "871a0ddf86c0ac96dc2e6ea301362867",
+      "Version": "7.0.0.9000",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "eulerr",
+      "RemoteUsername": "altairwei",
+      "RemoteRef": "fix-mismatched-strips",
+      "RemoteSha": "6b718b0adf9c53163e40e717e2acf81d13720d13",
+      "Hash": "4fce09dc74613d311519684a7ffa0e72",
       "Requirements": [
         "GenSA",
         "Rcpp",
@@ -3250,16 +3268,6 @@
         "globals"
       ]
     },
-    "gclus": {
-      "Package": "gclus",
-      "Version": "1.3.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "8f905e7f70ac42e5b0e39d6ba360dd44",
-      "Requirements": [
-        "cluster"
-      ]
-    },
     "gdtools": {
       "Package": "gdtools",
       "Version": "0.2.4",
@@ -3355,6 +3363,19 @@
         "beeswarm",
         "ggplot2",
         "vipor"
+      ]
+    },
+    "ggborderline": {
+      "Package": "ggborderline",
+      "Version": "0.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "52873d13a808e9711c636560f01ce393",
+      "Requirements": [
+        "cli",
+        "ggplot2",
+        "rlang",
+        "vctrs"
       ]
     },
     "ggforce": {
@@ -3706,16 +3727,6 @@
         "foreach",
         "shape",
         "survival"
-      ]
-    },
-    "glmpca": {
-      "Package": "glmpca",
-      "Version": "0.2.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "ec62f514be9ff6a313568a424bfc66a4",
-      "Requirements": [
-        "MASS"
       ]
     },
     "globals": {
@@ -5294,14 +5305,6 @@
         "rlang"
       ]
     },
-    "qap": {
-      "Package": "qap",
-      "Version": "0.1-2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "21c4fc168ebf32add2db6a358ce4714c",
-      "Requirements": []
-    },
     "qlcMatrix": {
       "Package": "qlcMatrix",
       "Version": "0.9.7",
@@ -5526,14 +5529,6 @@
         "vctrs",
         "withr"
       ]
-    },
-    "registry": {
-      "Package": "registry",
-      "Version": "0.5-1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "1c9935f4f14c6c096c9c9072ddee59f1",
-      "Requirements": []
     },
     "rematch": {
       "Package": "rematch",
@@ -6105,25 +6100,6 @@
         "statmod"
       ]
     },
-    "scry": {
-      "Package": "scry",
-      "Version": "1.10.0",
-      "Source": "Bioconductor",
-      "git_url": "https://git.bioconductor.org/packages/scry",
-      "git_branch": "RELEASE_3_16",
-      "git_last_commit": "d416920",
-      "git_last_commit_date": "2022-11-01",
-      "Hash": "ef7ab530407c559c58ce2a49bd4614b7",
-      "Requirements": [
-        "BiocSingular",
-        "DelayedArray",
-        "HDF5Array",
-        "Matrix",
-        "SingleCellExperiment",
-        "SummarizedExperiment",
-        "glmpca"
-      ]
-    },
     "sctransform": {
       "Package": "sctransform",
       "Version": "0.3.5",
@@ -6196,23 +6172,6 @@
       "Requirements": [
         "R6",
         "stringr"
-      ]
-    },
-    "seriation": {
-      "Package": "seriation",
-      "Version": "1.4.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "9f03af039f9e2cd7d49598566ed45c59",
-      "Requirements": [
-        "MASS",
-        "TSP",
-        "ca",
-        "cluster",
-        "colorspace",
-        "gclus",
-        "qap",
-        "registry"
       ]
     },
     "sessioninfo": {
