@@ -1257,6 +1257,167 @@ plotpowerpoint(p, "../data/Figure.pptx",
 
 ## Supplementary Figure 5
 
+### Euler Diagrams
+
+```{r}
+deg_glist_os <- ds_sig %>%
+  rhapsodykit::diff_state_subset(
+    contrast = c(
+      "X1DPI.PNR2-X1DPI.MOCK",
+      "X2DPI.PNR2-X2DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X1DPI.TR4-X1DPI.MOCK",
+      "X2DPI.TR4-X2DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK"),
+    clusters = c("Outer sheath")) %>%
+  upset_contrasts_list() %>%
+  setNames(stringr::str_remove(names(.), " \\[.*\\]"))
+
+deg_glist_ph <- ds_sig %>%
+  rhapsodykit::diff_state_subset(
+    contrast = c(
+      "X1DPI.PNR2-X1DPI.MOCK",
+      "X2DPI.PNR2-X2DPI.MOCK",
+      "X3DPI.PNR2-X3DPI.MOCK",
+      "X1DPI.TR4-X1DPI.MOCK",
+      "X2DPI.TR4-X2DPI.MOCK",
+      "X3DPI.TR4-X3DPI.MOCK"),
+    clusters = c("Phloem")) %>%
+  upset_contrasts_list() %>%
+  setNames(stringr::str_remove(names(.), " \\[.*\\]"))
+```
+
+```{r}
+set.seed(20221016)
+fit_os <- eulerr::euler(deg_glist_os, shape = "ellipse")
+
+set.seed(20221016)
+fit_ph <- eulerr::euler(deg_glist_ph, shape = "ellipse")
+```
+
+```{r fig.height=7, fig.width=14}
+eulerr::eulerr_options(
+  strips = list(fontsize = 20, font = 1, fontfamily = "Arial"),
+  quantities = list(fontsize = 16, fontfamily = "Arial"),
+  legend = list(fontsize = 18, vgap = grid::unit(0.8, "lines"),
+                fontfamily = "Arial"))
+
+p1 <- plot(
+  fit_os,
+  labels = FALSE,
+  lty = rep(1:2, each = 3),
+  quantities = list(cex = 1),
+  fills = c(
+    "#fde0ef", "#e9a3c9", "#c51b7d",
+    "#e6f5d0", "#a1d76a", "#4d9221"),
+  legend = list(side = "bottom")
+)
+
+p1
+```
+
+```{r fig.height=7, fig.width=14}
+eulerr::eulerr_options(
+  strips = list(fontsize = 20, font = 1, fontfamily = "Arial"),
+  quantities = list(fontsize = 16, fontfamily = "Arial"),
+  legend = list(fontsize = 18, vgap = grid::unit(0.8, "lines"),
+                fontfamily = "Arial"))
+
+p2 <- plot(
+  fit_ph,
+  labels = FALSE,
+  lty = rep(1:2, each = 3),
+  quantities = list(cex = 1),
+  fills = c(
+    "#fde0ef", "#e9a3c9", "#c51b7d",
+    "#e6f5d0", "#a1d76a", "#4d9221"),
+  legend = list(side = "bottom")
+)
+
+p2
+```
+
+```{r}
+p12fun <- function() {
+  gridExtra::grid.arrange(gridExtra::arrangeGrob(grobs = list(p1, p2), ncol = 2))
+}
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p1, "../data/Figure.pptx", fun = p12fun,
+  location = grid::unit(c(2.5, 4.49, 23.96, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+
+
+```{r}
+deg_bool_df <- local({
+  boolmtx <- ds_sig %>%
+    rhapsodykit::diff_state_subset(
+      contrast = c(
+        "X1DPI.PNR2-X1DPI.MOCK",
+        "X1DPI.TR4-X1DPI.MOCK",
+  
+        "X2DPI.PNR2-X2DPI.MOCK",
+        "X2DPI.TR4-X2DPI.MOCK",
+  
+        "X3DPI.PNR2-X3DPI.MOCK",
+        "X3DPI.TR4-X3DPI.MOCK"),
+      clusters = c("Outer sheath", "Phloem")) %>%
+    upset_contrasts_list() |>
+    rhapsodykit::from_list_to_upset()
+  
+  boolmtx = (boolmtx == 1)
+
+  df <- boolmtx |>
+    as.data.frame() |>
+    tibble::rownames_to_column("Gene") |>
+    tidyr::pivot_longer(!Gene, names_to = c("Group", "CellType"),
+                        names_pattern = "(\\dDPI-.*) \\[(.*)\\]",
+                        values_to = "Logical") |>
+    tidyr::pivot_wider(names_from = Group, values_from = Logical,
+                       values_fill = FALSE) |>
+    dplyr::select(CellType, "1DPI-PNR2", "2DPI-PNR2", "3DPI-PNR2", "1DPI-TR4", "2DPI-TR4", "3DPI-TR4")
+
+  df
+})
+
+deg_bool_df
+```
+
+```{r}
+set.seed(20221016)
+fit <- eulerr::euler(deg_bool_df, by = CellType, shape = "ellipse")
+```
+
+```{r fig.height=7, fig.width=7}
+eulerr::eulerr_options(
+  strips = list(fontsize = 20, font = 1, fontfamily = "Arial"),
+  quantities = list(fontsize = 16, fontfamily = "Arial"),
+  legend = list(fontsize = 20, vgap = grid::unit(0.5, "lines"),
+                fontfamily = "Arial"))
+
+p3 <- plot(
+  fit,
+  labels = FALSE,
+  lty = rep(1:2, each = 3),
+  quantities = list(cex = 1),
+  fills = c(
+    "#fde0ef", "#e9a3c9", "#c51b7d",
+    "#e6f5d0", "#a1d76a", "#4d9221"),
+  legend = list(side = "bottom")
+)
+
+p3
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 23.96, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
 ### Enrichment Analysis of 1 DPI
 
 ```{r}
@@ -1462,3 +1623,51 @@ dplyr::sample_n(df_deg, 20)
 ```{r eval=FALSE}
 openxlsx::write.xlsx(df_deg, "../results/DataPlots/SupplementaryTable_2_DEGs.xlsx")
 ```
+
+## Supplementary Table 3
+
+```{r}
+ORA_dfs <- lapply(
+  list("1DPI" = ora_comp_1dpi$BP,
+       "2DPI" = ora_comp_2dpi$BP,
+       "3DPI" = ora_comp_3dpi$BP),
+  function(BP) {
+    p <- BP |>
+      enrichplot::pairwise_termsim(
+        showCategory = NULL) |>
+      enrichplot::treeplot(
+        showCategory = NULL,
+        size = "count",
+        clusterPanel.params = list(
+          clusterPanel = "dotplot"),
+        cluster.params = list(
+          n = 12, label_words_n = 0, label_format = 5),
+        offset.params = list(bar_tree = 60, tiplab = 32),
+        hilight.params = list()) +
+      ggplot2::scale_y_continuous(
+        expand = ggplot2::expansion(mult = c(0, 0), add = c(15, 0))) +
+      NULL
+
+    pData <- as.data.frame(p$data)
+    paths <- pData$label[order(pData$y, decreasing = TRUE)]
+    paths <- paths[!is.na(paths)]
+
+    as.data.frame(BP) |>
+      dplyr::arrange(dplyr::desc(match(Description, paths))) |>
+      dplyr::select(Description, ID, dplyr::everything())
+  })
+```
+
+```{r eval=FALSE, include=FALSE}
+wb <- openxlsx::createWorkbook()
+
+for (sheet in names(ORA_dfs)) {
+  openxlsx::addWorksheet(wb, sheet)
+  openxlsx::writeDataTable(wb, sheet, ORA_dfs[[sheet]])
+}
+
+openxlsx::saveWorkbook(
+  wb, file = "../results/DataPlots/SupplementaryTable_3_DS_ORA.xlsx",
+  overwrite = TRUE)
+```
+
