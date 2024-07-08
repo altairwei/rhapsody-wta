@@ -551,7 +551,7 @@ plotpowerpoint(p6, "../data/Figure.pptx",
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
-## Supplementary Figure 8
+## Supplementary Figure 9
 
 ```{r}
 theme_dim_chl <- function() {
@@ -734,10 +734,6 @@ p4 <- ggplot2::ggplot(df_ncorrs, ggplot2::aes(
 p4
 ```
 
-```{r fig.height=5, fig.width=17}
-(p34 <- p3 + p4 + patchwork::plot_layout(widths = c(1, 2)))
-```
-
 ### DA-seq of 1 DPI Chlorenchyma
 
 ```{r}
@@ -802,15 +798,21 @@ p5 <- local({
 patchwork::wrap_plots(p5)
 ```
 
+```{r fig.height=5, fig.width=17}
+(p35 <- p3 + p5)
+```
+
 ### RNA Molecular Distribution
 
-```{r fig.height=5, fig.width=7}
+```{r fig.height=5, fig.width=17}
 p6 <- scater::plotReducedDim(
     sce_chl_all, dimred = "PHATE",
     colour_by = "nCount_RNA",
     order_by = "nCount_RNA",
     point_size = 1,
-    theme_size = 22) +
+    theme_size = 22,
+    other_fields = "treatment") +
+  ggplot2::facet_wrap(~ treatment) +
   ggplot2::coord_fixed() +
   ggplot2::scale_color_viridis_c(
     trans = "log10", labels = scales::label_log(digits = 2)) +
@@ -818,24 +820,37 @@ p6 <- scater::plotReducedDim(
     title = "RNA Count", title.position = "top")) +
   center_plot_title(face = "plain") +
   remove_legend_title() +
-  theme_dim_chl()
+  ggplot2::theme_bw(base_size = 22) +
+  ggplot2::theme(
+    panel.grid = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(
+      size = 22, vjust = 0.2),
+    axis.text = ggplot2::element_blank(),
+    axis.ticks = ggplot2::element_blank(),
+    strip.background = ggplot2::element_rect(linewidth = 1.5 * PT),
+    panel.border = ggplot2::element_rect(linewidth = 1.5 * PT),
+    legend.title = ggplot2::element_text(size = 20),
+    legend.text = ggplot2::element_text(size = 18),
+    legend.key.width = grid::unit(1.2, "cm"),
+    legend.key.height = grid::unit(0.5, "cm"),
+    legend.direction = "horizontal",
+    legend.title.align = 0.5,
+    legend.position = c(0.9, 0.15),
+    legend.background = ggplot2::element_blank()
+  )
 
 (p6 <- ggrastr::rasterise(p6))
 ```
 
-```{r fig.height=5, fig.width=17}
-(p56 <- p5[[1]] + p5[[2]] + p6)
-```
-
 ### Combine All Plots
 
-```{r fig.height=20, fig.width=17}
-(p <- p1 / p2 / p34 / p56)
+```{r fig.height=15, fig.width=17}
+(p <- p1 / p6 / p35)
 ```
 
 ```{r eval=FALSE, include=FALSE}
 plotpowerpoint(p, "../data/Figure.pptx",
-  location = grid::unit(c(2.5, 4.49, 49.01, 57.66), "cm"),
+  location = grid::unit(c(2.5, 4.49, 49.01, 43.24), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
@@ -1122,7 +1137,7 @@ local({
 })
 ```
 
-## Supplementary Figure 10 SEID Protein Family
+## Supplementary Figure 10
 
 ### SEID family
 
