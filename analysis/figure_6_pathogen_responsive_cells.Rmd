@@ -1217,6 +1217,16 @@ plotpowerpoint(p12, "../data/Figure.pptx",
 
 ## Supplementary Figure 8 Condition-specific Genes
 
+```{r}
+tradeSce_os_cond <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/tradeseq_gam_os_condition_*.rds"))
+```
+
+```{r}
+conditionRes_os_all <- readRDS(Sys.glob(
+  "../results/ObjectCache/TrajectoryInference/tradeseq_conditionRes_os_pairlineages_*.rds"))
+```
+
 ### Differential Progression
 
 ```{r fig.height=3, fig.width=7}
@@ -1227,17 +1237,55 @@ plotCurveTopology(tradeSce_os_cond)
 plotPseudotimeDensity(tradeSce_os_cond)
 ```
 
+### Generate Pseudotime Expression Matrix
+
+```{r}
+yhatSmoothDf <- tradeSeq::predictSmooth(
+  tradeSce_os_cond, rownames(tradeSce_os_cond), nPoints = 100, tidy = FALSE)
+
+str(yhatSmoothDf)
+```
+
+```{r}
+yhatSmoothDf_list <- lapply(
+  X = list(
+    "Branch 1 - MOCK" = paste0("lineage1_conditionMOCK_point", 1:100),
+    "Branch 1 - PNR2" = paste0("lineage1_conditionPNR2_point", 1:100),
+    "Branch 1 - TR4"  = paste0("lineage1_conditionTR4_point", 1:100),
+
+    "Branch 2 - MOCK" = paste0("lineage2_conditionMOCK_point", 1:100),
+    "Branch 2 - PNR2" = paste0("lineage2_conditionPNR2_point", 1:100),
+    "Branch 2 - TR4"  = paste0("lineage2_conditionTR4_point", 1:100),
+
+    "Branch 3 - MOCK" = paste0("lineage3_conditionMOCK_point", 1:100),
+    "Branch 3 - PNR2" = paste0("lineage3_conditionPNR2_point", 1:100),
+    "Branch 3 - TR4"  = paste0("lineage3_conditionTR4_point", 1:100)
+  ),
+  FUN = function(cols) {
+    mtx = yhatSmoothDf[, cols, drop=FALSE]
+    mtx[!is.na(rowSums(mtx)), ]
+  }
+)
+
+str(yhatSmoothDf_list)
+```
+
+```{r eval=FALSE, include=FALSE}
+wb <- openxlsx::createWorkbook()
+
+for (sheet in names(yhatSmoothDf_list)) {
+  openxlsx::addWorksheet(wb, sheet)
+  openxlsx::writeDataTable(wb, sheet,
+    tibble::rownames_to_column(as.data.frame(yhatSmoothDf_list[[sheet]]), "Gene")
+  )
+}
+
+openxlsx::saveWorkbook(
+  wb, file = "../results/DataPlots/SupplementaryTable_X_traj_parenchyma_pseudotime_expr.xlsx",
+  overwrite = TRUE)
+```
+
 ### Condition-specific Genes
-
-```{r}
-tradeSce_os_cond <- readRDS(Sys.glob(
-  "../results/ObjectCache/TrajectoryInference/tradeseq_gam_os_condition_*.rds"))
-```
-
-```{r}
-conditionRes_os_all <- readRDS(Sys.glob(
-  "../results/ObjectCache/TrajectoryInference/tradeseq_conditionRes_os_pairlineages_*.rds"))
-```
 
 ```{r}
 levels(colData(tradeSce_os_cond)$tradeSeq$conditions)

@@ -1313,6 +1313,50 @@ levels(colData(tradeSce_chl_cond)$tradeSeq$conditions)
 str(conditionRes_chl_all)
 ```
 
+### Generate Pseudotime Expression Matrix
+
+```{r}
+yhatSmoothDf <- tradeSeq::predictSmooth(
+  tradeSce_chl_cond, rownames(tradeSce_chl_cond), nPoints = 100, tidy = FALSE)
+
+str(yhatSmoothDf)
+```
+
+```{r}
+yhatSmoothDf_list <- lapply(
+  X = list(
+    "Branch 1 - MOCK" = paste0("lineage1_conditionMOCK_point", 1:100),
+    "Branch 1 - PNR2" = paste0("lineage1_conditionPNR2_point", 1:100),
+    "Branch 1 - TR4"  = paste0("lineage1_conditionTR4_point", 1:100),
+
+    "Branch 2 - MOCK" = paste0("lineage2_conditionMOCK_point", 1:100),
+    "Branch 2 - PNR2" = paste0("lineage2_conditionPNR2_point", 1:100),
+    "Branch 2 - TR4"  = paste0("lineage2_conditionTR4_point", 1:100)
+  ),
+  FUN = function(cols) {
+    mtx = yhatSmoothDf[, cols, drop=FALSE]
+    mtx[!is.na(rowSums(mtx)), ]
+  }
+)
+
+str(yhatSmoothDf_list)
+```
+
+```{r eval=FALSE, include=FALSE}
+wb <- openxlsx::createWorkbook()
+
+for (sheet in names(yhatSmoothDf_list)) {
+  openxlsx::addWorksheet(wb, sheet)
+  openxlsx::writeDataTable(wb, sheet,
+    tibble::rownames_to_column(as.data.frame(yhatSmoothDf_list[[sheet]]), "Gene")
+  )
+}
+
+openxlsx::saveWorkbook(
+  wb, file = "../results/DataPlots/SupplementaryTable_X_traj_chlorenchyma_pseudotime_expr.xlsx",
+  overwrite = TRUE)
+```
+
 ### Branch 1 - PNR2 vs. TR4
 
 ```{r}
