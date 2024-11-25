@@ -112,6 +112,25 @@ prepGOEnrichData <- function(total, timeval) {
 ```
 
 ```{r}
+prepGOGSEAData <- function(total, timeval) {
+  df <- total |>
+    dplyr::filter(time == timeval) |>
+    dplyr::group_by(cluster_id, contrast) |>
+    dplyr::summarise(
+      genes = list(gene),
+      logFC = list(logFC),
+      n = length(gene),
+      .groups = "drop") |>
+    #dplyr::filter(n > 50) |>
+    dplyr::select(cluster_id, contrast, genes, logFC) |>
+    tidyr::unnest(genes, logFC)
+
+  df
+}
+```
+
+
+```{r}
 diff_state_intersections <- function(ds) {
   sets_list <- ds$table %>%
     purrr::map(function(x) {
@@ -173,6 +192,11 @@ ds_go_ora_df <- ds_df |>
     type = ifelse(logFC > 0, "induced", "suppressed")) |>
   dplyr::select(time, cluster_id, contrast, type, gene)
 ```
+
+```{r}
+head(ds_go_ora_df)
+```
+
 
 ### Analysis of 1 DPI DEGs
 
@@ -711,7 +735,151 @@ knitr::knit_exit()
 
 ## GO Gene Set Enrichment Analysis
 
+```{r}
+ds_go_gsea_df <- ds_res$DESeq2 |>
+  rhapsodykit::diff_state_format() |>
+  dplyr::filter(!stringr::str_detect(contrast, "X\\dDPI\\.PNR2-X\\dDPI\\.TR4")) |>
+  dplyr::select(gene, cluster_id, contrast, logFC) |>
+  dplyr::mutate(
+    cluster_id = factor(cluster_id, levels = cell_types),
+    time = stringr::str_extract(contrast, "\\dDPI"),
+    contrast = stringr::str_replace(contrast,
+      "X(\\dDPI)\\.(.*)-X(\\dDPI)\\.(.*)", "\\2")) |>
+  dplyr::select(time, cluster_id, contrast, gene, logFC)
+
+head(ds_go_gsea_df)
+```
+
+
 ### Analysis of 1 DPI DEGs
+
+#### Perform ORA
+
+```{r}
+gsea_comp_1dpi <- xfun::cache_rds(
+  file = "ds_gsea_comp_1dpi.rds",
+  dir = "../results/ObjectCache/DifferentialState/",
+  rerun = FALSE,
+  expr = lapply(
+    X = c(BP = "BP", MF = "MF", CC = "CC"),
+    FUN = function(ont)
+      clusterProfiler::compareCluster(
+        genes | logFC ~ cluster_id + contrast,
+        data = prepGOGSEAData(ds_go_gsea_df, "1DPI"),
+        fun = "gseGO",
+        OrgDb = org.Taestivum.iwgsc.db,
+        keyType = "GID",
+        ont = ont
+      )
+  )
+)
+```
+
+```{r}
+head(gsea_comp_1dpi$BP)
+```
+
+
+#### Dotplot with facets {.tabset}
+
+##### Biological process
+
+GO terms were selected manually:
+
+```{r fig.height=20, fig.width=14}
+p1 <- gsea_comp_1dpi$BP |>
+  dplyr::mutate(
+    treatment = stringr::str_extract(Cluster, "PNR2|TR4"),
+    cluster_id = factor(cluster_id, levels = TISSUE_TYPES)) |>
+  #dplyr::filter(ID %in% reprterms) |>
+  enrichplot::dotplot(
+    x = "treatment",
+    showCategory = 20,
+    color = "NES",
+    size = "count", label_format = 50) +
+  ggplot2::scale_color_gradient2(low = "blue", high = "red") +
+  ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Biological process - 1DPI") +
+  ggplot2::facet_grid(~ cluster_id) +
+  #rotate_x_labels() +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(size = 20),
+    axis.text.x = ggplot2::element_text(size = 16),
+    axis.text.y = ggplot2::element_text(size = 16),
+    axis.title.x = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(size = 16),
+    legend.title = ggplot2::element_text(size = 18),
+    legend.text = ggplot2::element_text(size = 16)
+  )
+
+p1
+```
+
+##### Molecular function
+
+Representive GO terms were selected by algorithm:
+
+```{r fig.height=20, fig.width=14}
+p1 <- gsea_comp_1dpi$MF |>
+  dplyr::mutate(
+    treatment = stringr::str_extract(Cluster, "PNR2|TR4"),
+    cluster_id = factor(cluster_id, levels = TISSUE_TYPES)) |>
+  #dplyr::filter(ID %in% reprterms) |>
+  enrichplot::dotplot(
+    x = "treatment",
+    showCategory = 20,
+    color = "NES",
+    size = "count", label_format = 50) +
+  ggplot2::scale_color_gradient2(low = "blue", high = "red") +
+  ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Biological process - 1DPI") +
+  ggplot2::facet_grid(~ cluster_id) +
+  #rotate_x_labels() +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(size = 20),
+    axis.text.x = ggplot2::element_text(size = 16),
+    axis.text.y = ggplot2::element_text(size = 16),
+    axis.title.x = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(size = 16),
+    legend.title = ggplot2::element_text(size = 18),
+    legend.text = ggplot2::element_text(size = 16)
+  )
+
+p1
+```
+
+##### Cellular component
+
+Representive GO terms were selected by algorithm:
+
+```{r fig.height=20, fig.width=14}
+p1 <- gsea_comp_1dpi$CC |>
+  dplyr::mutate(
+    treatment = stringr::str_extract(Cluster, "PNR2|TR4"),
+    cluster_id = factor(cluster_id, levels = TISSUE_TYPES)) |>
+  #dplyr::filter(ID %in% reprterms) |>
+  enrichplot::dotplot(
+    x = "treatment",
+    showCategory = 20,
+    color = "NES",
+    size = "count", label_format = 50) +
+  ggplot2::scale_color_gradient2(low = "blue", high = "red") +
+  ggplot2::xlab("DEG Sets") +
+  ggplot2::ggtitle("Biological process - 1DPI") +
+  ggplot2::facet_grid(~ cluster_id) +
+  #rotate_x_labels() +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(size = 20),
+    axis.text.x = ggplot2::element_text(size = 16),
+    axis.text.y = ggplot2::element_text(size = 16),
+    axis.title.x = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(size = 16),
+    legend.title = ggplot2::element_text(size = 18),
+    legend.text = ggplot2::element_text(size = 16)
+  )
+
+p1
+```
 
 ### Analysis of 2 DPI DEGs
 

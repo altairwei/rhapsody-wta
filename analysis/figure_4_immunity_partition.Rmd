@@ -733,6 +733,98 @@ plotpowerpoint(p6l, "../data/Figure.pptx",
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
 
+### UpSet plot of DEG sets
+
+```{r}
+plot_updown <- function(ds, contrast) {
+  df <- ds %>%
+    rhapsodykit::diff_state_pull(contrast, seq_along(ds$data), "gene") %>%
+    rhapsodykit::from_list_to_upset() %>%
+    rhapsodykit::upset_dataframe()
+
+  sets_names <- df %>%
+    dplyr::select(clusters) %>%
+    tidyr::unnest(cols = clusters) %>%
+    dplyr::count(clusters) %>%
+    dplyr::mutate(n = sprintf("%s (%s)", clusters, n)) %>%
+    tibble::deframe()
+  
+  up_list <- ds %>%
+    rhapsodykit::diff_state_filter(logFC > 0) %>%
+    rhapsodykit::diff_state_pull(contrast, seq_along(ds$data), "gene")
+
+  down_list <- ds %>%
+    rhapsodykit::diff_state_filter(logFC < 0) %>%
+    rhapsodykit::diff_state_pull(contrast, seq_along(ds$data), "gene")
+  
+  up_data <- rhapsodykit::from_list_to_upset(up_list) %>% rhapsodykit::upset_dataframe()
+  down_data <- rhapsodykit::from_list_to_upset(down_list) %>% rhapsodykit::upset_dataframe()
+
+  up_data$regulated <- factor("Up-regulated", c("Up-regulated", "Down-regulated"))
+  down_data$regulated <- factor("Down-regulated", c("Up-regulated", "Down-regulated"))
+
+  df_to_plot <- dplyr::bind_rows(up_data, down_data)
+
+  df_to_plot %>%
+    ggplot2::ggplot(ggplot2::aes(x = clusters, fill = regulated)) +
+    ggplot2::geom_bar(
+      width = 0.9,
+      position = ggplot2::position_dodge(width = 0.9)) +
+    ggplot2::labs(x = "", y = "Count", fill = "") +
+    ggplot2::geom_text(
+      stat = "count", size = 14 * FT, vjust = -1,
+      position = ggplot2::position_dodge(width = 0.9),
+      mapping = ggplot2::aes(label = ggplot2::after_stat(count))) +
+    ggupset::scale_x_upset(
+      expand = ggplot2::expansion(c(0, 0), c(0.8, 0.8)),
+      n_intersections = 15) +
+    ggplot2::scale_y_continuous(expand =  ggplot2::expansion(c(0, 0.3), c(0, 0))) +
+    ggplot2::theme_classic(base_size = 16) +
+    ggupset::theme_combmatrix(
+      combmatrix.label.make_space = FALSE,
+      combmatrix.label.text = ggplot2::element_text(size = 18),
+      combmatrix.panel.point.size = 5,
+      plot.margin = ggplot2::margin(0.5, 0.5, 0.5, 1.5, unit = "cm"),
+      axis.line = ggplot2::element_line(linewidth = 1.5 * PT),
+      axis.text.y = ggplot2::element_text(size = 20),
+      legend.position = "none",
+      legend.text = ggplot2::element_text(size = 18)
+    )
+}
+```
+
+```{r}
+plist <- lapply(
+  X = c(
+    "X1DPI.PNR2-X1DPI.MOCK",
+    "X1DPI.TR4-X1DPI.MOCK",
+    "X2DPI.PNR2-X2DPI.MOCK",
+    "X2DPI.TR4-X2DPI.MOCK",
+    "X3DPI.PNR2-X3DPI.MOCK",
+    "X3DPI.TR4-X3DPI.MOCK"),
+  FUN = function(cont) {
+    plot_updown(ds_sig, cont) +
+      ggplot2::ggtitle(cont)
+  }
+)
+
+plist[[1]] <- plist[[1]] +
+  ggplot2::theme(legend.position = c(.8, .8))
+```
+
+```{r fig.height=14, fig.width=14}
+p <- patchwork::wrap_plots(plist, ncol = 2)
+
+p
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 49.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+
 ### Heatmap of LogFC
 
 ```{r}
@@ -1570,6 +1662,478 @@ plotpowerpoint(p3, "../data/Figure.pptx",
   location = grid::unit(c(2.5, 44.83, 49.01, 19.14), "cm"),
   fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
 ```
+
+## Supplementary Figure 5X
+
+```{r}
+Phloem_cols <- c(
+  "Phloem.PNR2-induced" = "#4e79a7",
+  "Phloem.PNR2-suppressed" = "#f28e2b",
+  "Phloem.TR4-induced" = "#e15759",
+  "Phloem.TR4-suppressed" = "#76b7b2"
+)
+
+Outersheath_cols <- c(
+  "Outer sheath.PNR2-induced" = "#4e79a7",
+  "Outer sheath.PNR2-suppressed" = "#f28e2b",
+  "Outer sheath.TR4-induced" = "#e15759",
+  "Outer sheath.TR4-suppressed" = "#76b7b2"
+)
+```
+
+
+### Enrichment Map of 1 DPI
+
+```{r}
+ora_comp_1dpi <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_ora_comp_1dpi_*.rds"))
+```
+
+```{r}
+reprterms <- ora_comp_1dpi$BP@compareClusterResult |>
+  dplyr::select(Description, ID) |>
+  dplyr::distinct() |>
+  tibble::deframe()
+
+reprterms <- reprterms[
+  extractMarkedTerms("../results/DataPlots/ds_ora_comp_1dpi.pptx")]
+```
+
+#### Phloem
+
+```{r fig.height=14, fig.width=16}
+set.seed(1124)
+p1 <- ora_comp_1dpi$BP |>
+  dplyr::filter(cluster_id == "Phloem") |>
+  clusterProfiler::simplify(cutoff = 0.7) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "category",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_label = 1.6)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggplot2::scale_fill_manual(values = Phloem_cols) +
+  ggplot2::ggtitle("Enrichment Map of 1 DPI") +
+  ggplot2::theme_void(14) +
+  center_plot_title()
+
+p1
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p1, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 49.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r fig.height=10, fig.width=10}
+set.seed(1124)
+p2 <- ora_comp_1dpi$BP |>
+  dplyr::filter(cluster_id == "Phloem") |>
+  clusterProfiler::simplify(cutoff = 0.7) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "none",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_node = 2)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggplot2::scale_fill_manual(values = Phloem_cols) +
+  ggplot2::ggtitle("Enrichment Map of 1 DPI") +
+  ggplot2::theme_void(16) +
+  ggplot2::theme(
+    legend.position = c(.4, .6)) +
+  center_plot_title()
+
+p2
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p2, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 19.77, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+
+#### Outer sheath
+
+```{r fig.height=14, fig.width=16}
+set.seed(1124)
+p3 <- ora_comp_1dpi$BP |>
+  dplyr::filter(cluster_id == "Outer sheath") |>
+  clusterProfiler::simplify(cutoff = 0.6) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "category",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_label = 1.6)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 1 DPI") +
+  ggplot2::theme_void(14) +
+  center_plot_title()
+
+p3
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 49.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r fig.height=10, fig.width=10}
+set.seed(1124)
+p4 <- ora_comp_1dpi$BP |>
+  dplyr::filter(cluster_id == "Outer sheath") |>
+  clusterProfiler::simplify(cutoff = 0.6) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "none",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_node = 2)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 1 DPI") +
+  ggplot2::theme_void(14) +
+  ggplot2::theme(
+    legend.position = c(.83, .9)) +
+  center_plot_title()
+
+p4
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p4, "../data/Figure.pptx",
+  location = grid::unit(c(24.27, 4.49, 19.77, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Enrichment Map of 2 DPI
+
+```{r}
+ora_comp_2dpi <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_ora_comp_2dpi_*.rds"))
+```
+
+#### Phloem
+
+```{r fig.height=14, fig.width=16}
+set.seed(1124)
+p1 <- ora_comp_2dpi$BP |>
+  dplyr::filter(cluster_id == "Phloem") |>
+  clusterProfiler::simplify(cutoff = 0.7) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "category",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_label = 1.6)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 2 DPI") +
+  ggplot2::theme_void(14) +
+  center_plot_title()
+
+p1
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p1, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 49.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r fig.height=10, fig.width=10}
+set.seed(1124)
+p2 <- ora_comp_2dpi$BP |>
+  dplyr::filter(cluster_id == "Phloem") |>
+  clusterProfiler::simplify(cutoff = 0.7) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "none",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_node = 2)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 2 DPI") +
+  ggplot2::theme_void(16) +
+  ggplot2::theme(
+    legend.position = c(.82, .77)) +
+  center_plot_title()
+
+p2
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p2, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 29.26, 19.77, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+#### Outer sheath
+
+```{r fig.height=14, fig.width=16}
+set.seed(1124)
+p3 <- ora_comp_2dpi$BP |>
+  dplyr::filter(cluster_id == "Outer sheath") |>
+  clusterProfiler::simplify(cutoff = 0.6) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "category",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_label = 1.6)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 2 DPI") +
+  ggplot2::theme_void(14) +
+  center_plot_title()
+
+p3
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 49.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r fig.height=10, fig.width=10}
+set.seed(1124)
+p4 <- ora_comp_2dpi$BP |>
+  dplyr::filter(cluster_id == "Outer sheath") |>
+  clusterProfiler::simplify(cutoff = 0.6) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "none",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_node = 2)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 2 DPI") +
+  ggplot2::theme_void(14) +
+  ggplot2::theme(
+    legend.position = c(.9, .98)) +
+  center_plot_title()
+
+p4
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p4, "../data/Figure.pptx",
+  location = grid::unit(c(24.27, 29.26, 19.77, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### Enrichment Map of 2 DPI
+
+```{r}
+ora_comp_3dpi <- readRDS(Sys.glob(
+  "../results/ObjectCache/DifferentialState/ds_ora_comp_3dpi_*.rds"))
+```
+
+#### Phloem
+
+```{r fig.height=14, fig.width=16}
+set.seed(1124)
+p1 <- ora_comp_3dpi$BP |>
+  dplyr::filter(cluster_id == "Phloem") |>
+  clusterProfiler::simplify(cutoff = 0.7) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "category",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_label = 1.6)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 3 DPI") +
+  ggplot2::theme_void(14) +
+  center_plot_title()
+
+p1
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p1, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 49.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r fig.height=10, fig.width=10}
+set.seed(1124)
+p2 <- ora_comp_3dpi$BP |>
+  dplyr::filter(cluster_id == "Phloem") |>
+  clusterProfiler::simplify(cutoff = 0.7) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "none",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_node = 2)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 3 DPI") +
+  ggplot2::theme_void(16) +
+  ggplot2::theme(
+    legend.position = c(.86, .1)) +
+  center_plot_title()
+
+p2
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p2, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 54.03, 19.77, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+#### Outer sheath
+
+```{r fig.height=14, fig.width=16}
+set.seed(1124)
+p3 <- ora_comp_3dpi$BP |>
+  dplyr::filter(cluster_id == "Outer sheath") |>
+  clusterProfiler::simplify(cutoff = 0.6) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "category",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_label = 1.6)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 3 DPI") +
+  ggplot2::theme_void(14) +
+  center_plot_title()
+
+p3
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p3, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 49.01, 49.01), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+```{r fig.height=10, fig.width=10}
+set.seed(1124)
+p4 <- ora_comp_3dpi$BP |>
+  dplyr::filter(cluster_id == "Outer sheath") |>
+  clusterProfiler::simplify(cutoff = 0.6) |>
+  enrichplot::pairwise_termsim(
+    showCategory = NULL) |>
+  enrichplot::emapplot(
+    showCategory = NULL,
+    font.size = 14,
+    node_label = "none",
+    pie.params = list(legend_n = 3, pie = "Count"),
+    layout.params = list(layout = "fr"),
+    edge.params = list(min = 0.01),
+    cex.params = list(category_node = 2)) +
+  ggplot2::guides(fill = ggplot2::guide_legend(title = "DEG Sets")) +
+  ggthemes::scale_fill_tableau(palette = "Tableau 10") +
+  ggplot2::ggtitle("Enrichment Map of 3 DPI") +
+  ggplot2::theme_void(14) +
+  ggplot2::theme(
+    legend.position = c(.9, .9)) +
+  center_plot_title()
+
+p4
+```
+
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p4, "../data/Figure.pptx",
+  location = grid::unit(c(24.27, 54.03, 19.77, 19.77), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
+
+### GSVA Pathway Activity
+
+```{r}
+df_immune_genes <- readxl::read_excel("../data/Supplementary Table 4 - A curated list of immunity related genes.xlsx")
+
+pseudobulk_cpm_mean <- readRDS(Sys.glob(
+  "../results/ObjectCache/Pseudobulk/pseudobulk_cpm_mean_*.rds"))
+```
+
+```{r}
+df_immune_gsva <- local({
+  df_immune_genes_filtered <- df_immune_genes |>
+    dplyr::filter(`Category in brief` %in% c(
+      "TaRLK", "TaNLR", "RBOH", "PRNPR", "CaSignaling",
+      "MAPK", "Benzox", "NHPbiosyn", "PALrelated", "TaGST"))
+  
+  expr_gsva <- GSVA::gsva(
+    pseudobulk_cpm_mean, list(set1=df_immune_genes_filtered$gene),
+    method = "gsva", kcdf = "Gaussian",
+    verbose = FALSE)
+
+  gsva_df <- as.data.frame(expr_gsva) |>
+      tibble::rownames_to_column("Pathway") |>
+      tidyr::pivot_longer(-Pathway, names_to = "bulk", values_to = "ES") |>
+      tidyr::separate(bulk, sep = "\\.", into = c("treatment", "time", "cellType"))
+
+  gsva_df$cellType <- factor(gsva_df$cellType, levels = TISSUE_TYPES)
+
+  gsva_df
+})
+```
+
+```{r fig.height=4, fig.width=14}
+plotRadarGSVA(df_immune_gsva, "set1")
+```
+
 
 ## Supplementary Table 2
 
