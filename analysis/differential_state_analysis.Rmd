@@ -422,11 +422,16 @@ plot_mds_by_cluster <- function(df, clusters = NULL, nrow = NULL, theme_size = 1
 
 ```{r fig.height=6, fig.width=10}
 (p <- plot_mds_by_cluster(pb_mds_list$counts,
-                          nrow = 2, theme_size = 14) +
-   legend_override("color", list(size = 4)) +
-    ggplot2::theme(legend.position = "bottom"))
+                          nrow = 2, theme_size = 22) +
+    legend_override("color", list(size = 4)) +
+    ggplot2::theme(legend.position = "right"))
 ```
 
+```{r eval=FALSE, include=FALSE}
+plotpowerpoint(p, "../data/Figure.pptx",
+  location = grid::unit(c(2.5, 4.49, 28, 14), "cm"),
+  fonts = list(sans = "Arial", serif = "Arial", mono = "Courier"))
+```
 
 ### Pseudobulk differential expression
 

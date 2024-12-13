@@ -34,6 +34,7 @@ analysis/site_libs
 analysis/res
 docs/
 output/
+upload/
 *.e*
 *.o*
 secrets
